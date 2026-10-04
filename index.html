@@ -61,8 +61,20 @@ nav button svg{width:17px;height:17px;flex:0 0 auto}
 /* ---------- filter bar ---------- */
 #filters{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:color-mix(in srgb,var(--bg) 88%,transparent);
   backdrop-filter:blur(9px);border-bottom:1px solid var(--ring);padding:11px 20px;display:flex;gap:9px;flex-wrap:wrap;align-items:center}
-.fld{display:flex;flex-direction:column;gap:3px}
+.fld{display:flex;flex-direction:column;gap:3px;min-width:118px}
 .fld label{font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:600}
+.fld select{width:100%}
+#f-year{min-width:84px}
+#f-month{min-width:148px}
+#f-range{min-width:188px}
+#f-brand,#f-spv,#f-store{min-width:158px}
+select#f-year[multiple]{min-height:60px;padding:4px 6px}
+/* ---------- per-page filter row (item 2) ---------- */
+.pagefilters{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;padding:13px 16px;margin:0;
+  background:var(--surface);border:1px solid var(--ring);border-radius:var(--r);box-shadow:var(--shadow)}
+.pagefilters .fld{min-width:118px;flex:0 1 auto}
+.pagefilters #f-custom-wrap{display:flex!important}
+@media(max-width:620px){.pagefilters{gap:10px}.pagefilters .fld{flex:1 1 128px}}
 select,input[type=text],input[type=number],input[type=date],textarea{background:var(--surface);border:1px solid var(--line);
   border-radius:8px;padding:6px 9px;min-width:0}
 select:focus-visible,input:focus-visible,textarea:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
@@ -75,7 +87,7 @@ select:focus-visible,input:focus-visible,textarea:focus-visible,button:focus-vis
 .spacer{flex:1}
 
 /* ---------- page ---------- */
-.page{padding:20px;padding-block:20px 56px;display:none;flex-direction:column;gap:18px}
+.page{padding:20px;padding-block:20px 56px;display:none;flex-direction:column;gap:18px;max-width:1680px;margin:0 auto;width:100%}
 .page.on{display:flex}
 .phead{display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap}
 .phead h1{font-size:22px;font-weight:800;letter-spacing:-.02em}
@@ -84,7 +96,7 @@ select:focus-visible,input:focus-visible,textarea:focus-visible,button:focus-vis
 .card{background:var(--surface);border:1px solid var(--ring);border-radius:var(--r);padding:17px 18px;box-shadow:var(--shadow)}
 .card>header{display:flex;align-items:baseline;gap:10px;margin:-2px 0 14px;flex-wrap:wrap}
 .card>header h2{font-size:14.5px;font-weight:700;letter-spacing:-.01em}
-.card>header .sub{font-size:12px;color:var(--muted)}
+.card>header .sub{font-size:12.5px;color:var(--muted)}
 .grid{display:grid;gap:14px}
 .g4{grid-template-columns:repeat(4,minmax(0,1fr))}
 .g3{grid-template-columns:repeat(3,minmax(0,1fr))}
@@ -92,6 +104,11 @@ select:focus-visible,input:focus-visible,textarea:focus-visible,button:focus-vis
 .g23{grid-template-columns:minmax(0,1.55fr) minmax(0,1fr)}
 @media(max-width:1180px){.g4{grid-template-columns:repeat(2,minmax(0,1fr))}.g3,.g23,.g2{grid-template-columns:minmax(0,1fr)}}
 @media(max-width:620px){.g4{grid-template-columns:minmax(0,1fr)}}
+/* item 4: #main's own box width (not viewport) drives reflow — fixes rail-open (242px) desktop
+   not narrowing content enough to trip the viewport media queries above */
+#main{container-type:inline-size;container-name:main}
+@container main (max-width:980px){.g4{grid-template-columns:repeat(2,minmax(0,1fr))}.g3,.g23,.g2{grid-template-columns:minmax(0,1fr)}}
+@container main (max-width:540px){.g4{grid-template-columns:minmax(0,1fr)}}
 
 /* ---------- stat tiles ---------- */
 .tile{background:var(--surface);border:1px solid var(--ring);border-radius:var(--r);padding:15px 16px;display:flex;flex-direction:column;gap:7px;
@@ -115,8 +132,9 @@ select:focus-visible,input:focus-visible,textarea:focus-visible,button:focus-vis
 
 /* ---------- table ---------- */
 .tw{overflow-x:auto;border:1px solid var(--ring);border-radius:var(--r);background:var(--surface)}
-table{border-collapse:collapse;width:100%;font-size:12.5px}
-th,td{padding:8px 11px;text-align:left;border-bottom:1px solid var(--grid);white-space:nowrap}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{padding:7px 10px;text-align:left;border-bottom:1px solid var(--grid);white-space:nowrap}
+col.narrow{width:1%}
 th{background:var(--surface-2);font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-2);
   font-weight:700;position:sticky;top:0;z-index:1}
 td.r,th.r{text-align:right;font-variant-numeric:tabular-nums}
@@ -133,7 +151,7 @@ tbody tr:hover .sticky1{background:var(--surface-2)}
 /* ---------- chart ---------- */
 .chart{position:relative}
 .chart svg{display:block;width:100%;height:auto;overflow:visible}
-.legend{display:flex;gap:13px;flex-wrap:wrap;font-size:11.5px;color:var(--ink-2);margin-bottom:9px}
+.legend{display:flex;gap:13px;flex-wrap:wrap;font-size:12px;color:var(--ink-2);margin-bottom:9px}
 .legend i{width:9px;height:9px;border-radius:2px;display:inline-block;margin-right:5px;vertical-align:-1px}
 #tip{position:fixed;z-index:90;pointer-events:none;background:var(--surface);border:1px solid var(--line);
   border-radius:8px;padding:8px 10px;font-size:12px;box-shadow:0 7px 22px rgba(0,0,0,.17);opacity:0;transition:opacity .1s;max-width:250px}
@@ -149,7 +167,7 @@ tbody tr:hover .sticky1{background:var(--surface-2)}
 .drop b{display:block;font-size:14px;margin-bottom:4px}
 .drop p{margin:0;color:var(--muted);font-size:12.5px}
 .note{background:var(--surface-2);border:1px solid var(--ring);border-left:3px solid var(--accent);border-radius:8px;
-  padding:11px 13px;font-size:12.5px;color:var(--ink-2)}
+  padding:11px 13px;font-size:13px;color:var(--ink-2)}
 .note.warn{border-left-color:var(--warn)}
 .note b{color:var(--ink)}
 .log{font-family:var(--font-num);font-size:11.5px;max-height:230px;overflow:auto;background:var(--surface-2);
@@ -164,13 +182,13 @@ tbody tr:hover .sticky1{background:var(--surface-2)}
 .col .body{padding:11px;display:flex;flex-direction:column;gap:9px;flex:1}
 .item{background:var(--surface-2);border:1px solid var(--ring);border-radius:8px;padding:10px}
 .item .t{font-weight:600;font-size:13px;margin-bottom:3px}
-.item .c{font-size:12px;color:var(--ink-2);white-space:pre-wrap}
+.item .c{font-size:12.5px;color:var(--ink-2);white-space:pre-wrap}
 .item .f{display:flex;gap:7px;align-items:center;margin-top:7px;flex-wrap:wrap;font-size:11px;color:var(--muted)}
 .rowline{display:flex;gap:9px;align-items:flex-end;flex-wrap:wrap}
 .modal{position:fixed;inset:0;z-index:100;background:rgba(0,0,0,.45);display:grid;place-items:center;padding:18px}
 .modal .box{background:var(--surface);border:1px solid var(--ring);border-radius:12px;padding:20px;max-width:560px;width:100%;
   max-height:88vh;overflow:auto;display:flex;flex-direction:column;gap:13px}
-.kv{display:grid;grid-template-columns:auto 1fr;gap:5px 13px;font-size:12.5px}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:5px 13px;font-size:13px}
 .kv dt{color:var(--muted)} .kv dd{margin:0;font-variant-numeric:tabular-nums}
 .badgepair{display:flex;gap:6px;align-items:center}
 #toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%) translateY(90px);z-index:120;background:var(--ink);
@@ -246,7 +264,7 @@ th[data-t]:hover{background:var(--line)}
     <div id="filters">
       <button class="btn sm" id="railtog" aria-label="Buka menu">☰</button>
       <div class="fld"><label for="f-year">Tahun</label>
-        <select id="f-year"></select></div>
+        <select id="f-year" multiple size="3" title="Ctrl/Cmd+klik untuk pilih beberapa tahun"></select></div>
       <div class="fld"><label for="f-month">Bulan</label>
         <select id="f-month"></select></div>
       <div class="fld"><label for="f-range">Rentang</label>
@@ -275,6 +293,7 @@ th[data-t]:hover{background:var(--line)}
       <div class="spacer"></div>
       <span id="conn" class="pill neu">Belum terhubung</span>
     </div>
+    <div id="filterpool" style="display:none"></div>
 
     <section class="page on" id="p-dash"></section>
     <section class="page" id="p-sales"></section>
@@ -312,7 +331,7 @@ const SEGMENS = ['KOMERSIAL TIGALAPAN','KOMERSIAL MAMU','USER TIGALAPAN','USER M
 /* ---------- state ---------- */
 const S = {
   url:'https://qrabkayuwglmlaouliwn.supabase.co', key:'', ready:false,
-  year:2026, month:0, brand:'', store:'', spv:'',
+  year:2026, years:[2026], month:0, brand:'', store:'', spv:'',
   stores:[], aliases:[], dash:[], growth:[], trx:[], map:[], unmapped:[],
   metrics:[], entries:[], pdca:[], settings:{}, logs:[],
   itemRows:[], itemScope:'', people:[], brandTargets:[], chanTargets:[], mkt:[], dashAll:[], trxAll:[], pica:[], pm:[], rollCache:new Map(),
@@ -346,7 +365,7 @@ function compact(v){ if(v==null||isNaN(v))return T('—');
   else if(a>=1e3)  t=s+'Rp '+(a/1e3 ).toLocaleString('id-ID',{maximumFractionDigits:0})+' rb';
   else t=s+'Rp '+a.toLocaleString('id-ID');
   return T(t,v); }
-function pct(v,dec=1){ return (v==null||isNaN(v))?T('—'):T((v*100).toLocaleString('id-ID',{minimumFractionDigits:dec,maximumFractionDigits:dec})+'%',v); }
+function pct(v,dec=2){ return (v==null||isNaN(v))?T('—'):T((v*100).toLocaleString('id-ID',{minimumFractionDigits:dec,maximumFractionDigits:dec})+'%',v); }
 function int(v){ return (v==null||isNaN(v))?T('—'):T(Math.round(v).toLocaleString('id-ID'),Math.round(v)); }
 function achClass(a){ if(a==null)return 'neu'; if(a>=1)return 'ok'; if(a>=.9)return 'mid'; return 'bad'; }
 function achMeter(a){ if(a==null)return ''; if(a>=1)return 'ok'; if(a>=.9)return 'mid'; return 'bad'; }
@@ -610,48 +629,61 @@ function buildNav(){
   }
 }
 /* =====================================================================
-   FILTER KONTEKSTUAL PER HALAMAN (item 8)
-   Dipetakan dari audit nyata apa yang dibaca tiap fungsi render — bukan tebakan:
-   - dash/sales/trx/mkt/brand : pakai scope()/storeOk()/trxScope()/rollup() tanpa override stores →
-     tergantung SEMUA filter global (Bulan, Rentang, Brand, SPV, Toko).
+   FILTER KONTEKSTUAL PER HALAMAN (item 2/8)
+   Dipetakan dari audit nyata apa yang dibaca tiap fungsi render — bukan tebakan. Setiap render*()
+   memanggil pageFilterBar(id) dan me-MOUNT (append, bukan clone) elemen <select> filter yang relevan
+   langsung ke dalam halaman itu sendiri — bukan lagi bar global sticky yang sama di semua halaman.
+   - dash/sales/trx/mkt/brand/pdca : pakai scope()/storeOk()/trxScope()/rollup() tanpa override stores →
+     tergantung SEMUA filter (Tahun, Bulan, Rentang, Brand, SPV, Toko).
    - item   : query item_sales memakai S.store / S.brand / S.month secara literal, TIDAK memakai
      S.spv maupun S.monthRange sama sekali → sembunyikan SPV & Rentang.
    - kpi    : KPI Scorecard company-wide, tidak ada dimensi toko/brand/spv sama sekali, dan
-     Weekly/Dashboard KPI selalu per-bulan tunggal (S.month), bukan rentang → sembunyikan
-     Brand, SPV, Toko, Rentang.
-   - top    : topBlock()/rollup() tanpa override stores → tetap tergantung Brand/SPV/Toko global,
+     Weekly/Dashboard KPI selalu per-bulan tunggal (S.month), bukan rentang → hanya Tahun & Bulan.
+   - top    : topBlock()/rollup() tanpa override stores → tetap tergantung Brand/SPV/Toko,
      tapi m1/m2 selalu dari S.month tunggal (tidak baca S.monthRange) → sembunyikan Rentang saja.
    - h2h    : punya date-picker/bulan sendiri (S.h2h, independen dari S.month/S.monthRange), tapi
-     h2hData()/storeOk() tetap baca S.store/S.brand/S.spv global → sembunyikan Bulan & Rentang saja.
-   - pdca   : item PDCA difilter langsung oleh S.store & S.month; tombol "Susun temuan dari data"
-     memakai scope() penuh (Brand/SPV/Rentang) → semua filter tetap relevan, tidak disembunyikan.
+     h2hData()/storeOk() tetap baca S.store/S.brand/S.spv, dan S.year adalah tahun ke-3 dari
+     perbandingan 3-tahun → Tahun, Brand, SPV, Toko; sembunyikan Bulan & Rentang.
    - breakdown : punya kartu filter lokal sendiri (periode, SPV Area, toko) yang terpisah total dari
-     filter global → sembunyikan Bulan, Rentang, Brand, SPV, Toko; hanya Tahun yang masih relevan.
-   - pica   : tidak membaca filter global sama sekali (pakai filter Jenis/PIC/Status sendiri) →
-     sembunyikan Bulan, Rentang, Brand, SPV, Toko.
-   - upload/set : halaman konfigurasi, tidak ada data yang difilter → sembunyikan semuanya.
-   Tahun & tombol Clear selalu tampil sebagai baseline di semua halaman. */
+     sisanya → hanya Tahun yang masih relevan dari bar ini.
+   - pica   : tidak membaca S.year/S.month/dst sama sekali (pakai filter Jenis/PIC/Status sendiri) →
+     tidak ada filter dari bar ini.
+   - upload/set : halaman konfigurasi, tidak ada data yang difilter → tidak ada filter dari bar ini.
+   Tahun kini mendukung multi-select (S.years / #f-year multiple); S.year tetap dipelihara sebagai
+   skalar = tahun terbesar yang terpilih ("tahun berjalan"), dipakai oleh seluruh fungsi agregasi lama
+   tanpa perubahan. Memilih >1 tahun menambah kartu perbandingan tambahan di dash/sales (lihat
+   multiYearCompare()) tanpa mengubah logika agregasi satu-tahun yang sudah ada. */
 const FILTER_VISIBILITY={
-  dash:['month','range','brand','spv','store'], sales:['month','range','brand','spv','store'],
-  trx:['month','range','brand','spv','store'], mkt:['month','range','brand','spv','store'],
-  brand:['month','range','brand','spv','store'],
-  item:['month','brand','store'],
-  kpi:['month'],
-  top:['month','brand','spv','store'],
-  h2h:['brand','spv','store'],
-  pdca:['month','range','brand','spv','store'],
-  breakdown:[], pica:[], upload:[], set:[]
+  dash:['year','month','range','brand','spv','store'], sales:['year','month','range','brand','spv','store'],
+  trx:['year','month','range','brand','spv','store'], mkt:['year','month','range','brand','spv','store'],
+  brand:['year','month','range','brand','spv','store'],
+  item:['year','month','brand','store'],
+  kpi:['year','month'],
+  top:['year','month','brand','spv','store'],
+  h2h:['year','brand','spv','store'],
+  pdca:['year','month','range','brand','spv','store'],
+  breakdown:['year'], pica:[], upload:[], set:[]
 };
-function applyFilterVisibility(id){
-  const vis=FILTER_VISIBILITY[id]!==undefined?FILTER_VISIBILITY[id]:['month','range','brand','spv','store'];
-  const set_=(sel,on)=>{ const n=document.querySelector(sel); if(n) n.style.display=on?'':'none'; };
-  set_('label[for="f-month"]',vis.includes('month')); set_('#f-month',vis.includes('month'));
-  const monthFld=$('#f-month')?.closest('.fld'); if(monthFld) monthFld.style.display=vis.includes('month')?'':'none';
-  const rangeFld=$('#f-range')?.closest('.fld'); if(rangeFld) rangeFld.style.display=vis.includes('range')?'':'none';
-  if(!vis.includes('range')){ const cw=$('#f-custom-wrap'); if(cw) cw.style.display='none'; }
-  const brandFld=$('#f-brand')?.closest('.fld'); if(brandFld) brandFld.style.display=vis.includes('brand')?'':'none';
-  const spvFld=$('#f-spv')?.closest('.fld'); if(spvFld) spvFld.style.display=vis.includes('spv')?'':'none';
-  const storeFld=$('#f-store')?.closest('.fld'); if(storeFld) storeFld.style.display=vis.includes('store')?'':'none';
+/* Memindahkan (bukan menyalin) elemen <select> filter yang sudah ada ke dalam baris filter lokal
+   milik halaman yang sedang aktif. Karena dipindah (appendChild), tiap elemen cuma ada 1 instance
+   di seluruh dokumen — listener onchange yang lama tetap berfungsi apa adanya. */
+function pageFilterBar(id){
+  const vis=FILTER_VISIBILITY[id]!==undefined?FILTER_VISIBILITY[id]:['year','month','range','brand','spv','store'];
+  if(!vis.length) return null;
+  /* Ambil referensi & nilai SEBELUM memindah node apa pun: begitu sebuah elemen dipindah ke dalam
+     `wrap` yang masih "lepas" (belum di-append ke dokumen), document.querySelector tidak lagi
+     menemukannya (ia sudah keluar dari pohon dokumen hidup) — jadi semua $('#f-...') harus dipanggil
+     duluan, baru append. */
+  const rangeSel=$('#f-range'), rangeVal=rangeSel?rangeSel.value:'', customWrap=$('#f-custom-wrap');
+  const wrap=el('div',{class:'pagefilters'});
+  if(vis.includes('year')) wrap.append($('#f-year').closest('.fld'));
+  if(vis.includes('month')) wrap.append($('#f-month').closest('.fld'));
+  if(vis.includes('range')){ wrap.append(rangeSel.closest('.fld')); wrap.append(customWrap);
+    customWrap.style.display = rangeVal==='custom' ? 'flex' : 'none'; }
+  if(vis.includes('brand')) wrap.append($('#f-brand').closest('.fld'));
+  if(vis.includes('spv')) wrap.append($('#f-spv').closest('.fld'));
+  if(vis.includes('store')) wrap.append($('#f-store').closest('.fld'));
+  return wrap;
 }
 function go(id){
   S.page=id;
@@ -659,7 +691,6 @@ function go(id){
   $('#p-'+id).classList.add('on');
   document.querySelectorAll('#nav button').forEach(b=>b.setAttribute('aria-current', String(b.dataset.p===id)));
   $('#rail').classList.remove('open');
-  applyFilterVisibility(id);
   render();
   window.scrollTo({top:0});
 }
@@ -670,8 +701,9 @@ function go(id){
 function fillFilters(){
   const ys = $('#f-year');
   if(!ys.options.length){
-    for(let y=2024;y<=2027;y++) ys.append(el('option',{value:y, selected:y===S.year?'':null},String(y)));
+    for(let y=2024;y<=2027;y++) ys.append(el('option',{value:y},String(y)));
   }
+  [...ys.options].forEach(o=>o.selected=S.years.includes(Number(o.value)));
   const ms = $('#f-month');
   if(!ms.options.length){
     ms.append(el('option',{value:'0'},'Semua (YTD)'));
@@ -785,6 +817,16 @@ function agg(rows){
   o.achiev_total     = o.target_total>0     ? o.total_sales/o.target_total         : null;
   return o;
 }
+/* item 2: ketika Tahun dipilih >1 (S.years.length>1), bandingkan total per tahun — aman & aditif,
+   scope()/agg() di atas sama sekali tak bergantung pada S.year sehingga bisa dipakai lintas-tahun
+   tanpa menyentuh logika satu-tahun yang sudah ada di tempat lain. */
+function multiYearCompare(){
+  if(S.years.length<2) return null;
+  return S.years.slice().sort((a,b)=>a-b).map(y=>{
+    const rows=scope(S.dashAll.filter(r=>r.year===y));
+    return {year:y, ...agg(rows)};
+  });
+}
 /* Per toko dalam cakupan filter */
 function byStore(rows){
   const m = new Map();
@@ -857,7 +899,10 @@ function axisFmt(v){ const a=Math.abs(v);
 
 /* Grouped bars: series = [{name,color,vals[]}], labels[] */
 function groupedBars(labels, series, opt={}){
-  const W=opt.w||760, H=opt.h||260, PL=opt.pl||52, PR=14, PT=20, PB=28;
+  /* item 3/7: chart lebih besar secara default (260→300) tapi tetap responsif (viewBox %), dan
+     label nilai di atas bar memakai format singkat (axisFmt, tanpa "Rp") + di-zig-zag per seri (j%2)
+     supaya label antar-bar yang berdekatan dalam satu grup tidak saling tumpang-tindih. */
+  const W=opt.w||760, H=opt.h||300, PL=opt.pl||52, PR=14, PT=opt.pt||30, PB=28;
   const iw=W-PL-PR, ih=H-PT-PB;
   const max=niceMax(Math.max(1,...series.flatMap(s=>s.vals.map(v=>N(v)))));
   const svg=sv('svg',{viewBox:`0 0 ${W} ${H}`,role:'img'});
@@ -866,6 +911,7 @@ function groupedBars(labels, series, opt={}){
     const tx=sv('text',{x:PL-8,y:y+3.5,'text-anchor':'end',fill:'var(--muted)','font-size':10,'font-family':'var(--font-ui)'});
     tx.textContent=axisFmt(max*i/4); svg.append(tx); }
   const bw=iw/labels.length, gap=Math.min(7,bw*.14), inner=(bw-gap*2)/series.length, bar=Math.max(2,inner-2);
+  const fmtLbl=v=>opt.labelFmt?opt.labelFmt(v):axisFmt(v);
   labels.forEach((lb,i)=>{
     series.forEach((s,j)=>{
       const v=N(s.vals[i]); if(v<=0) return;
@@ -877,9 +923,10 @@ function groupedBars(labels, series, opt={}){
       r.addEventListener('pointermove',e=>tipShow(e,TIP.innerHTML));
       r.addEventListener('pointerleave',tipHide);
       svg.append(r);
-      if(bar>=10){   // label nilai langsung di atas bar, biar tak perlu hover
-        const lt=sv('text',{x:x+bar/2,y:y-4,'text-anchor':'middle',fill:'var(--ink-2)','font-size':9,'font-weight':600,'font-family':'var(--font-ui)'});
-        lt.setAttribute('style','font-variant-numeric:tabular-nums'); lt.textContent=opt.labelFmt?opt.labelFmt(v):compact(v); svg.append(lt);
+      if(bar>=8){   // label nilai langsung di atas bar, biar tak perlu hover
+        const stagger=series.length>1?(j%2)*11:0;   // zig-zag anti-tumpang-tindih antar seri bersebelahan
+        const lt=sv('text',{x:x+bar/2,y:y-4-stagger,'text-anchor':'middle',fill:'var(--ink-2)','font-size':8.5,'font-weight':600,'font-family':'var(--font-ui)'});
+        lt.setAttribute('style','font-variant-numeric:tabular-nums'); lt.textContent=fmtLbl(v); svg.append(lt);
       }
     });
     const t=sv('text',{x:PL+bw*i+bw/2,y:H-9,'text-anchor':'middle',fill:'var(--muted)','font-size':10,'font-family':'var(--font-ui)'});
@@ -1009,7 +1056,18 @@ function chartCard(title, sub, node, extra){
 /* =====================================================================
    RENDER
    ===================================================================== */
+/* item 2: amankan elemen filter (dipindah ke halaman aktif oleh pageFilterBar) ke #filterpool SEBELUM
+   p.innerHTML='' pada halaman mana pun — karena innerHTML='' menghancurkan anak node yang sedang
+   berada di dalamnya, bukan sekadar melepasnya, jadi node filter yang sama harus "diselamatkan" dulu
+   setiap kali render() dipanggil ulang (termasuk saat merender ulang halaman yang sama). */
+function parkFilters(){
+  const pool=$('#filterpool'); if(!pool) return;
+  ['f-year','f-month','f-range','f-brand','f-spv','f-store'].forEach(id=>{
+    const n=$('#'+id); if(n) pool.append(n.closest('.fld')); });
+  const cw=$('#f-custom-wrap'); if(cw) pool.append(cw);
+}
 function render(){
+  parkFilters();
   if(!S.ready){ document.querySelectorAll('.page').forEach(p=>{ if(p.id!=='p-set') p.innerHTML=''; });
     const t=$('#p-'+S.page); if(S.page!=='set') t.append(el('div',{class:'empty'},el('b',{},'Data belum termuat'),'Periksa URL dan anon key di Pengaturan, lalu tekan Muat ulang.'));
     renderSet(); return; }
@@ -1146,6 +1204,7 @@ async function diagnose(box, url, key){
 
 /* ---------- DASHBOARD ---------- */
 function renderDash(){
+  parkFilters();
   const p=$('#p-dash'); p.innerHTML='';
   const rows=scope(S.dash), a=agg(rows), m=byMonth(), g=growthScope(), t=trxScope();
   const trxSum=t.reduce((s,r)=>s+N(r.jumlah_transaksi),0);
@@ -1154,12 +1213,19 @@ function renderDash(){
 
   p.append(el('div',{class:'phead'},el('div',{},el('h1',{},'Dashboard Sales'),
     el('p',{},periodLabel()))));
+  const pf_dash=pageFilterBar('dash'); if(pf_dash) p.append(pf_dash);
   if(S.demo) p.append(demoBanner());
 
   if(a.total_sales===0 && a.target_total>0){
     p.append(el('div',{class:'note warn'},el('b',{},'Target sudah masuk, sales aktual belum. '),
       'Buka Upload Data dan unggah file Sales Type dari folder Drive Anda untuk mengisi angka realisasi.'));
   }
+
+  /* item 2: kartu perbandingan tahun, muncul hanya saat >1 Tahun dipilih di filter Tahun (multi-select) */
+  const myc=multiYearCompare();
+  if(myc) p.append(card('Perbandingan tahun terpilih','total sesuai filter Bulan/Rentang/Brand/SPV/Toko aktif',
+    mkTable([H('TAHUN',{s:1}),H('TOTAL SALES',{r:1}),H('TARGET',{r:1}),H('ACHIEVEMENT',{r:1}),H('GAP',{r:1})],
+      myc.map(r=>[String(r.year),compact(r.total_sales),r.target_total>0?compact(r.target_total):'—',pillCell(r.achiev_total),compact(r.gap_sales)]))));
 
   /* tiles */
   const tiles=el('div',{class:'grid g4'});
@@ -1193,7 +1259,7 @@ function renderDash(){
   const ser=[{name:'Sales',color:'var(--s1)',vals:m.map(x=>x.total_sales)},
              {name:'Target',color:'var(--s2)',vals:m.map(x=>x.target_total)}];
   const wrap=el('div',{});
-  wrap.append(legend(ser), groupedBars(MON3,ser,{h:265}));
+  wrap.append(legend(ser), groupedBars(MON3,ser,{h:300}));
   p.append(chartCard('Sales vs Target per bulan', S.year, wrap));
 
   /* achievement per bulan + komposisi */
@@ -1250,9 +1316,11 @@ function tile(k,v,m,ach,badge){
 /* ---------- SALES ---------- */
 if(!window.S_salesEditing) window.S_salesEditing=new Set();
 function renderSales(){
+  parkFilters();
   const p=$('#p-sales'); p.innerHTML='';
   p.append(el('div',{class:'phead'},el('div',{},el('h1',{},'Sales & Target'),
     el('p',{},'Satu baris per toko per bulan, mengikuti kolom sheet SALES. '+periodLabel()))));
+  const pf_sales=pageFilterBar('sales'); if(pf_sales) p.append(pf_sales);
   if(S.demo) p.append(demoBanner());
   const rows=scope(S.dash).filter(r=>r.target_total>0||r.total_sales>0)
     .sort((a,b)=>a.month-b.month||a.store_name.localeCompare(b.store_name));
@@ -1332,9 +1400,11 @@ function pillCell(a){ return a==null?el('span',{class:'pill neu'},'—'):el('spa
 
 /* ---------- ITEM SALES ---------- */
 async function renderItem(){
+  parkFilters();
   const p=$('#p-item'); p.innerHTML='';
   p.append(el('div',{class:'phead'},el('div',{},el('h1',{},'Item Sales'),
     el('p',{},'Total Item Sold sudah bersih: item sold − item refunded. '+periodLabel()))));
+  const pf_item=pageFilterBar('item'); if(pf_item) p.append(pf_item);
   if(S.demo) p.append(demoBanner());
   const key = `${S.year}|${S.month}|${S.store}|${S.brand}`;
   const btn=el('button',{class:'btn pri',onclick:()=>{S.itemScope='';renderItem();}},'Muat data item');
@@ -1428,9 +1498,11 @@ async function renderItem(){
 
 /* ---------- TRANSAKSI & AOV ---------- */
 function renderTrx(){
+  parkFilters();
   const p=$('#p-trx'); p.innerHTML='';
   p.append(el('div',{class:'phead'},el('div',{},el('h1',{},'Transaksi & AOV'),
     el('p',{},'AOV = nilai transaksi ÷ jumlah transaksi. '+periodLabel()))));
+  const pf_trx=pageFilterBar('trx'); if(pf_trx) p.append(pf_trx);
   if(S.demo) p.append(demoBanner());
   const t=trxScope();
   const sum=t.reduce((s,r)=>s+N(r.jumlah_transaksi),0), val=t.reduce((s,r)=>s+N(r.nilai_transaksi),0);
@@ -1449,7 +1521,7 @@ function renderTrx(){
   const row=el('div',{class:'grid g2'});
   row.append(chartCard('AOV per bulan',S.year,lineChart(MON3,mAov,{h:225,name:'AOV',color:'var(--s3)',tip:v=>rp(v)})));
   row.append(chartCard('Jumlah transaksi per bulan',S.year,
-    groupedBars(MON3,[{name:'Transaksi',color:'var(--s1)',vals:mTrx}],{h:225})));
+    groupedBars(MON3,[{name:'Transaksi',color:'var(--s1)',vals:mTrx}],{h:260})));
   p.append(row);
 
   /* tabel + input */
@@ -1600,9 +1672,11 @@ function kpiTabs(active){
     el('button',{class:'btn sm'+(active===k?' pri':''),onclick:()=>{ S.kpiTab=k; renderKpi(); }},t)));
 }
 function renderKpi(){
+  parkFilters();
   const p=$('#p-kpi'); p.innerHTML='';
   p.append(el('div',{class:'phead'},el('div',{},el('h1',{},'KPI Scorecard'),
     el('p',{},'Replikasi template Scorecard KPI Commercial — Input KPI, Weekly, dan Dashboard saling terhubung. '+periodLabel()))));
+  const pf_kpi=pageFilterBar('kpi'); if(pf_kpi) p.append(pf_kpi);
   if(S.demo) p.append(demoBanner());
   p.append(kpiTabs(S.kpiTab));
   if(!S.metrics.length){
@@ -1633,10 +1707,10 @@ function renderKpiInput(p){
   const tot=kpiTotal(rows.map(r=>({running:r.running,bobot:N(r.mt.weight),skor:r.skor,adj:r.adj})));
   const tiles=el('div',{class:'grid g4'});
   tiles.append(tile('Skor KPI total (YTD)', pct(tot.score), `${running.length} metrik Running`+(kpiNormalize()?' · dinormalisasi':''), tot.score));
-  tiles.append(tile('Cek Bobot', pct(tot.wsum/100,0), Math.abs(tot.wsum-100)<0.5?'bobot sudah 100%':'bobot belum 100% — periksa baris Running', null,
+  tiles.append(tile('Cek Bobot', pct(tot.wsum/100), Math.abs(tot.wsum-100)<0.5?'bobot sudah 100%':'bobot belum 100% — periksa baris Running', null,
     el('span',{class:'pill '+(Math.abs(tot.wsum-100)<0.5?'ok':'bad')},Math.abs(tot.wsum-100)<0.5?'Pas':'Tidak pas')));
   const okN=running.filter(r=>r.indikator==='Tercapai').length;
-  tiles.append(tile('Tercapai',int(okN),running.length?pct(okN/running.length,0)+' dari metrik Running':'—',null));
+  tiles.append(tile('Tercapai',int(okN),running.length?pct(okN/running.length)+' dari metrik Running':'—',null));
   const critN=running.filter(r=>r.indikator==='Kritis').length;
   tiles.append(tile('Kritis',int(critN),critN?'perlu tindak lanjut segera':'tidak ada',null,
     critN?el('span',{class:'pill bad'},'Perhatian'):el('span',{class:'pill ok'},'Aman')));
@@ -1794,10 +1868,10 @@ function renderKpiDashboard(p){
   const priorityList=running.filter(r=>r.adj!=null).map(r=>({name:r.mt.name,poin:(1-r.adj)*r.bobot})).sort((a,b)=>b.poin-a.poin);
   const worst=priorityList[0];
   const deltaPts = totPrev!=null ? (totMtd.score-totPrev.score)*100 : null;
-  const narasi = `MTD ${MONTHS[month-1]}: skor ${pct(totMtd.score,1)} – Grade ${grade} (${gradeLabel(grade)}). `+
+  const narasi = `MTD ${MONTHS[month-1]}: skor ${pct(totMtd.score)} – Grade ${grade} (${gradeLabel(grade)}). `+
     `${tercapai} dari ${terukur.length} KPI terukur tercapai, ${kritis} kritis, ${belum} belum ada data.`+
     (deltaPts!=null?` ${deltaPts>=0?'Naik':'Turun'} ${Math.abs(deltaPts).toFixed(1)} poin dari bulan lalu.`:'')+
-    ` Skor YTD ${pct(totYtd.score,0)}.`+(worst?` Prioritas bulan ini: ${worst.name}.`:'');
+    ` Skor YTD ${pct(totYtd.score)}.`+(worst?` Prioritas bulan ini: ${worst.name}.`:'');
 
   const tiles=el('div',{class:'grid g4'});
   tiles.append(tile('Skor MTD',pct(totMtd.score),'Grade '+grade+' · '+gradeLabel(grade),totMtd.score));
@@ -1811,7 +1885,7 @@ function renderKpiDashboard(p){
   /* skor MTD per bulan (Jan-Des) */
   const perBulan=[]; for(let m=1;m<=12;m++){ const rs=metrics.map(mt=>kpiMonthCalc(mt,S.year,m)); const t=kpiTotal(rs); const ada=rs.some(r=>r.realisasi!=null); perBulan.push({m,score:ada?t.score:null,grade:ada?gradeOf(t.score):null}); }
   p.append(chartCard('Skor MTD per Bulan (Jan–Des)',''+S.year,
-    hBars(perBulan.filter(b=>b.score!=null).map(b=>({label:MONTHS[b.m-1],v:b.score,tip:`<b>${MONTHS[b.m-1]}</b><div class="row"><span>Skor</span><span>${pct(b.score,1)}</span></div><div class="row"><span>Grade</span><span>${b.grade}</span></div>`})),
+    hBars(perBulan.filter(b=>b.score!=null).map(b=>({label:MONTHS[b.m-1],v:b.score,tip:`<b>${MONTHS[b.m-1]}</b><div class="row"><span>Skor</span><span>${pct(b.score)}</span></div><div class="row"><span>Grade</span><span>${b.grade}</span></div>`})),
       {mode:'ach',fmt:v=>pct(v,0),name:'Skor',min:1,lw:70})));
 
   /* detail KPI MTD */
@@ -1932,6 +2006,7 @@ const PHASES=[{k:'PLAN',t:'Plan',c:'var(--s1)',d:'Target & rencana periode ini'}
               {k:'CHECK',t:'Check',c:'var(--s4)',d:'Temuan dari data'},
               {k:'ACTION',t:'Action',c:'var(--s2)',d:'Tindak lanjut & perbaikan'}];
 function renderPdca(){
+  parkFilters();
   const p=$('#p-pdca'); p.innerHTML='';
   p.append(el('div',{class:'phead'},
     el('div',{},el('h1',{},'Plan Do Check Action'),
@@ -1939,6 +2014,7 @@ function renderPdca(){
     el('span',{class:'spacer'}),
     el('button',{class:'btn',onclick:()=>buildCheck()},'Susun temuan dari data'),
     el('button',{class:'btn pri',onclick:()=>pdcaForm()},'Tambah butir')));
+  const pf_pdca=pageFilterBar('pdca'); if(pf_pdca) p.append(pf_pdca);
   if(S.demo) p.append(demoBanner());
 
   const cols=el('div',{class:'pdca'});
@@ -2004,7 +2080,7 @@ function analyze(){
     const below=srt.filter(r=>r.achiev_total!=null&&r.achiev_total<1);
     if(below.length) out.push({tag:'Sebaran',tone:below.length>st.length/2?'bad':'mid',
       title:`${below.length} dari ${st.length} toko di bawah target`,
-      text:'Toko di bawah target: '+below.map(r=>`${r.store_name} (${pct(r.achiev_total,0)})`).join(', ')+'.'});
+      text:'Toko di bawah target: '+below.map(r=>`${r.store_name} (${pct(r.achiev_total)})`).join(', ')+'.'});
   }
   const g=growthScope().filter(r=>r.growth_vs_y1!=null);
   if(g.length){
@@ -2083,6 +2159,7 @@ function pdcaForm(x={}){
    UPLOAD
    ===================================================================== */
 function renderUpload(){
+  parkFilters();
   const p=$('#p-upload'); p.innerHTML='';
   p.append(el('div',{class:'phead'},el('div',{},el('h1',{},'Upload Data'),
     el('p',{},'Tarik file Excel atau CSV ke kotak yang sesuai. Bisa banyak file sekaligus.'))));
@@ -2538,6 +2615,7 @@ function renderSet(){
   renderSetReal();
 }
 function renderSetReal(){
+  parkFilters();
   const p=$('#p-set'); p.innerHTML='';
   p.append(el('div',{class:'phead'},el('div',{},el('h1',{},'Pengaturan'),
     el('p',{},'Koneksi, aturan hitung, alias toko, dan database Sales Type.'))));
@@ -2719,6 +2797,7 @@ function renderSetReal(){
 function setUnlocked(){ try{ return sessionStorage.getItem('sc_set_unlocked')==='1'; }catch(e){ return !!window.S_setUnlocked; } }
 function setUnlock(){ try{ sessionStorage.setItem('sc_set_unlocked','1'); }catch(e){ window.S_setUnlocked=true; } }
 function renderSetGate(){
+  parkFilters();
   const p=$('#p-set'); p.innerHTML='';
   const box=el('div',{class:'card',style:'max-width:360px;margin:40px auto'});
   box.append(el('header',{},el('h2',{},'Pengaturan terkunci')),
@@ -2900,21 +2979,22 @@ new MutationObserver(()=>{ clearTimeout(_enhT); _enhT=setTimeout(enhanceAll,50);
 const H=(t,o={})=>Object.assign({t},o);
 function mkTable(heads,rows,foot){
   const cls=h=>(h.r?'r':'')+(h.s?' sticky1':'');
+  const stl=h=>h.w?`width:${h.w}px`:null;
   const tb=el('tbody');
   rows.forEach(r=>{
     const cells=Array.isArray(r)?r:r.cells, rowCls=Array.isArray(r)?'':(r.cls||'');
-    tb.append(el('tr',{class:rowCls||null},cells.map((c,i)=>el('td',{class:cls(heads[i])},c))));
+    tb.append(el('tr',{class:rowCls||null},cells.map((c,i)=>el('td',{class:cls(heads[i]),style:stl(heads[i])},c))));
   });
-  if(foot) tb.append(el('tr',{class:'tot'},foot.map((c,i)=>el('td',{class:cls(heads[i])},c))));
+  if(foot) tb.append(el('tr',{class:'tot'},foot.map((c,i)=>el('td',{class:cls(heads[i]),style:stl(heads[i])},c))));
   if(!rows.length) tb.append(el('tr',{},el('td',{colspan:String(heads.length),style:'color:var(--muted)'},'Belum ada data.')));
-  return el('div',{class:'tw'},el('table',{},el('thead',{},el('tr',{},heads.map(h=>el('th',{class:cls(h)},h.t)))),tb));
+  return el('div',{class:'tw'},el('table',{},el('thead',{},el('tr',{},heads.map(h=>el('th',{class:cls(h),style:stl(h)},h.t)))),tb));
 }
 function card(title,sub,...kids){ const c=el('div',{class:'card'});
   c.append(el('header',{},el('h2',{},title),sub?el('span',{class:'sub'},sub):null)); kids.forEach(k=>k&&c.append(k)); return c; }
 function growthPill(cur,prev){
   if(prev==null||!(prev>0)) return el('span',{style:'color:var(--muted)'},'');          // tanpa pembanding → kosong
   const g=(cur-prev)/prev;
-  return el('span',{class:'pill '+(g>=0?'ok':'bad'),'data-v':g},(g>=0?'▲ ':'▼ ')+pct(Math.abs(g),1)); }
+  return el('span',{class:'pill '+(g>=0?'ok':'bad'),'data-v':g},(g>=0?'▲ ':'▼ ')+pct(Math.abs(g))); }
 function gapTxt(cur,prev){
   if(prev==null||!(prev>0)) return '';
   const d=cur-prev; const s=el('span',{style:`color:${d>=0?'var(--good-ink)':'var(--crit)'}`,'data-v':d},compact(d)); return s; }
@@ -2978,25 +3058,27 @@ async function topBlock(host,o={}){
   const colorRows=color.filter(r=>r.k!=='(Tanpa warna)'), sizeRows=size.filter(r=>r.k!=='(Tanpa size)');
   const totQty=prod.reduce((s,r)=>s+r.qty,0), totSales=prod.reduce((s,r)=>s+r.sales,0);
   const tops=(rows,n)=>rows.slice().sort((a,b)=>b.qty-a.qty).slice(0,n);
-  const pTbl=(rows,n)=>mkTable([H('#',{r:1}),H('PRODUK',{s:1}),H('WARNA'),H('ITEM SOLD',{r:1}),H('NET SALES',{r:1}),H('SHARE',{r:1})],
-    tops(rows,n).map((r,i)=>[String(i+1),r.k,colorChip(parseColor(r.k+' PDK L')),int(r.qty),compact(r.sales),pct(totQty?r.qty/totQty:null,1)]));
-  const cTbl=(rows,n)=>mkTable([H('#',{r:1}),H('WARNA',{s:1}),H('ITEM SOLD',{r:1}),H('NET SALES',{r:1}),H('SHARE',{r:1})],
-    tops(rows,n).map((r,i)=>[String(i+1),colorChip(r.k),int(r.qty),compact(r.sales),pct(totQty?r.qty/totQty:null,1)]));
-  const sTbl=(rows,n)=>mkTable([H('#',{r:1}),H('UKURAN',{s:1}),H('ITEM SOLD',{r:1}),H('NET SALES',{r:1}),H('SHARE',{r:1})],
-    tops(rows,n).map((r,i)=>[String(i+1),r.k,int(r.qty),compact(r.sales),pct(totQty?r.qty/totQty:null,1)]));
+  /* item 8: kolom warna dihapus dari Top Product — sudah ada bagian Top Color tersendiri */
+  const pTbl=(rows,n)=>mkTable([H('#',{r:1,w:34}),H('PRODUK',{s:1}),H('ITEM SOLD',{r:1}),H('NET SALES',{r:1}),H('SHARE',{r:1})],
+    tops(rows,n).map((r,i)=>[String(i+1),r.k,int(r.qty),compact(r.sales),pct(totQty?r.qty/totQty:null)]));
+  const cTbl=(rows,n)=>mkTable([H('#',{r:1,w:34}),H('WARNA',{s:1}),H('ITEM SOLD',{r:1}),H('NET SALES',{r:1}),H('SHARE',{r:1})],
+    tops(rows,n).map((r,i)=>[String(i+1),colorChip(r.k),int(r.qty),compact(r.sales),pct(totQty?r.qty/totQty:null)]));
+  const sTbl=(rows,n)=>mkTable([H('#',{r:1,w:34}),H('UKURAN',{s:1}),H('ITEM SOLD',{r:1}),H('NET SALES',{r:1}),H('SHARE',{r:1})],
+    tops(rows,n).map((r,i)=>[String(i+1),r.k,int(r.qty),compact(r.sales),pct(totQty?r.qty/totQty:null)]));
   const g=el('div',{class:'grid g2'});
   g.append(card('Top Product',`${int(prod.length)} produk · urut item sold`,pTbl(prod,lim)));
   g.append(card('Top Color',`${int(colorRows.length)} warna · tanpa grafik, urut item sold`,cTbl(colorRows,lim)));
   host.append(g);
   const g2=el('div',{class:'grid g2'});
   g2.append(card('Top Size',`${int(sizeRows.length)} ukuran · tanpa grafik, urut item sold`,sTbl(sizeRows,lim)));
-  g2.append(card('Top Category',`${int(cat.length)} kategori`,mkTable([H('#',{r:1}),H('KATEGORI',{s:1}),H('ITEM SOLD',{r:1}),H('NET SALES',{r:1}),H('SHARE',{r:1})],
-    tops(cat,lim).map((r,i)=>[String(i+1),r.k,int(r.qty),compact(r.sales),pct(totSales?r.sales/totSales:null,1)]))));
+  g2.append(card('Top Category',`${int(cat.length)} kategori`,mkTable([H('#',{r:1,w:34}),H('KATEGORI',{s:1}),H('ITEM SOLD',{r:1}),H('NET SALES',{r:1}),H('SHARE',{r:1})],
+    tops(cat,lim).map((r,i)=>[String(i+1),r.k,int(r.qty),compact(r.sales),pct(totSales?r.sales/totSales:null)]))));
   host.append(g2);
 }
 
 /* ---------- Top Product (menu) ---------- */
 function renderTop(){
+  parkFilters();
   const p=$('#p-top'); p.innerHTML='';
   if(!S.topN) S.topN=20;
   const bsel=el('select',{id:'top-brand'},el('option',{value:''},'Semua brand produk'),
@@ -3012,6 +3094,7 @@ function renderTop(){
     el('div',{class:'fld'},el('label',{for:'top-brand'},'Brand produk'),bsel),
     el('div',{class:'fld'},el('label',{for:'top-cat'},'Kategori'),catSel),
     clearBtn));
+  const pf_top=pageFilterBar('top'); if(pf_top) p.append(pf_top);
   if(S.demo) p.append(demoBanner());
   const host=el('div',{style:'display:flex;flex-direction:column;gap:18px'});
   p.append(host);
@@ -3066,6 +3149,7 @@ function h2hData(years,m1,m2,cutoffDay){
 function sumObj(maps,key){ return maps.reduce((s,o)=>s+N(o[key]),0); }
 
 function renderH2H(){
+  parkFilters();
   const p=$('#p-h2h'); p.innerHTML='';
   const st=h2hInit(); const [y1,y2,y3]=st.y, {m1,m2}=st;
   const mSel=(k,id)=>el('select',{id,onchange:e=>{ st[k]=Number(e.target.value); if(st.m1>st.m2){ if(k==='m1')st.m2=st.m1; else st.m1=st.m2; } renderH2H(); }},
@@ -3073,6 +3157,7 @@ function renderH2H(){
   p.append(el('div',{class:'phead'},el('div',{},el('h1',{},'H2H Sales'),
     el('p',{},`Selalu terhadap tahun berjalan: ${y1} vs ${y3} dan ${y2} vs ${y3} · periode `+(m1===m2?MONTHS[m1-1]:MONTHS[m1-1]+' – '+MONTHS[m2-1])+' · '+
       (S.store?(S.stores.find(s=>String(s.id)===S.store)?.name):(S.brand||S.spv?[S.brand,S.spv?('SPV '+spvLabel(S.spv)):''].filter(Boolean).join(' · '):'semua toko'))))));
+  const pf_h2h=pageFilterBar('h2h'); if(pf_h2h) p.append(pf_h2h);
   if(S.demo) p.append(demoBanner());
   const dimLast=daysInMonth(y3,m2);
   /* Proyeksi periode parsial (cut-off) — kini lewat rentang tanggal asli (item 6), bukan checkbox + angka hari.
@@ -3138,7 +3223,7 @@ function renderH2H(){
   const cols=['var(--s7)','var(--s2)','var(--s1)'];
   const ser=st.y.map((y,i)=>({name:String(y),color:cols[i],vals:mon(y)}));
   p.append(chartCard('Sales per bulan, tiga tahun','semua bulan; rentang terpilih ada di tabel',
-    el('div',{},legend(ser),groupedBars(MON3,ser,{h:255}))));
+    el('div',{},legend(ser),groupedBars(MON3,ser,{h:320}))));
 
   /* tabel bulan demi bulan */
   {
@@ -3160,27 +3245,24 @@ function renderH2H(){
         growthPill(T(y3,'sales'),T(y2,'sales')),gapTxt(T(y3,'sales'),T(y2,'sales')),compact(tt),pillCell(tt>0?T(y3,'sales')/tt:null)])));
   }
 
-  /* segmen — direstruktur jadi hierarki parent/sub (item 7): KOMERSIAL & USER adalah total segmen,
-     TIGALAPAN/MAMU di bawahnya adalah rincian brand per segmen. Kolom "KOMERSIAL MAMU" tidak ada di
-     v_sales_dashboard, jadi dihitung sebagai (KOMERSIAL total − KOMERSIAL TIGALAPAN) — asumsi ini
-     ditandai lewat catatan di bawah tabel. */
+  /* item 10: dipecah jadi DUA tabel datar (tanpa nesting/indentasi segparent-segsub dari round 5) —
+     tabel 1: KOMERSIAL & USER (total segmen); tabel 2: KOMERSIAL TIGALAPAN, USER TIGALAPAN, USER MAMU
+     (KOMERSIAL MAMU sengaja tidak diikutkan, sesuai permintaan persis). */
   {
     const heads=[H('SEGMEN',{s:1}),...st.y.map(y=>H(String(y),{r:1})),H(`Δ ${y2} VS ${y1}`,{r:1}),H(`Δ ${y3} VS ${y2}`,{r:1}),H(`GAP ${y3}-${y2}`,{r:1}),H('PORSI '+y3,{r:1})];
     const tot=T(y3,'kom')+T(y3,'usr');
-    const mkRow=(n,vfn,cls)=>{ const v=st.y.map(y=>vfn(y)); return {cls,cells:[n,...v.map(x=>compact(x)),growthPill(v[1],v[0]),growthPill(v[2],v[1]),gapTxt(v[2],v[1]),pct(tot?v[2]/tot:null,0)]}; };
-    const rows=[
-      mkRow('KOMERSIAL (total)',y=>T(y,'kom'),'segparent'),
-      mkRow('↳ Komersial Tigalapan',y=>T(y,'kt'),'segsub'),
-      mkRow('↳ Komersial Mamu (dihitung: total − Tigalapan)',y=>T(y,'kom')-T(y,'kt'),'segsub'),
-      mkRow('USER (total)',y=>T(y,'usr'),'segparent'),
-      mkRow('↳ User Tigalapan',y=>T(y,'ut'),'segsub'),
-      mkRow('↳ User Mamu',y=>T(y,'um'),'segsub'),
+    const mkRow=(n,vfn)=>{ const v=st.y.map(y=>vfn(y)); return {cells:[n,...v.map(x=>compact(x)),growthPill(v[1],v[0]),growthPill(v[2],v[1]),gapTxt(v[2],v[1]),pct(tot?v[2]/tot:null)]}; };
+    const rows1=[
+      mkRow('KOMERSIAL',y=>T(y,'kom')),
+      mkRow('USER',y=>T(y,'usr')),
     ];
-    p.append(card('Segmen Komersial & User','KOMERSIAL dan USER adalah total segmen; baris di bawahnya (menjorok, lebih muda) adalah rincian brand Tigalapan/Mamu per segmen',
-      mkTable(heads,rows)));
-    p.append(el('p',{class:'note',style:'margin-top:-4px'},el('b',{},'Catatan: '),
-      '"Komersial Mamu" belum punya kolom tersendiri di database (v_sales_dashboard), jadi di sini dihitung sebagai KOMERSIAL total dikurangi KOMERSIAL TIGALAPAN. '+
-      'Bila ke depan tersedia kolom sales_komersial_mamu asli, baris ini perlu diarahkan ke kolom tersebut.'));
+    p.append(card('Segmen Komersial & User','total per segmen (tanpa rincian brand)',mkTable(heads,rows1)));
+    const rows2=[
+      mkRow('KOMERSIAL TIGALAPAN',y=>T(y,'kt')),
+      mkRow('USER TIGALAPAN',y=>T(y,'ut')),
+      mkRow('USER MAMU',y=>T(y,'um')),
+    ];
+    p.append(card('Rincian Brand per Segmen','Komersial Tigalapan, User Tigalapan, dan User Mamu',mkTable(heads,rows2)));
     const h2=[H('TOKO',{s:1}),...st.y.map(y=>H('KOMERSIAL '+y,{r:1})),H(`Δ KOM ${y3}/${y2}`,{r:1}),...st.y.map(y=>H('USER '+y,{r:1})),H(`Δ USER ${y3}/${y2}`,{r:1})];
     const r2=liveIds.map(id=>[names.get(id),...st.y.map(y=>compact(G(y,id,'kom'))),growthPill(G(y3,id,'kom'),G(y2,id,'kom')),
       ...st.y.map(y=>compact(G(y,id,'usr'))),growthPill(G(y3,id,'usr'),G(y2,id,'usr'))]);
@@ -3248,22 +3330,30 @@ function chanTarget(ch,year,m1,m2){
 }
 const CH_COLOR={SHOPEE:'var(--s2)',TIKTOK:'var(--s5)',TOKOPEDIA:'var(--s3)',LAZADA:'var(--s7)'};
 function renderMkt(){
+  parkFilters();
   const p=$('#p-mkt'); p.innerHTML='';
   const [m1,m2]=periodM1M2(S.year);
   const chs=mktChannels();
   p.append(el('div',{class:'phead'},el('div',{},el('h1',{},'Marketplace'),
     el('p',{},'Penjualan Shopee & TikTok dari kolom Sales Type, pencapaian dan analisisnya per channel. '+
       ymLabel(S.year,m1,m2)+' · '+periodLabel().split(' · ').slice(1).join(' · ')))));
+  const pf_mkt=pageFilterBar('mkt'); if(pf_mkt) p.append(pf_mkt);
   if(S.demo) p.append(demoBanner());
   const tot=y=>mktRows(y,m1,m2).reduce((s,r)=>s+N(r.amount),0);
   const allSales=S.dash.filter(r=>r.month>=m1&&r.month<=m2&&storeOk(r.store_id)).reduce((s,r)=>s+N(r.total_sales),0);
   if(!S.mkt.length) p.append(el('div',{class:'note warn'},el('b',{},'Belum ada penjualan marketplace pada data. '),
     'Sales Type yang namanya mengandung Shopee atau Tiktok otomatis dikenali. Tipe lain (mis. Tokopedia, Lazada) bisa ditandai di Pengaturan → Database Sales Type → kolom Channel.'));
 
-  /* tiles per channel */
+  /* item 5: 4 kartu — Total, Growth vs tahun lalu, lalu 2 channel teratas (biar genap 4 di grid g4) */
   const tl=el('div',{class:'grid g4'});
-  tl.append(tile('Total marketplace',compact(tot(S.year)),`${pct(allSales?tot(S.year)/allSales:null,1)} dari total sales toko`,null));
-  chs.slice(0,3).forEach(ch=>{
+  const totCy=tot(S.year), totPy=tot(S.year-1);
+  const mktGrowth=totPy>0?(totCy-totPy)/totPy:null;
+  const bestCh=chs.map(ch=>({ch,s:mktRows(S.year,m1,m2,ch).reduce((a,r)=>a+N(r.amount),0)})).sort((a,b)=>b.s-a.s)[0];
+  tl.append(tile('Total marketplace',compact(totCy),`${pct(allSales?totCy/allSales:null)} dari total sales toko`,null));
+  tl.append(tile(`Growth vs ${S.year-1}`, mktGrowth!=null?pct(mktGrowth):'—',
+    mktGrowth!=null?(mktGrowth>=0?'naik':'turun')+' dibanding tahun lalu':`belum ada data ${S.year-1}`, mktGrowth!=null?(mktGrowth>=0?1:0):null));
+  if(bestCh&&bestCh.s>0) tl.append(tile('Channel terbaik',bestCh.ch,`${compact(bestCh.s)} · ${pct(totCy?bestCh.s/totCy:null)} dari total marketplace`,null));
+  chs.filter(ch=>ch!==bestCh?.ch).slice(0,tl.children.length>=3?1:2).forEach(ch=>{
     const s=mktRows(S.year,m1,m2,ch).reduce((a,r)=>a+N(r.amount),0), t=chanTarget(ch,S.year,m1,m2);
     tl.append(tile(ch,compact(s),t>0?`target ${compact(t)} · GAP ${compact(s-t)}`:'target belum diisi (lihat bawah)',t>0?s/t:null));
   });
@@ -3274,7 +3364,7 @@ function renderMkt(){
     H(`SALES ${S.year-1}`,{r:1}),H('GROWTH',{r:1}),H('GAP GROWTH',{r:1}),H('PORSI THD TOTAL',{r:1})];
   const sumRows=chs.map(ch=>{ const rr=mktRows(S.year,m1,m2,ch), s=rr.reduce((a,r)=>a+N(r.amount),0), c=rr.reduce((a,r)=>a+N(r.trx),0);
     const t=chanTarget(ch,S.year,m1,m2), py=mktRows(S.year-1,m1,m2,ch).reduce((a,r)=>a+N(r.amount),0);
-    return [ch,compact(s),t>0?compact(t):'—',pillCell(t>0?s/t:null),t>0?compact(s-t):'—',int(c),c>0?rp(s/c):'—',py>0?compact(py):'',growthPill(s,py),gapTxt(s,py),pct(allSales?s/allSales:null,1)]; });
+    return [ch,compact(s),t>0?compact(t):'—',pillCell(t>0?s/t:null),t>0?compact(s-t):'—',int(c),c>0?rp(s/c):'—',py>0?compact(py):'',growthPill(s,py),gapTxt(s,py),pct(allSales?s/allSales:null)]; });
   p.append(card('Pencapaian per channel',ymLabel(S.year,m1,m2),mkTable(sumHeads,sumRows)));
 
   /* grafik per bulan per channel */
@@ -3284,7 +3374,7 @@ function renderMkt(){
     const tg=MONTHS.map((_,i)=>chanTarget(ch,S.year,i+1,i+1));
     const ser=[{name:'Sales',color:CH_COLOR[ch]||'var(--s1)',vals:sales},{name:'Target',color:'var(--grid)',vals:tg}];
     const ach=MONTHS.map((_,i)=>tg[i]>0&&sales[i]>0?sales[i]/tg[i]:null);
-    const wrap=el('div',{},legend(ser),groupedBars(MON3,ser,{h:215}));
+    const wrap=el('div',{},legend(ser),groupedBars(MON3,ser,{h:280}));
     if(ach.some(v=>v!=null)) wrap.append(el('div',{style:'margin-top:10px'},lineChart(MON3,ach,{h:150,ref:1,refLabel:'100%',name:'Achiev',color:CH_COLOR[ch],fmt:v=>(v*100).toFixed(0)+'%',tip:v=>pct(v)})));
     g.append(chartCard(ch+' — sales vs target per bulan',S.year,wrap));
   });
@@ -3302,9 +3392,9 @@ function renderMkt(){
     const t=chanTarget(ch,S.year,m1,m2), py=mktRows(S.year-1,m1,m2,ch).reduce((a,r)=>a+N(r.amount),0);
     const mths=byM.size||1;
     notes.push(el('div',{class:'item'},el('div',{class:'t'},ch+' · '+compact(s)),
-      el('div',{class:'c'},`Kontribusi terbesar dari ${best[0]} (${pct(best[1]/s,0)}). Bulan terbaik ${MONTHS[bm[0]-1]} (${compact(bm[1])}). `+
+      el('div',{class:'c'},`Kontribusi terbesar dari ${best[0]} (${pct(best[1]/s)}). Bulan terbaik ${MONTHS[bm[0]-1]} (${compact(bm[1])}). `+
         `Rata-rata ${compact(s/mths)} per bulan berjalan`+(m2<12?`, proyeksi setahun ±${compact(s/mths*12)}`:'')+'. '+
-        (t>0?`Pencapaian ${pct(s/t,0)} dari target ${compact(t)} (GAP ${compact(s-t)}). `:'Target belum diisi. ')+
+        (t>0?`Pencapaian ${pct(s/t)} dari target ${compact(t)} (GAP ${compact(s-t)}). `:'Target belum diisi. ')+
         (py>0?`Dibanding ${S.year-1}: ${s>=py?'naik':'turun'} ${pct(Math.abs((s-py)/py),0)}.`:`Belum ada pembanding ${S.year-1}.`))));
   });
   if(notes.length) p.append(card('Analisis marketplace','dihitung otomatis dari data pada filter aktif',el('div',{style:'display:flex;flex-direction:column;gap:9px'},...notes)));
@@ -3317,7 +3407,7 @@ function renderMkt(){
         return [compact(rr.reduce((a,r)=>a+N(r.amount),0)),int(rr.reduce((a,r)=>a+N(r.trx),0))]; });
       const tt=mktRows(S.year,m1,m2).filter(r=>r.store_name===n).reduce((a,r)=>a+N(r.amount),0);
       const ss=S.dash.filter(r=>r.store_name===n&&r.month>=m1&&r.month<=m2).reduce((a,r)=>a+N(r.total_sales),0);
-      return [n,...cells,compact(tt),pct(ss?tt/ss:null,1)]; });
+      return [n,...cells,compact(tt),pct(ss?tt/ss:null)]; });
     p.append(card('Marketplace per toko',ymLabel(S.year,m1,m2),mkTable(heads,rows)));
   }
   /* per bulan */
@@ -3369,6 +3459,7 @@ async function loadCatBrand(){
   return S.catBrand;
 }
 function renderBrand(){
+  parkFilters();
   const p=$('#p-brand'); p.innerHTML='';
   const [m1,m2]=periodM1M2(S.year);
   const bsel=el('select',{id:'bp-brand'},el('option',{value:''},'Semua brand'),
@@ -3376,6 +3467,7 @@ function renderBrand(){
   p.append(el('div',{class:'phead'},el('div',{},el('h1',{},'Brand Performance'),
     el('p',{},'Performa brand dan kategori dari Item Sales yang dicocokkan ke master DATABASE STOCK. '+ymLabel(S.year,m1,m2)+' · '+periodLabel().split(' · ').slice(1).join(' · '))),
     el('span',{class:'spacer'}),el('div',{class:'fld'},el('label',{for:'bp-brand'},'Brand untuk tabel kategori'),bsel)));
+  const pf_brand=pageFilterBar('brand'); if(pf_brand) p.append(pf_brand);
   if(S.demo) p.append(demoBanner());
   const host=el('div',{style:'display:flex;flex-direction:column;gap:18px'}); p.append(host);
   bsel.onchange=()=>{ S.bpBrand=bsel.value; renderBrand(); };
@@ -3401,7 +3493,7 @@ function renderBrand(){
       const heads=[H('BRAND',{s:1}),H('ITEM SOLD',{r:1}),H('NET SALES',{r:1}),H('SHARE',{r:1}),H('TARGET',{r:1}),H('ACHIEV',{r:1}),H('GAP',{r:1}),
         H(`NET ${S.year-1}`,{r:1}),H('GROWTH',{r:1}),H('GAP GROWTH',{r:1}),H('HARGA RATA2',{r:1})];
       const rows=names.map(b=>{ const r=get(b0,b), py=get(b1,b), t=brandTarget(b,S.year,m1,m2);
-        return [brandChip(b),int(r.qty),compact(r.sales),pct(tSales?r.sales/tSales:null,1),t>0?compact(t):'—',pillCell(t>0?r.sales/t:null),t>0?compact(r.sales-t):'—',
+        return [brandChip(b),int(r.qty),compact(r.sales),pct(tSales?r.sales/tSales:null),t>0?compact(t):'—',pillCell(t>0?r.sales/t:null),t>0?compact(r.sales-t):'—',
           py.sales>0?compact(py.sales):'',growthPill(r.sales,py.sales),gapTxt(r.sales,py.sales),r.qty>0?rp(r.sales/r.qty):'—']; });
       host.append(card('Performa per brand',ymLabel(S.year,m1,m2),mkTable(heads,rows)));
       /* chart brand vs target */
@@ -3412,7 +3504,7 @@ function renderBrand(){
       const cHeads=[H('KATEGORI',{s:1}),H('BRAND'),H('ITEM SOLD',{r:1}),H('REFUND',{r:1}),H('NET SALES',{r:1}),H('SHARE',{r:1}),
         H(`NET ${S.year-1}`,{r:1}),H('GROWTH',{r:1}),H('GAP GROWTH',{r:1}),H('HARGA RATA2',{r:1})];
       const cTot=c0.reduce((s,r)=>s+r.sales,0);
-      const cRows=c0.map(r=>{ const py=get(c1,r.k); return [r.k,brandChip(cb.get(r.k)||brandFilter||'—'),int(r.qty),int(r.refunded),compact(r.sales),pct(cTot?r.sales/cTot:null,1),
+      const cRows=c0.map(r=>{ const py=get(c1,r.k); return [r.k,brandChip(cb.get(r.k)||brandFilter||'—'),int(r.qty),int(r.refunded),compact(r.sales),pct(cTot?r.sales/cTot:null),
         py.sales>0?compact(py.sales):'',growthPill(r.sales,py.sales),gapTxt(r.sales,py.sales),r.qty>0?rp(r.sales/r.qty):'—']; });
       host.append(chartCard('Net sales per kategori',(brandFilter||'semua brand')+' · 12 teratas',
         hBars(c0.slice(0,12).map(r=>({label:r.k,v:r.sales,tip:`<div class="row"><span>Net sales</span><span>${compact(r.sales)}</span></div><div class="row"><span>Item sold</span><span>${int(r.qty)}</span></div>`})),{lw:170})));
@@ -3483,12 +3575,14 @@ function bdH2h(years,m1,m2){
   try{ return h2hData(years,m1,m2,0); } finally{ S.store=os; S.spv=ov; }
 }
 function renderBreakdown(){
+  parkFilters();
   const p=$('#p-breakdown'); p.innerHTML='';
   if(!S.bdFilter) S.bdFilter={spv:'',store:'',m1:S.month||1,m2:S.month||lastMonthWithData(S.year)};
   const f=S.bdFilter;
   const y3=S.year, y2=S.year-1, y1=S.year-2, m1=f.m1||1, m2=f.m2||lastMonthWithData(y3);
   p.append(el('div',{class:'phead'},el('div',{},el('h1',{},'Breakdown Problem · 5 Why'),
     el('p',{},`Analisis akar masalah: total sales, toko/item/brand/warna/ukuran yang turun dibanding ${y2}. `+ymLabel(y3,m1,m2)))));
+  const pf_breakdown=pageFilterBar('breakdown'); if(pf_breakdown) p.append(pf_breakdown);
   if(S.demo) p.append(demoBanner());
 
   /* filter lokal halaman ini (tidak memengaruhi filter bar global) */
@@ -3649,6 +3743,7 @@ function renderBreakdown(){
 }
 
 function renderPica(){
+  parkFilters();
   const p=$('#p-pica'); p.innerHTML='';
   const f=S.pf||(S.pf={kind:'',pic:'',status:'',active:true});
   p.append(el('div',{class:'phead'},el('div',{},el('h1',{},'PICA / MOM'),
@@ -3970,7 +4065,8 @@ $('#railtog').onclick=()=>$('#rail').classList.toggle('open');
     try{ localStorage.setItem('sc_rail_collapsed', shell.classList.contains('railcollapsed')?'1':'0'); }catch(e){}
   };
 })();
-$('#f-year').onchange=e=>{ S.year=Number(e.target.value); S.itemScope=''; loadAll(); };
+$('#f-year').onchange=e=>{ S.years=[...e.target.selectedOptions].map(o=>Number(o.value)); if(!S.years.length) S.years=[S.year];
+  S.year=Math.max(...S.years); S.itemScope=''; loadAll(); };
 $('#f-month').onchange=e=>{ S.month=Number(e.target.value); S.itemScope=''; S.monthRange=null; S.rangeTag=''; $('#f-range').value=''; $('#f-custom-wrap').style.display='none'; render(); };
 $('#f-brand').onchange=e=>{ S.brand=e.target.value; syncStoreOptions(); S.itemScope=''; render(); };
 $('#f-store').onchange=e=>{ S.store=e.target.value; S.itemScope=''; render(); };
@@ -4001,7 +4097,7 @@ $('#f-custom-m1').onchange=$('#f-custom-m2').onchange=()=>{
   S.monthRange=[Math.min(m1,m2),Math.max(m1,m2)]; S.rangeTag='Custom'; render();
 };
 $('#f-clear').onclick=()=>{
-  S.year=2026; S.month=0; S.brand=''; S.store=''; S.spv=''; S.monthRange=null; S.rangeTag=''; S.itemScope='';
+  S.year=2026; S.years=[2026]; S.month=0; S.brand=''; S.store=''; S.spv=''; S.monthRange=null; S.rangeTag=''; S.itemScope='';
   $('#f-range').value=''; $('#f-custom-wrap').style.display='none';
   fillFilters(); loadAll();
 };
