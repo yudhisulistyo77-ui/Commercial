@@ -1259,11 +1259,55 @@ function legend(series){
   series.forEach(s=>d.append(el('span',{},el('i',{style:`background:${s.color}`}),s.name)));
   return d;
 }
+/* round 13 item (visual fidelity): elemen grafik (dan tabel/kartu, lihat bakeVisualStyles di bawah)
+   mewarnai dirinya lewat CSS var(--s1)/color-mix(...) yang didefinisikan di <style> halaman ini. Saat
+   di-clone lalu diserialisasi berdiri sendiri (data: URL utk <img>, atau HTML yang ditempel ke
+   Word/PowerPoint/Excel), referensi var()/color-mix() itu TIDAK bisa diselesaikan lagi — tidak ada
+   stylesheet halaman ini di konteks tujuan — sehingga warna hilang/berubah hitam. Perbaikannya: SEBELUM
+   clone diserialisasi, baca warna RESOLVED (sudah dihitung browser dari elemen asli yang masih
+   terpasang di dokumen — getComputedStyle() di situ otomatis menyelesaikan var()/color-mix() jadi nilai
+   final) dan tuliskan nilai literal itu ke elemen clone, menimpa atribut fill/stroke (SVG) atau
+   style warna (HTML). Clone & orig berjalan beriringan (indeks anak yang sama, karena cloneNode(true)
+   belum diubah strukturnya saat fungsi ini dipanggil).
+   `canonColor()`: Chromium mengembalikan computed color dari color-mix() dalam sintaks CSS Color 4 modern
+   `color(srgb r g b / a)` (bukan `rgb()` klasik) — valid di browser terbaru, tapi Word/PowerPoint/Outlook
+   dan banyak klien tempel lain belum mengenalinya sama sekali, sehingga warnanya tetap hilang walau sudah
+   "resolved". Diubah paksa jadi `rgb()/rgba()` klasik dengan menggambar 1 piksel ke `<canvas>` lalu membaca
+   byte warnanya kembali lewat `getImageData()` — hasil baca piksel SELALU angka 0–255 polos, apa pun
+   sintaks CSS warna aslinya, jadi keluarannya pasti bisa dibaca di mana saja. */
+const _colorCvs=document.createElement('canvas'); _colorCvs.width=1; _colorCvs.height=1;
+const _colorCtx=_colorCvs.getContext('2d',{willReadFrequently:true});
+function canonColor(v){
+  if(!v) return v;
+  try{
+    _colorCtx.clearRect(0,0,1,1);
+    _colorCtx.fillStyle=v;
+    _colorCtx.fillRect(0,0,1,1);
+    const d=_colorCtx.getImageData(0,0,1,1).data, a=d[3]/255;
+    return a>=0.999?`rgb(${d[0]}, ${d[1]}, ${d[2]})`:`rgba(${d[0]}, ${d[1]}, ${d[2]}, ${a.toFixed(3)})`;
+  }catch(e){ return v; }
+}
+function bakeSvgPaint(orig,clone){
+  const walk=(o,c)=>{
+    if(!o||!c||o.nodeType!==1||c.nodeType!==1) return;
+    const cs=getComputedStyle(o);
+    if(o.hasAttribute('fill')||cs.fill) c.setAttribute('fill',canonColor(cs.fill));
+    if(o.hasAttribute('stroke')&&cs.stroke!=='none') c.setAttribute('stroke',canonColor(cs.stroke));
+    if(o.getAttribute('stroke')==='none') c.setAttribute('stroke','none');
+    if(cs.opacity&&cs.opacity!=='1') c.setAttribute('opacity',cs.opacity);
+    const oc=o.children, cc=c.children;
+    for(let i=0;i<oc.length;i++) walk(oc[i],cc[i]);
+  };
+  walk(orig,clone);
+}
 /* item 9 (ronde ini): tiap grafik bisa disalin langsung sebagai gambar (PNG) ke clipboard, supaya
    bisa ditempel (Ctrl+V) langsung ke slide presentasi tanpa screenshot manual. SVG di-render ke
    <canvas> dengan latar diisi solid (SVG transparan akan terlihat aneh di slide putih), dirender
    2x lipat ukuran tampilan supaya tetap tajam saat diperbesar di slide. Fallback kalau Clipboard
-   API gambar tidak didukung (browser lama/Safari versi lama): unduh sebagai file .png saja. */
+   API gambar tidak didukung (browser lama/Safari versi lama): unduh sebagai file .png saja.
+   round 13: warna di-bake lewat bakeSvgPaint() SEBELUM diserialisasi — sebelumnya atribut fill/stroke
+   masih literal "var(--s1)" dkk yang tidak bisa diselesaikan browser di konteks <img> data-URL berdiri
+   sendiri, sehingga grafik yang disalin tampil hitam/putih polos alih-alih warna asli seperti di app. */
 async function copyChartAsImage(host,btn){
   const svg=host&&host.querySelector('svg');
   if(!svg){ toast('Tidak ada grafik untuk disalin di kartu ini.'); return; }
@@ -1273,6 +1317,7 @@ async function copyChartAsImage(host,btn){
     const rect=svg.getBoundingClientRect();
     const scale=2, w=Math.max(1,Math.round(rect.width*scale)), h=Math.max(1,Math.round(rect.height*scale));
     const clone=svg.cloneNode(true);
+    bakeSvgPaint(svg,clone);
     clone.setAttribute('width',String(rect.width)); clone.setAttribute('height',String(rect.height));
     clone.setAttribute('xmlns','http://www.w3.org/2000/svg');
     const xml=new XMLSerializer().serializeToString(clone);
@@ -1281,7 +1326,11 @@ async function copyChartAsImage(host,btn){
     await new Promise((res,rej)=>{ img.onload=res; img.onerror=()=>rej(new Error('gagal memuat SVG')); img.src=svgUrl; });
     const canvas=document.createElement('canvas'); canvas.width=w; canvas.height=h;
     const ctx=canvas.getContext('2d');
-    const bg=(getComputedStyle(document.body).backgroundColor)||'#ffffff';
+    /* round 13: latar diambil dari kartu (.card) yang membungkus grafik ini, bukan body — kartu punya
+       warna surface sendiri (var(--surface)) yang bisa beda dari latar halaman (var(--bg)); mengambil dari
+       body membuat latar hasil salinan tidak cocok dengan latar kartu yang terlihat di app. */
+    const bgHost=host.closest('.card')||document.body;
+    const bg=(getComputedStyle(bgHost).backgroundColor)||'#ffffff';
     ctx.fillStyle=bg; ctx.fillRect(0,0,w,h);
     ctx.drawImage(img,0,0,w,h);
     const blob=await new Promise(res=>canvas.toBlob(res,'image/png'));
@@ -3341,6 +3390,39 @@ function enhanceAll(){ document.querySelectorAll('.page.on .tw table:not([data-e
 new MutationObserver(()=>{ clearTimeout(_enhT); _enhT=setTimeout(enhanceAll,50); })
   .observe(document.getElementById('main'),{childList:true,subtree:true});
 
+/* round 13 (visual fidelity): sama seperti bakeSvgPaint() di atas untuk grafik, warna/gaya pill/chip/
+   header tabel dkk di SINI didefinisikan lewat kelas CSS + var()/color-mix() di <style> halaman (mis.
+   .pill.ok{background:color-mix(in srgb,var(--good) 13%,transparent)...}) — begitu tabel/kartu disalin
+   sebagai HTML lepas (ditempel ke Word/PowerPoint/Excel/Gmail dkk, yang TIDAK memuat <style> halaman ini
+   dan banyak yang tidak mendukung color-mix()), semua pewarnaan itu hilang/jadi hitam polos. Perbaikannya:
+   SEBELUM elemen diserialisasi jadi HTML, baca nilai RESOLVED dari elemen ASLI (masih terpasang di
+   dokumen — getComputedStyle() otomatis menyelesaikan var()/color-mix() jadi rgb() literal) dan "bekukan"
+   jadi inline style eksplisit di elemen clone — supaya tampilannya tetap sama persis dengan di app
+   meski ditempel di aplikasi lain yang tidak kenal stylesheet/variabel CSS kita. */
+function bakeVisualStyles(orig,clone){
+  const PROPS=['color','backgroundColor','borderTopColor','borderRightColor','borderBottomColor','borderLeftColor',
+    'borderTopWidth','borderRightWidth','borderBottomWidth','borderLeftWidth','borderTopStyle','borderRightStyle',
+    'borderBottomStyle','borderLeftStyle','borderRadius','fontWeight','textAlign','textTransform','letterSpacing',
+    'fontSize','whiteSpace','paddingTop','paddingRight','paddingBottom','paddingLeft','display','verticalAlign'];
+  /* buang deklarasi lama yang masih memuat var()/color-mix() literal — dibiarkan, teks mentahnya tetap
+     ada di HTML yang disalin walau ditimpa, dan beberapa aplikasi tujuan (Word dkk) tidak selalu
+     menangani deklarasi tertimpa/tak-valid dengan rapi. Style non-warna (mis. width kolom sticky) yang
+     TIDAK memuat var()/color-mix() tetap dipertahankan apa adanya. */
+  const stripVarDecls=s=>(s||'').split(';').filter(d=>{ const t=d.trim(); return t&&!/var\(--|color-mix\(/.test(t); }).join(';');
+  const COLOR_PROPS=new Set(['color','backgroundColor','borderTopColor','borderRightColor','borderBottomColor','borderLeftColor']);
+  const walk=(o,c)=>{
+    if(!o||!c||o.nodeType!==1||c.nodeType!==1) return;
+    const cs=getComputedStyle(o);
+    let extra=stripVarDecls(c.getAttribute('style'));
+    PROPS.forEach(p=>{ let v=cs[p]; if(v==null||v===''||v==='rgba(0, 0, 0, 0)'||v==='transparent') return;
+      if(COLOR_PROPS.has(p)) v=canonColor(v);
+      extra+=`;${p.replace(/[A-Z]/g,m=>'-'+m.toLowerCase())}:${v}`; });
+    if(extra) c.setAttribute('style',extra); else c.removeAttribute('style');
+    const oc=o.children, cc=c.children;
+    for(let i=0;i<oc.length;i++) walk(oc[i],cc[i]);
+  };
+  walk(orig,clone);
+}
 /* item 4 (ronde ini): salin kartu/tabel/ringkasan apa pun ke clipboard dalam format "kolom" (tabel HTML
    asli + fallback TSV plain-text), supaya saat ditempel (Ctrl+V) ke slide presentasi / Word / Excel,
    strukturnya ikut terbawa — bukan cuma gambar datar seperti copyChartAsImage(). */
@@ -3363,15 +3445,27 @@ function buildCopyText(node){
 function buildCopyHtml(node){
   const tables=[...node.querySelectorAll('table')];
   if(tables.length) return tables.map(t=>{
+    const wrap=t.closest('.tw')||t.parentElement||t;
+    const wrapBg=getComputedStyle(wrap).backgroundColor;
     const clone=t.cloneNode(true);
+    bakeVisualStyles(t,clone);     // round 13: bekukan warna pill/chip/header SEBELUM menghapus .sortar
     clone.querySelectorAll('.sortar').forEach(n=>n.remove());
-    return '<table border="1" cellspacing="0" cellpadding="4" style="border-collapse:collapse;font-family:sans-serif;font-size:12px">'+clone.innerHTML+'</table>';
+    return `<table border="1" cellspacing="0" cellpadding="4" style="border-collapse:collapse;font-family:sans-serif;font-size:12px;background:${wrapBg}">`+clone.innerHTML+'</table>';
   }).join('<br>');
   const tiles=[...node.querySelectorAll('.tile')];
   if(tiles.length){
+    const cellHtml=origEl=>{
+      if(!origEl) return '';
+      const clone=origEl.cloneNode(true);
+      bakeVisualStyles(origEl,clone);
+      const wrap=document.createElement('div'); wrap.append(clone);
+      return wrap.innerHTML;
+    };
     const rows=tiles.map(t=>{
-      const k=t.querySelector('.k')?.textContent||'', v=t.querySelector('.v')?.textContent||'', m=t.querySelector('.m')?.textContent||'';
-      return `<tr><td style="font-weight:600;padding:4px 10px;border:1px solid #ccc">${k}</td><td style="padding:4px 10px;border:1px solid #ccc">${v}</td><td style="padding:4px 10px;border:1px solid #ccc;color:#666">${m}</td></tr>`;
+      const kEl=t.querySelector('.k'), vEl=t.querySelector('.v'), mEl=t.querySelector('.m');
+      return `<tr><td style="font-weight:600;padding:4px 10px;border:1px solid #ccc">${cellHtml(kEl)}</td>`+
+        `<td style="padding:4px 10px;border:1px solid #ccc">${cellHtml(vEl)}</td>`+
+        `<td style="padding:4px 10px;border:1px solid #ccc">${cellHtml(mEl)}</td></tr>`;
     }).join('');
     return `<table border="1" cellspacing="0" cellpadding="0" style="border-collapse:collapse;font-family:sans-serif;font-size:12px">${rows}</table>`;
   }
@@ -3813,23 +3907,18 @@ function renderH2H(){
       const mk=(dim,title,keyCell,limit)=>{
         const mg=mergeRoll(res[dim]);
         let arr=[...mg.entries()].filter(([k])=>!(dim==='color'&&k==='(Tanpa warna)')&&!(dim==='size'&&k==='(Tanpa size)'));
-        /* item 8 (ronde ini): diurutkan dari NET SALES y3 terbesar→terkecil (bukan qty) — tabel ini
-           menonjolkan NET SALES, jadi urutan & gradasi warnanya ikut metrik itu juga. */
+        /* item 8 (ronde 11): diurutkan dari NET SALES y3 terbesar→terkecil (bukan qty) — tabel ini
+           menonjolkan NET SALES, jadi urutan & gradasi warnanya ikut metrik itu juga.
+           round 12 (lanjutan): kolom ITEM/qty DIHAPUS sesuai permintaan user — tabel ini sekarang
+           murni data sales (NET SALES per tahun + growth/gap), tidak lagi memuat unit terjual. */
         arr.sort((a,b)=>(b[1][2]?.sales||0)-(a[1][2]?.sales||0));
         const maxN=arr.length?(arr[0][1][2]?.sales||0):0;
-        /* round 7 item 2: tambah NET SALES GAP y3/y2. round 8 item 3: tambah kolom banding LANGSUNG
-           y3 vs y1 (qty growth & net sales growth+gap), selain y3 vs y2 yang sudah ada — kolom
-           y2-vs-y1 (qty) dibuang supaya tabel 5-dimensi ini tidak makin lebar. */
-        const heads=[H(title,{s:1}),...st.y.map(y=>H('ITEM '+y,{r:1})),H(`Δ ITEM ${y3} VS ${y2}`,{r:1}),H(`Δ ITEM ${y3} VS ${y1}`,{r:1}),
-          H(`NET SALES ${y3}`,{r:1}),H(`Δ NET ${y3}/${y2}`,{r:1}),H(`NET SALES GAP ${y3}/${y2}`,{r:1}),H(`Δ NET ${y3}/${y1}`,{r:1}),H(`NET SALES GAP ${y3}/${y1}`,{r:1})];
-        const rows=arr.slice(0,limit).map(([k,v])=>{ const q=v.map(x=>x?x.qty:0), n=v.map(x=>x?x.sales:0);
-          return [keyCell(k),...q.map(x=>int(x)),growthPill(q[2],q[1]),growthPill(q[2],q[0]),
-            magCell(n[2],maxN,compact(n[2])),growthPill(n[2],n[1]),gapTxt(n[2],n[1]),growthPill(n[2],n[0]),gapTxt(n[2],n[0])]; });
-        const tot=res[dim].map(r=>r.reduce((s,x)=>s+x.qty,0));
+        const heads=[H(title,{s:1}),...st.y.map(y=>H('NET SALES '+y,{r:1})),H(`Δ NET ${y3}/${y2}`,{r:1}),H(`NET SALES GAP ${y3}/${y2}`,{r:1}),H(`Δ NET ${y3}/${y1}`,{r:1}),H(`NET SALES GAP ${y3}/${y1}`,{r:1})];
+        const rows=arr.slice(0,limit).map(([k,v])=>{ const n=v.map(x=>x?x.sales:0);
+          return [keyCell(k),...n.map((x,i)=>i===2?magCell(x,maxN,compact(x)):compact(x)),growthPill(n[2],n[1]),gapTxt(n[2],n[1]),growthPill(n[2],n[0]),gapTxt(n[2],n[0])]; });
         const totN=res[dim].map(r=>r.reduce((s,x)=>s+x.sales,0));
         return card(`Item sales per ${title.toLowerCase()}`,`${ymLabel(y1,m1,m2)} · ${ymLabel(y2,m1,m2)} · ${ymLabel(y3,m1,m2)} · diurutkan NET SALES ${y3} terbesar→terkecil`,
-          mkTable(heads,rows,dim==='store'||dim==='category'?['TOTAL',...tot.map(x=>int(x)),growthPill(tot[2],tot[1]),growthPill(tot[2],tot[0]),
-            compact(totN[2]),growthPill(totN[2],totN[1]),gapTxt(totN[2],totN[1]),growthPill(totN[2],totN[0]),gapTxt(totN[2],totN[0])]:null));
+          mkTable(heads,rows,dim==='store'||dim==='category'?['TOTAL',...totN.map(x=>compact(x)),growthPill(totN[2],totN[1]),gapTxt(totN[2],totN[1]),growthPill(totN[2],totN[0]),gapTxt(totN[2],totN[0])]:null));
       };
       host.append(mk('store','Toko',k=>k,60));
       host.append(mk('category','Kategori',k=>k,40));
@@ -4112,20 +4201,18 @@ function renderSSSG(){
       const mk=(dim,title,keyCell,limit)=>{
         const mg=mergeRoll(res[dim]);
         let arr=[...mg.entries()].filter(([k])=>!(dim==='color'&&k==='(Tanpa warna)')&&!(dim==='size'&&k==='(Tanpa size)'));
-        /* item 8: diurutkan dari NET SALES tahun berjalan (y3) terbesar→terkecil, bukan qty — tabel ini
-           soal net sales, jadi urutannya ikut net sales, sama seperti kolom bergradasinya. */
+        /* item 8 (round 11): diurutkan dari NET SALES tahun berjalan (y3) terbesar→terkecil, bukan qty —
+           tabel ini soal net sales, jadi urutannya ikut net sales, sama seperti kolom bergradasinya.
+           round 12 (lanjutan): kolom ITEM/qty DIHAPUS sesuai permintaan user — murni data sales
+           (NET SALES per tahun + growth/gap y3 vs y2 DAN y3 vs y1), tidak lagi memuat unit terjual. */
         arr.sort((a,b)=>(b[1][2]?.sales||0)-(a[1][2]?.sales||0));
         const maxN=arr.length?(arr[0][1][2]?.sales||0):0;
-        /* round 12 item: tambah NET SALES y3 vs y1 (2024 vs 2026) — HANYA kolom value sales, qty/transaksi
-           tetap cuma dibandingkan thd y2 sesuai permintaan. */
-        const heads=[H(title,{s:1}),...[y1,y2,y3].map(y=>H('ITEM '+y,{r:1})),H(`Δ ITEM ${y3} VS ${y2}`,{r:1}),
-          H(`NET SALES ${y3}`,{r:1}),H(`Δ NET ${y3}/${y2}`,{r:1}),H(`NET SALES GAP ${y3}/${y2}`,{r:1}),H(`Δ NET ${y3}/${y1}`,{r:1}),H(`NET SALES GAP ${y3}/${y1}`,{r:1})];
-        const rows=arr.slice(0,limit).map(([k,v])=>{ const q=v.map(x=>x?x.qty:0), n=v.map(x=>x?x.sales:0);
-          return [keyCell(k),...q.map(x=>int(x)),growthPill(q[2],q[1]),magCell(n[2],maxN,compact(n[2])),growthPill(n[2],n[1]),gapTxt(n[2],n[1]),growthPill(n[2],n[0]),gapTxt(n[2],n[0])]; });
-        const tot=res[dim].map(r=>r.reduce((s,x)=>s+x.qty,0));
+        const heads=[H(title,{s:1}),...[y1,y2,y3].map(y=>H('NET SALES '+y,{r:1})),H(`Δ NET ${y3}/${y2}`,{r:1}),H(`NET SALES GAP ${y3}/${y2}`,{r:1}),H(`Δ NET ${y3}/${y1}`,{r:1}),H(`NET SALES GAP ${y3}/${y1}`,{r:1})];
+        const rows=arr.slice(0,limit).map(([k,v])=>{ const n=v.map(x=>x?x.sales:0);
+          return [keyCell(k),...n.map((x,i)=>i===2?magCell(x,maxN,compact(x)):compact(x)),growthPill(n[2],n[1]),gapTxt(n[2],n[1]),growthPill(n[2],n[0]),gapTxt(n[2],n[0])]; });
         const totN=res[dim].map(r=>r.reduce((s,x)=>s+x.sales,0));
         return card(`Item sales per ${title.toLowerCase()} (same-window penuh)`,`${idsFull.length} toko · ${y1}/${y2}/${y3} · Jan–${MON3[cutoffM-1]} (pendekatan kalender) · diurutkan NET SALES ${y3} terbesar→terkecil`,
-          mkTable(heads,rows,dim==='store'||dim==='category'?['TOTAL',...tot.map(x=>int(x)),growthPill(tot[2],tot[1]),compact(totN[2]),growthPill(totN[2],totN[1]),gapTxt(totN[2],totN[1]),growthPill(totN[2],totN[0]),gapTxt(totN[2],totN[0])]:null));
+          mkTable(heads,rows,dim==='store'||dim==='category'?['TOTAL',...totN.map(x=>compact(x)),growthPill(totN[2],totN[1]),gapTxt(totN[2],totN[1]),growthPill(totN[2],totN[0]),gapTxt(totN[2],totN[0])]:null));
       };
       host.append(mk('store','Toko',k=>k,60));
       host.append(mk('category','Kategori',k=>k,40));
