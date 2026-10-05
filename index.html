@@ -1528,6 +1528,40 @@ function renderDash(){
       'Buka Upload Data dan unggah file Sales Type dari folder Drive Anda untuk mengisi angka realisasi.'));
   }
 
+  /* Rekap Target & GAP — item baru: ditaruh PALING DEPAN di Dashboard (sebelum kartu/tile lain)
+     karena H2H Sales cuma banding antar tahun tanpa data target sama sekali. Rekap ini melengkapi
+     itu dengan GAP terhadap target, dipecah Total / Komersial / User, lalu per toko, supaya
+     "sales vs target" selalu kelihatan tanpa pindah halaman. gapK/gapU dihitung di sini (sales-target)
+     karena view v_sales_dashboard hanya expose gap_sales untuk total, bukan per segmen. */
+  const gapK=a.sales_komersial-a.target_komersial, gapU=a.sales_user-a.target_user;
+  const recapRows=[
+    ['Total', a.total_sales, a.target_total, a.achiev_total, a.gap_sales],
+    ['Komersial', a.sales_komersial, a.target_komersial, a.achiev_komersial, gapK],
+    ['User', a.sales_user, a.target_user, a.achiev_user, gapU],
+  ];
+  p.append(card('Rekap Target & GAP', periodLabel()+' · lengkap karena H2H Sales tidak punya data target',
+    mkTable([H('SEGMEN',{s:1}),H('SALES',{r:1}),H('TARGET',{r:1}),H('ACHIEVEMENT',{r:1}),H('GAP',{r:1})],
+      recapRows.map(([seg,sales,tgt,ach,gap])=>[
+        seg, compact(sales), tgt>0?compact(tgt):'—', pillCell(ach),
+        el('span',{style:`color:${trendColor(tgt>0?gap/tgt:(gap>=0?1:-1))}`},compact(gap))]))));
+
+  const stRecap=byStore(rows).filter(r=>r.target_total>0||r.total_sales>0)
+    .sort((x,y)=>x.store_name.localeCompare(y.store_name));
+  if(stRecap.length) p.append(card('Rekap GAP per Toko', periodLabel()+' · Komersial, User & Total',
+    mkTable([H('TOKO',{s:1}),H('SALES KOM',{r:1}),H('TARGET KOM',{r:1}),H('GAP KOM',{r:1}),
+             H('SALES USER',{r:1}),H('TARGET USER',{r:1}),H('GAP USER',{r:1}),
+             H('TOTAL SALES',{r:1}),H('TOTAL TARGET',{r:1}),H('GAP TOTAL',{r:1}),H('ACHIEV',{r:1})],
+      stRecap.map(r=>{
+        const gk=r.sales_komersial-r.target_komersial, gu=r.sales_user-r.target_user;
+        return [r.store_name, compact(r.sales_komersial), r.target_komersial>0?compact(r.target_komersial):'—',
+          el('span',{style:`color:${trendColor(r.target_komersial>0?gk/r.target_komersial:(gk>=0?1:-1))}`},compact(gk)),
+          compact(r.sales_user), r.target_user>0?compact(r.target_user):'—',
+          el('span',{style:`color:${trendColor(r.target_user>0?gu/r.target_user:(gu>=0?1:-1))}`},compact(gu)),
+          compact(r.total_sales), r.target_total>0?compact(r.target_total):'—',
+          el('span',{style:`color:${trendColor(r.target_total>0?r.gap_sales/r.target_total:(r.gap_sales>=0?1:-1))}`},compact(r.gap_sales)),
+          pillCell(r.achiev_total)];
+      }))));
+
   /* item 2: kartu perbandingan tahun, muncul hanya saat >1 Tahun dipilih di filter Tahun (multi-select) */
   const myc=multiYearCompare();
   if(myc) p.append(card('Perbandingan tahun terpilih','total sesuai filter Bulan/Rentang/Brand/SPV/Toko aktif',
