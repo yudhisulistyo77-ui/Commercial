@@ -43,15 +43,26 @@ a{color:var(--accent)}
 #shell{display:flex;min-height:100%}
 #rail{width:var(--rail);flex:0 0 var(--rail);background:var(--surface);border-right:1px solid var(--ring);
   display:flex;flex-direction:column;position:sticky;top:env(safe-area-inset-top,0px);height:100vh;z-index:30}
-.brand{padding:14px 16px;border-bottom:1px solid var(--ring);display:flex;gap:10px;align-items:center}
-/* round 8 item 6: logo asli (gear + wordmark) ganti kotak "SC" — logo punya latar putih jadi dibungkus
-   kartu putih ber-padding supaya tetap terbaca & tidak "nabrak" di dark mode */
-.brand .mk{width:100%;height:46px;border-radius:9px;background:#fff;display:flex;align-items:center;justify-content:center;
-  flex:0 0 auto;box-shadow:0 1px 3px rgba(0,0,0,.12);padding:4px 8px;overflow:hidden}
+.brand{padding:14px 16px 13px;border-bottom:1px solid var(--ring);display:flex;flex-direction:column;gap:9px}
+.brand .mkrow{display:flex;gap:8px;align-items:center;width:100%}
+/* round 9 item 2: logo (gear + wordmark CMC) dipakai apa adanya dari file webp aslinya — file itu TIDAK
+   punya kanal alpha (RGB biasa) dan latarnya "dibakar" putih (≈254,254,254), bukan transparan; sudah dicek
+   dengan PIL. Mengganti bg kotak menjadi transparan tidak akan menghilangkan kotak putih itu (pikselnya
+   tetap putih), jadi "menyesuaikan baground" di sini dikerjakan dengan cara yang realistis: kartu kecil
+   (bukan kotak tegas dgn shadow berat seperti round 8) dengan warna senada tema (ring/garis tipis, bayangan
+   amat tipis) sehingga tetap terasa menyatu di light & dark, bukan sekadar kotak putih yang "nabrak".
+   Teks "Sales Operation / Commercial Departement" ditaruh di BARIS SENDIRI di bawah logo (bukan di
+   samping) — dicoba horizontal dulu, tapi rail selebar 242px tak cukup menampung logo sebesar ini +
+   teks + tombol lipat tanpa terpotong; menumpuk vertikal menjaga logo tetap besar & teks tetap utuh terbaca. */
+.brand .mk{width:68px;height:68px;border-radius:13px;background:#fdfdfd;display:flex;align-items:center;justify-content:center;
+  flex:0 0 auto;box-shadow:0 1px 2px rgba(0,0,0,.08);border:1px solid var(--ring);padding:6px;overflow:hidden}
 .brand .mk img{height:100%;width:auto;max-width:100%;object-fit:contain;display:block}
-.brand b{display:none}
-.brand span{display:none}
-#shell.railcollapsed .brand .mk{width:38px;height:38px;border-radius:9px;padding:3px}
+.brand-txt{display:flex;flex-direction:column;gap:1px;min-width:0;flex:1}
+.brand-txt b{display:block;font-size:13.5px;font-weight:800;letter-spacing:.01em;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.brand-txt span{display:block;font-size:11px;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#shell.railcollapsed .brand{align-items:center;padding:14px 8px}
+#shell.railcollapsed .brand .mkrow{flex-direction:column;gap:6px}
+#shell.railcollapsed .brand .mk{width:46px;height:46px;border-radius:11px;padding:4px}
 #shell.railcollapsed .brand .mk img{height:auto;width:100%;object-fit:contain}
 nav{padding:10px;display:flex;flex-direction:column;gap:2px;overflow-y:auto;flex:1}
 .navgrp{font-size:10px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);padding:12px 10px 5px;font-weight:600}
@@ -65,7 +76,7 @@ nav button svg{width:17px;height:17px;flex:0 0 auto}
 
 /* ---------- filter bar ---------- */
 #filters{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:color-mix(in srgb,var(--bg) 88%,transparent);
-  backdrop-filter:blur(9px);border-bottom:1px solid var(--ring);padding:9px 20px;display:flex;gap:7px;flex-wrap:wrap;align-items:flex-end}
+  backdrop-filter:blur(9px);border-bottom:1px solid var(--ring);padding:6px 20px;display:flex;gap:7px;flex-wrap:wrap;align-items:flex-end}
 .fld{display:flex;flex-direction:column;gap:3px;min-width:0;flex:0 0 auto}
 .fld label{font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:600}
 .fld select{width:100%}
@@ -90,12 +101,12 @@ nav button svg{width:17px;height:17px;flex:0 0 auto}
 .msd-foot{display:flex;gap:6px;padding:5px 6px 2px;border-top:1px solid var(--ring);margin-top:4px}
 .msd-foot button{flex:1;font-size:11px;padding:3px 6px}
 /* ---------- per-page filter row (item 2) ---------- */
-.pagefilters{display:flex;gap:10px 14px;flex-wrap:wrap;align-items:flex-end;padding:12px 16px;margin:0;
+.pagefilters{display:flex;gap:8px 12px;flex-wrap:wrap;align-items:flex-end;padding:9px 14px;margin:0;
   background:var(--surface);border:1px solid var(--ring);border-radius:var(--r);box-shadow:var(--shadow)}
 .pagefilters .fld{min-width:0;flex:0 0 auto}
 .pagefilters #f-custom-wrap{display:flex!important}
-.pagefilters .pf-sub{flex-basis:100%;height:0;border-top:1px dashed var(--ring);margin:2px 0}
-@media(max-width:620px){.pagefilters{gap:8px}.pagefilters .fld{flex:1 1 128px}}
+.pagefilters .pf-sub{flex-basis:100%;height:0;border-top:1px dashed var(--ring);margin:1px 0}
+@media(max-width:620px){.pagefilters{gap:7px}.pagefilters .fld{flex:1 1 128px}}
 select,input[type=text],input[type=number],input[type=date],textarea{background:var(--surface);border:1px solid var(--line);
   border-radius:8px;padding:6px 9px;min-width:0}
 select:focus-visible,input:focus-visible,textarea:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
@@ -108,7 +119,10 @@ select:focus-visible,input:focus-visible,textarea:focus-visible,button:focus-vis
 .spacer{flex:1}
 
 /* ---------- page ---------- */
-.page{padding:20px;padding-block:20px 56px;display:none;flex-direction:column;gap:18px;max-width:1680px;margin:0 auto;width:100%}
+.page{padding:20px;padding-block:16px 56px;display:none;flex-direction:column;gap:15px;max-width:1680px;margin:0 auto;width:100%}
+/* round 9 item 3: jarak phead → baris filter dipersempit secara khusus (tanpa mengecilkan jarak antar
+   kartu konten di bawahnya, yang masih pakai gap 15px standar di atas) */
+.phead + .pagefilters{margin-top:-5px}
 .page.on{display:flex}
 .phead{display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap}
 .phead h1{font-size:22px;font-weight:800;letter-spacing:-.02em}
@@ -276,9 +290,11 @@ th[data-t]:hover{background:var(--line)}
 <div id="shell">
   <aside id="rail">
     <div class="brand">
-      <div class="mk"><img src="data:image/webp;base64,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" alt="Tigalapan Indonesia CMC Division" title="Tigalapan Indonesia - CMC Division"></div>
-      <div class="brand-txt"><b>Sales Command</b><span>Commercial Dept</span></div>
-      <button class="btn sm" id="railcollapse" title="Lipat/bentangkan menu" aria-label="Lipat menu"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M15 5l-7 7 7 7"/></svg></button>
+      <div class="mkrow">
+        <div class="mk"><img src="data:image/webp;base64,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" alt="Tigalapan Indonesia CMC Division" title="Tigalapan Indonesia - CMC Division"></div>
+        <button class="btn sm" id="railcollapse" title="Lipat/bentangkan menu" aria-label="Lipat menu"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M15 5l-7 7 7 7"/></svg></button>
+      </div>
+      <div class="brand-txt"><b>Sales Operation</b><span>Commercial Departement</span></div>
     </div>
     <nav id="nav"></nav>
     <div class="railfoot">
@@ -329,10 +345,12 @@ th[data-t]:hover{background:var(--line)}
     <section class="page" id="p-brand"></section>
     <section class="page" id="p-mkt"></section>
     <section class="page" id="p-h2h"></section>
+    <section class="page" id="p-sssg"></section>
     <section class="page" id="p-breakdown"></section>
     <section class="page" id="p-pica"></section>
     <section class="page" id="p-trx"></section>
     <section class="page" id="p-kpi"></section>
+    <section class="page" id="p-datatrack"></section>
     <section class="page" id="p-pdca"></section>
     <section class="page" id="p-upload"></section>
     <section class="page" id="p-set"></section>
@@ -463,10 +481,20 @@ const DEMO_TARGETS = [
 ];
 /* deret deterministik supaya angka contoh tidak berubah tiap render */
 function seeded(i){ const x=Math.sin(i*12.9898)*43758.5453; return x-Math.floor(x); }
+/* round 9: opening_date asli dari kolom stores.opening_date (lihat DB) — dipetakan di sini juga utk mode
+   demo/offline, supaya fitur Same Store Sales Growth & Tracking Data punya data nyata saat diuji tanpa koneksi.
+   TORAJA & GOWA sengaja dibuka di tahun 2026 (sejalan dgn flag `baru` yg sudah ada di buildDemo()). */
+const DEMO_OPENING_DATE={
+  'TIGALAPAN KAOS BTP':'2024-01-01', 'MAMU TAMALATE':'2024-01-01', 'TIGALAPANKAOS PALU':'2024-01-01',
+  'TIGALAPANKAOS MANADO':'2025-04-27', 'MAMU KENDARI':'2025-10-07', 'MAMU PALOPO':'2025-04-12',
+  'TIGALAPANKAOS POLMAN':'2025-10-31', 'MAMU BTP':'2025-03-22', 'TIGALAPANKAOS SAMARINDA':'2025-06-13',
+  'TIGALAPANKAOS BONE':'2025-11-10', 'MAMU GOWA':'2026-03-06', 'MAMU TSM':'2026-01-01',
+  'TIGALAPANKAOS TORAJA':'2026-07-06'
+};
 function buildDemo(){
   const LAST_ACTUAL = 9;   // Jan–Sep terisi; Okt–Des belum, seperti kondisi awal Oktober
   S.stores = DEMO_TARGETS.map(([n,b],i)=>({id:i+1,name:n,brand:b,region:null,
-    spv:['ILHAM','ZULTAN'][i%2],is_active:true,sort_order:i+1}));
+    spv:['ILHAM','ZULTAN'][i%2],is_active:true,sort_order:i+1,opening_date:DEMO_OPENING_DATE[n]||null}));
   S.aliases=[
     {id:1,alias:'TIGALAPANKAOS MAKASSAR',store_id:1,confirmed:false,source:'alamat MAPING SPV = Bumi Tamalanrea Permai (BTP)',stores:{name:'TIGALAPAN KAOS BTP'}},
     {id:2,alias:'MAMU MAKASSAR',store_id:5,confirmed:false,source:'satu-satunya pasangan tersisa — perlu konfirmasi',stores:{name:'MAMU TAMALATE'}},
@@ -640,7 +668,9 @@ const ICONS = {
   pica:'<path d="M9 6h11M9 12h11M9 18h11M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
   upload:'<path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5M4 17v2a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-2" stroke="currentColor" stroke-width="1.9" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
   set:'<path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2 2 2 0 1 1-4 0 1.7 1.7 0 0 0-2.9-1.2l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.7 1.7 0 0 0 2 15a2 2 0 1 1 0-4 1.7 1.7 0 0 0 1.4-2.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.7 1.7 0 0 0 9 4a2 2 0 1 1 4 0 1.7 1.7 0 0 0 2.9 1.4l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1A1.7 1.7 0 0 0 20 11a2 2 0 1 1 0 4Z" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linejoin="round"/>',
-  breakdown:'<path d="M12 3v6l4.5 4.5M12 21a9 9 0 1 1 6.4-15.3" stroke="currentColor" stroke-width="1.9" fill="none" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="9" r="1.4" fill="currentColor"/>'
+  breakdown:'<path d="M12 3v6l4.5 4.5M12 21a9 9 0 1 1 6.4-15.3" stroke="currentColor" stroke-width="1.9" fill="none" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="9" r="1.4" fill="currentColor"/>',
+  datatrack:'<path d="M9 4.5h6a1 1 0 0 1 1 1V6h2a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h2v-.5a1 1 0 0 1 1-1Z" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linejoin="round"/><path d="M8.3 12.3l1.6 1.6 3-3.2M8 17h5" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
+  sssg:'<path d="M4 20V13m5 7V9m5 11V6m5 14V4" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/><path d="M3 20h18" stroke="currentColor" stroke-width="1.5"/><circle cx="19" cy="4" r="2.2" fill="currentColor"/>'
 };
 const PAGES = [
   {g:'Ringkasan'},
@@ -649,6 +679,7 @@ const PAGES = [
   {id:'pica',  t:'PICA / MOM',      ic:'pica'},
   {g:'Analisis'},
   {id:'h2h',   t:'H2H Sales',       ic:'h2h'},
+  {id:'sssg',  t:'Same Store Sales Growth', ic:'sssg'},
   {id:'breakdown', t:'Breakdown Problem (5 Why)', ic:'breakdown'},
   {id:'mkt',   t:'Marketplace',     ic:'mkt'},
   {id:'brand', t:'Brand Performance', ic:'brand'},
@@ -658,6 +689,7 @@ const PAGES = [
   {id:'item',  t:'Item Sales',      ic:'item'},
   {id:'trx',   t:'Transaksi & AOV', ic:'trx'},
   {id:'kpi',   t:'KPI',             ic:'kpi'},
+  {id:'datatrack', t:'Tracking Data', ic:'datatrack'},
   {g:'Kelola'},
   {id:'upload',t:'Upload Data',     ic:'upload'},
   {id:'set',   t:'Pengaturan',      ic:'set'}
@@ -709,8 +741,16 @@ const FILTER_VISIBILITY={
   kpi:['year','month'],
   top:['year','month','brand','spv','store'],
   h2h:['brand','spv','store'],  // 'year' dihapus round 7 item 1/5: tahun H2H kini tetap/terkunci (h2hCurrentYear), bukan dari filter Tahun
+  /* round 9 item 6: SSSG sama persis alasannya dengan H2H — tahun & periodenya SELALU 1 Jan s.d. tanggal
+     hari ini (tidak bisa diatur dari filter atas), jadi 'year'/'month'/'range' disembunyikan; hanya
+     Brand/SPV/Toko yang relevan untuk mempersempit cakupan toko yang dibandingkan. */
+  sssg:['brand','spv','store'],
   pdca:['year','month','range','brand','spv','store'],
-  breakdown:['year'], pica:[], upload:[], set:[]
+  breakdown:['year'],
+  /* round 9 item 4: matriks cakupan ditata per-tahun (Jan–Des sekaligus terlihat), jadi hanya Tahun yang
+     relevan — Bulan/Rentang justru akan menyembunyikan sebagian matriks yang jadi alasan halaman ini ada. */
+  datatrack:['year'],
+  pica:[], upload:[], set:[]
 };
 /* Memindahkan (bukan menyalin) elemen <select> filter yang sudah ada ke dalam baris filter lokal
    milik halaman yang sedang aktif. Karena dipindah (appendChild), tiap elemen cuma ada 1 instance
@@ -853,7 +893,7 @@ async function loadAll(){
       DB.sel(`kpi_entries?select=*&year=eq.${S.year}`),
       DB.sel(`pdca?select=*&year=eq.${S.year}&order=sort_order`),
       DB.sel('app_settings?select=*'),
-      DB.sel('ingest_log?select=*&order=created_at.desc&limit=40'),
+      DB.sel('ingest_log?select=*&order=created_at.desc&limit=1000'),   // round 9 item 4: dipakai Tracking Data, naikkan dari 40
       opt(DB.sel('people?select=*&order=sort_order,name')),
       opt(DB.sel('brand_targets?select=*')),
       opt(DB.sel('channel_targets?select=*')),
@@ -1042,6 +1082,67 @@ function groupedBars(labels, series, opt={}){
   return svg;
 }
 
+/* round 9 item 5: bar (Sales/Target, skala Rupiah) + garis Achievement (skala %) DALAM SATU plot,
+   dua sumbu vertikal independen berbagi area yang sama — bukan dua elemen ditumpuk. Geometri bar memakai
+   pola yang sama dengan groupedBars(); garis dihitung di skala terpisah (0..max(100%,maxAch)) lalu
+   diproyeksikan ke tinggi plot yang sama (ih). Segmen line diputus pada titik null, sama seperti lineChart(). */
+function comboBarsLine(labels, barSeries, lineVals, opt={}){
+  const W=opt.w||760, H=opt.h||320, PL=opt.pl||52, PR=opt.pr||46, PT=opt.pt||30, PB=28;
+  const iw=W-PL-PR, ih=H-PT-PB;
+  const max=niceMax(Math.max(1,...barSeries.flatMap(s=>s.vals.map(v=>N(v)))));
+  const lineNums=lineVals.filter(v=>v!=null&&!isNaN(v));
+  const lmax=Math.max(1, opt.lineRef??0, ...lineNums)*1.1;
+  const svg=sv('svg',{viewBox:`0 0 ${W} ${H}`,role:'img'});
+  for(let i=0;i<=4;i++){ const y=PT+ih-ih*i/4;
+    svg.append(sv('line',{x1:PL,x2:W-PR,y1:y,y2:y,stroke:'var(--grid)','stroke-width':1}));
+    const tx=sv('text',{x:PL-8,y:y+3.5,'text-anchor':'end',fill:'var(--muted)','font-size':10,'font-family':'var(--font-ui)'});
+    tx.textContent=axisFmt(max*i/4); svg.append(tx);
+    const tx2=sv('text',{x:W-PR+8,y:y+3.5,'text-anchor':'start',fill:'var(--muted)','font-size':10,'font-family':'var(--font-ui)'});
+    tx2.textContent=(opt.lineFmt?opt.lineFmt(lmax*i/4):Math.round(lmax*i/4*100)+'%'); svg.append(tx2); }
+  const bw=iw/labels.length, gap=Math.min(7,bw*.14), inner=(bw-gap*2)/barSeries.length, bar=Math.max(2,inner-2);
+  const fmtLbl=v=>opt.labelFmt?opt.labelFmt(v):axisFmt(v);
+  labels.forEach((lb,i)=>{
+    barSeries.forEach((s,j)=>{
+      const v=N(s.vals[i]); if(v<=0) return;
+      const h=Math.max(1,ih*v/max), x=PL+bw*i+gap+inner*j+(inner-bar)/2, y=PT+ih-h;
+      const r=sv('rect',{x,y,width:bar,height:h,rx:Math.min(4,bar/2),fill:s.color,stroke:'var(--surface)','stroke-width':2});
+      r.style.cursor='pointer';
+      r.addEventListener('pointerenter',e=>tipShow(e,`<b>${esc(lb)}</b>`+barSeries.map(ss=>
+        `<div class="row"><span>${esc(ss.name)}</span><span>${compact(N(ss.vals[i]))}</span></div>`).join('')+
+        (lineVals[i]!=null?`<div class="row"><span>${esc(opt.lineName||'Achievement')}</span><span>${pct(lineVals[i])}</span></div>`:'')));
+      r.addEventListener('pointermove',e=>tipShow(e,TIP.innerHTML));
+      r.addEventListener('pointerleave',tipHide);
+      svg.append(r);
+      if(bar>=8){ const stagger=barSeries.length>1?(j%2)*11:0;
+        const lt=sv('text',{x:x+bar/2,y:y-4-stagger,'text-anchor':'middle',fill:'var(--ink-2)','font-size':8.5,'font-weight':600,'font-family':'var(--font-ui)'});
+        lt.setAttribute('style','font-variant-numeric:tabular-nums'); lt.textContent=fmtLbl(v); svg.append(lt); }
+    });
+    const t=sv('text',{x:PL+bw*i+bw/2,y:H-9,'text-anchor':'middle',fill:'var(--muted)','font-size':10,'font-family':'var(--font-ui)'});
+    t.textContent=lb; svg.append(t);
+  });
+  svg.append(sv('line',{x1:PL,x2:W-PR,y1:PT+ih,y2:PT+ih,stroke:'var(--line)','stroke-width':1}));
+  /* garis acuan 100% pada skala kanan */
+  if(opt.lineRef!=null){ const y=PT+ih-ih*(opt.lineRef/lmax);
+    svg.append(sv('line',{x1:PL,x2:W-PR,y1:y,y2:y,stroke:'var(--line)','stroke-width':1.3,'stroke-dasharray':'5 4'})); }
+  /* garis Achievement, diputus pada titik null (bulan tanpa sales/target) */
+  const sx=i=>PL+bw*i+bw/2;
+  const sy=v=>PT+ih-ih*(v/lmax);
+  const lcolor=opt.lineColor||'var(--ink)';
+  const pts=labels.map((_,i)=>lineVals[i]==null?null:[sx(i),sy(lineVals[i])]);
+  const segs=[]; let cur=[]; pts.forEach(pt=>{ if(pt){cur.push(pt);} else if(cur.length){segs.push(cur);cur=[];} }); if(cur.length)segs.push(cur);
+  segs.forEach(sg=>{ if(sg.length>1) svg.append(sv('path',{d:'M'+sg.map(pt=>pt[0].toFixed(1)+' '+pt[1].toFixed(1)).join(' L '),
+    fill:'none',stroke:lcolor,'stroke-width':2.2,'stroke-linejoin':'round','stroke-linecap':'round'})); });
+  labels.forEach((lb,i)=>{ if(pts[i]==null)return;
+    const c=sv('circle',{cx:pts[i][0],cy:pts[i][1],r:4,fill:lcolor,stroke:'var(--surface)','stroke-width':2});
+    c.style.cursor='pointer';
+    const txt=`<b>${esc(lb)}</b><div class="row"><span>${esc(opt.lineName||'Achievement')}</span><span>${pct(lineVals[i])}</span></div>`;
+    c.addEventListener('pointerenter',e=>tipShow(e,txt)); c.addEventListener('pointermove',e=>tipShow(e,txt)); c.addEventListener('pointerleave',tipHide);
+    svg.append(c);
+    const lv=sv('text',{x:pts[i][0],y:pts[i][1]-9,'text-anchor':'middle',fill:lcolor,'font-size':9,'font-weight':700,'font-family':'var(--font-ui)'});
+    lv.textContent=pct(lineVals[i],0); svg.append(lv); });
+  return svg;
+}
+
 /* Line chart dengan garis acuan 100% */
 function lineChart(labels, vals, opt={}){
   const W=opt.w||760, H=opt.h||220, PL=48, PR=14, PT=22, PB=28;
@@ -1183,7 +1284,8 @@ function render(){
     renderSet(); return; }
   ({dash:renderDash, sales:renderSales, item:renderItem, trx:renderTrx, kpi:renderKpi,
     pdca:renderPdca, upload:renderUpload, set:renderSet, h2h:renderH2H, mkt:renderMkt,
-    brand:renderBrand, top:renderTop, pica:renderPica, breakdown:renderBreakdown}[S.page]||renderDash)();
+    brand:renderBrand, top:renderTop, pica:renderPica, breakdown:renderBreakdown,
+    datatrack:renderDataTrack, sssg:renderSSSG}[S.page]||renderDash)();
 }
 function connCard(){
   const c=el('div',{class:'card'});
@@ -1516,26 +1618,23 @@ async function renderItem(){
     el('p',{},'Total Item Sold sudah bersih: item sold − item refunded. '+periodLabel()))));
   const pf_item=pageFilterBar('item'); if(pf_item) p.append(pf_item);
   if(S.demo) p.append(demoBanner());
-  const key = `${S.year}|${S.month}|${S.store}|${S.brand}`;
-  const btn=el('button',{class:'btn pri',onclick:()=>{S.itemScope='';renderItem();}},'Muat data item');
+  /* round 9 item 1: pakai periodM1M2()/scopeStoreIds() yang sama persis dengan rollup()/Brand Performance,
+     supaya total Item Sales selalu konsisten dengan Brand Performance pada filter apa pun (Rentang & SPV
+     dulunya diabaikan di sini — itu sebabnya totalnya bisa berbeda). Kunci cache ikut m1/m2 & S.spv. */
+  const [im1,im2]=periodM1M2(S.year);
+  const key = `${S.year}|${im1}|${im2}|${S.store}|${S.brand}|${S.spv}`;
   if(S.itemScope!==key){
-    p.append(el('div',{class:'card'},el('header',{},el('h2',{},'Muat data item')),
-      el('p',{style:'margin:0 0 13px;color:var(--ink-2);font-size:13px'},
-        'Data item bisa sangat banyak, jadi dimuat atas permintaan. Pilih bulan atau toko dulu agar lebih ringan.'),
-      el('div',{class:'rowline'},btn)));
-    btn.onclick=async()=>{
-      btn.disabled=true; btn.textContent='Memuat…';
-      if(S.demo){ S.itemRows=demoItems(); S.itemScope=key; renderItem(); return; }
+    p.append(el('div',{class:'empty'},'Memuat data item…'));
+    (async()=>{
       try{
+        if(S.demo){ S.itemRows=demoItems(); S.itemScope=key; renderItem(); return; }
         let q='item_sales?select=item_name,item_variant_name,category_name,sku,item_sold,item_refunded,item_sold_real,net_sales,store_id,year,month'
-          +`&year=eq.${S.year}`;
-        if(S.month) q+=`&month=eq.${S.month}`;
-        const sl2=storeList(), bl2=brandList();
-        if(sl2.length) q+=`&store_id=in.(${sl2.join(',')})`;
-        else if(bl2.length){ const ids=S.stores.filter(s=>bl2.includes(s.brand)).map(s=>s.id); if(ids.length) q+=`&store_id=in.(${ids.join(',')})`; }
+          +`&year=eq.${S.year}&month=gte.${im1}&month=lte.${im2}`;
+        const ids=scopeStoreIds();
+        if(ids) q+= ids.length? `&store_id=in.(${ids.join(',')})` : `&store_id=eq.-1`;
         S.itemRows=await DB.selAll(q); S.itemScope=key; renderItem();
-      }catch(e){ toast('Gagal memuat item: '+e.message); btn.disabled=false; btn.textContent='Muat data item'; }
-    };
+      }catch(e){ toast('Gagal memuat item: '+e.message); }
+    })();
     return;
   }
   const all=S.itemRows;
@@ -2295,7 +2394,7 @@ function renderUpload(){
 
   if(S.logs.length){
     const tb=el('tbody');
-    S.logs.forEach(l=>{ const st=S.stores.find(s=>s.id===l.store_id);
+    S.logs.slice(0,40).forEach(l=>{ const st=S.stores.find(s=>s.id===l.store_id);
       tb.append(el('tr',{},
         el('td',{},new Date(l.created_at).toLocaleString('id-ID',{dateStyle:'short',timeStyle:'short'})),
         el('td',{},l.kind), el('td',{class:'sticky1'},l.file_name),
@@ -3459,6 +3558,149 @@ function renderH2H(){
 }
 
 /* =====================================================================
+   SAME STORE SALES GROWTH (SSSG) — round 9 item 6
+   Sama persis konsepnya dengan H2H (pakai h2hData() yang sama), tapi periodenya TETAP: 1 Jan s.d. tanggal
+   hari ini (direplikasi di tiap tahun yang dibandingkan, tidak bisa diatur dari UI) — bukan rentang bulan
+   bebas seperti H2H. Bedanya yang kedua: toko hanya ikut dibandingkan kalau toko itu SUDAH buka sejak
+   awal tahun pembanding yang lebih lama (same-store = toko yang sama, sudah eksis penuh di kedua tahun).
+   Ditulis sebagai fungsi paralel (bukan refactor H2H) secara sengaja — H2H sudah sangat panjang/teruji,
+   dan risiko meregresi H2H dinilai lebih mahal daripada duplikasi logika tabel di sini.
+   ===================================================================== */
+function sssgCurrentYear(){ return h2hCurrentYear(); }   // "tahun berjalan" persis sama dgn H2H, sesuai permintaan
+function sssgEligible(storeId,year){
+  const st=S.stores.find(s=>s.id===storeId);
+  if(!st||!st.opening_date) return false;                 // termasuk DC TIGALAPAN (opening_date NULL)
+  return st.opening_date <= `${year}-01-01`;                // ISO date string, aman dibandingkan leksikal
+}
+function sssgCutoff(){
+  const d=new Date();
+  return {y:d.getFullYear(),m:d.getMonth()+1,day:d.getDate(),
+    label:d.toLocaleDateString('id-ID',{dateStyle:'long'})};
+}
+function renderSSSG(){
+  parkFilters();
+  const p=$('#p-sssg'); p.innerHTML='';
+  const y3=sssgCurrentYear(), y2=y3-1, y1=y3-2;
+  const cf=sssgCutoff(), m1=1, m2=cf.m, cutoffDay=cf.day;
+  p.append(el('div',{class:'phead'},el('div',{},el('h1',{},'Same Store Sales Growth'),
+    el('p',{},`Toko yang sama, periode yang sama persis: 1 Jan – ${cf.label} (${y1}, ${y2}, ${y3}) · `+
+      (storeList().length?(storeList().length===1?S.stores.find(s=>String(s.id)===storeList()[0])?.name:storeList().length+' toko'):(brandList().length||S.spv?[brandList().join('/'),S.spv?('SPV '+spvLabel(S.spv)):''].filter(Boolean).join(' · '):'semua toko'))))));
+  const pf=pageFilterBar('sssg'); if(pf) p.append(pf);
+  if(S.demo) p.append(demoBanner());
+
+  const D=h2hData([y1,y2,y3],m1,m2,cutoffDay);
+  const idsAll=[...new Set([y1,y2,y3].flatMap(y=>[...D[y].keys()]))];
+  const names=new Map(idsAll.map(id=>[id,(S.stores.find(s=>s.id===id)||{}).name||String(id)]));
+  const G=(y,id,k)=>D[y].get(id)?D[y].get(id)[k]:0;
+
+  const idsY2=idsAll.filter(id=>sssgEligible(id,y2));       // layak dibandingkan y3 vs y2 (sudah buka sblm 1 Jan y2)
+  const idsFull=idsAll.filter(id=>sssgEligible(id,y1));      // layak dibandingkan penuh 3 tahun (sudah buka sblm 1 Jan y1)
+  const notEligible=idsAll.filter(id=>!idsY2.includes(id)).map(id=>names.get(id));
+  const T=(y,k,set)=>set.reduce((s,id)=>s+G(y,id,k),0);
+
+  p.append(el('div',{class:'note'},el('b',{},'Metodologi SSSG. '),
+    `Dibandingkan HANYA toko yang sudah buka sejak awal tahun pembanding (same-store), dengan cut-off tanggal yang sama persis di tiap tahun: 1 Jan s.d. ${cf.label}. `+
+    `Toko yang baru buka di tengah periode TIDAK diikutkan pada perbandingan tahun itu — ditandai "Belum punya histori penuh", bukan dihitung seolah tumbuh/turun. `+
+    (notEligible.length? `Saat ini belum punya histori penuh thd ${y2}: ${notEligible.join(', ')}.` : `Semua toko pada cakupan filter saat ini sudah punya histori penuh thd ${y2}.`)));
+
+  /* ---------- tiles (same-store, set=idsY2 utk y3 vs y2; idsFull utk y3 vs y1) ---------- */
+  const tl=el('div',{class:'grid g4'});
+  const s3_2=T(y3,'sales',idsY2), s2_2=T(y2,'sales',idsY2);
+  const g32=s2_2>0?(s3_2-s2_2)/s2_2:null;
+  const s3_1=T(y3,'sales',idsFull), s1_1=T(y1,'sales',idsFull);
+  const g31=s1_1>0?(s3_1-s1_1)/s1_1:null;
+  tl.append(tile(`SSSG ${y3} vs ${y2}`,pct(g32),`${idsY2.length} toko same-store · ${compact(s3_2)} vs ${compact(s2_2)}`,null,
+    g32==null?el('span',{class:'pill neu'},'—'):el('span',{class:'pill '+(g32>=0?'ok':'bad')},g32>=0?'Tumbuh':'Turun')));
+  tl.append(tile(`SSSG ${y3} vs ${y1}`,pct(g31),`${idsFull.length} toko same-store · ${compact(s3_1)} vs ${compact(s1_1)}`,null,
+    g31==null?el('span',{class:'pill neu'},'—'):el('span',{class:'pill '+(g31>=0?'ok':'bad')},g31>=0?'Tumbuh':'Turun')));
+  tl.append(tile('GAP sales (same-store) '+y3+'/'+y2,s2_2>0?compact(s3_2-s2_2):'—','selisih absolut, toko same-store saja',null));
+  tl.append(tile('Toko ikut dibandingkan',`${idsY2.length} / ${idsAll.length}`,'same-store thd '+y2+' · total toko pada cakupan filter',null));
+  p.append(tl);
+
+  /* ---------- chart per bulan, same-store (idsY2) ---------- */
+  const monSS=(y,set)=>MONTHS.map((_,i)=>S.dashAll.filter(r=>r.year===y&&r.month===i+1&&set.includes(r.store_id)).reduce((s,r)=>s+N(r.total_sales),0));
+  const cols=['var(--s7)','var(--s2)','var(--s1)'];
+  const serSS=[y1,y2,y3].map((y,i)=>({name:String(y),color:cols[i],vals:monSS(y,idsY2)}));
+  p.append(chartCard('Sales per bulan, same-store (toko sama di '+y2+' & '+y3+')','bulan 1–'+m2+' saja (cut-off s.d. '+cf.label+')',
+    el('div',{},legend(serSS),groupedBars(MON3.slice(0,m2),serSS.map(s=>({...s,vals:s.vals.slice(0,m2)})),{h:300}))));
+
+  /* ---------- bulan demi bulan (same-store idsY2) ---------- */
+  {
+    const heads=[H('BULAN',{s:1}),...[y1,y2,y3].map(y=>H('SALES '+y,{r:1})),H(`Δ ${y3} VS ${y2}`,{r:1}),H(`GAP ${y3}-${y2}`,{r:1})];
+    const rows=MON3.slice(0,m2).map((mn,i)=>{ const v=serSS.map(s=>s.vals[i]); if(!v.some(x=>x>0)) return null;
+      return [mn,...v.map(x=>compact(x)),growthPill(v[2],v[1]),gapTxt(v[2],v[1])]; }).filter(Boolean);
+    const tot=serSS.map(s=>s.vals.reduce((a,b)=>a+b,0));
+    p.append(card('Bulan demi bulan (same-store)','sales toko yang sudah buka penuh sejak sblm '+y2,
+      mkTable(heads,rows,['TOTAL',...tot.map(x=>compact(x)),growthPill(tot[2],tot[1]),gapTxt(tot[2],tot[1])])));
+  }
+
+  /* ---------- transaksi & AOV (same-store idsY2) ---------- */
+  {
+    const aov=(y,id)=>{ const c=G(y,id,'trx'); return c>0?G(y,id,'val')/c:null; };
+    const heads=[H('TOKO',{s:1}),...[y1,y2,y3].map(y=>H('TRX '+y,{r:1})),H(`Δ TRX ${y3}/${y2}`,{r:1}),
+      ...[y1,y2,y3].map(y=>H('AOV '+y,{r:1})),H(`Δ AOV ${y3}/${y2}`,{r:1})];
+    const rows=idsY2.filter(id=>[y2,y3].some(y=>G(y,id,'trx')>0)).map(id=>[names.get(id),...[y1,y2,y3].map(y=>int(G(y,id,'trx'))),
+      growthPill(G(y3,id,'trx'),G(y2,id,'trx')),...[y1,y2,y3].map(y=>rp(aov(y,id))),growthPill(aov(y3,id)||0,aov(y2,id)||0)]);
+    const aT=(y,set)=>{ const c=T(y,'trx',set); return c>0?T(y,'val',set)/c:null; };
+    p.append(card('Transaksi & AOV (same-store)',`1–${m2} · ${y1}/${y2}/${y3}`,
+      mkTable(heads,rows,['TOTAL',...[y1,y2,y3].map(y=>int(T(y,'trx',idsY2))),growthPill(T(y3,'trx',idsY2),T(y2,'trx',idsY2)),
+        ...[y1,y2,y3].map(y=>rp(aT(y,idsY2))),growthPill(aT(y3,idsY2)||0,aT(y2,idsY2)||0)])));
+  }
+
+  /* ---------- sales per toko — semua toko pada cakupan filter, Δ dimask per-toko sesuai eligibilitasnya ---------- */
+  {
+    const belum=()=>el('span',{class:'pill neu'},'Belum penuh');
+    const heads=[H('TOKO',{s:1}),H('BUKA SEJAK',{r:1}),...[y1,y2,y3].map(y=>H('SALES '+y,{r:1})),
+      H(`Δ ${y3} VS ${y2}`,{r:1}),H(`GAP ${y3}-${y2}`,{r:1}),H(`Δ ${y3} VS ${y1}`,{r:1}),H(`GAP ${y3}-${y1}`,{r:1}),H(`TARGET ${y3}`,{r:1}),H(`ACHIEV ${y3}`,{r:1})];
+    const rows=idsAll.sort((a,b)=>G(y3,b,'sales')-G(y3,a,'sales')).map(id=>{
+      const st=S.stores.find(s=>s.id===id);
+      const a=G(y1,id,'sales'),b=G(y2,id,'sales'),c=G(y3,id,'sales'),t=G(y3,id,'tgt');
+      const e2=sssgEligible(id,y2), e1=sssgEligible(id,y1);
+      return [names.get(id), st&&st.opening_date?st.opening_date:'—', compact(a),compact(b),compact(c),
+        e2?growthPill(c,b):belum(), e2?gapTxt(c,b):'', e1?growthPill(c,a):belum(), e1?gapTxt(c,a):'',
+        compact(t), pillCell(t>0?c/t:null)]; });
+    p.append(card('Sales per toko (semua toko pada cakupan filter)','Δ/GAP tampil hanya bila toko sudah buka penuh sejak sebelum tahun pembandingnya; selain itu ditandai "Belum penuh"',
+      mkTable(heads,rows)));
+  }
+
+  /* ---------- segmen komersial & user (same-store idsY2) ---------- */
+  {
+    const heads=[H('SEGMEN',{s:1}),...[y1,y2,y3].map(y=>H(String(y),{r:1})),H(`Δ ${y3} VS ${y2}`,{r:1}),H(`GAP ${y3}-${y2}`,{r:1}),H('PORSI '+y3,{r:1})];
+    const tot=T(y3,'kom',idsY2)+T(y3,'usr',idsY2);
+    const mkRow=(n,vfn)=>{ const v=[y1,y2,y3].map(y=>vfn(y)); return [n,...v.map(x=>compact(x)),growthPill(v[2],v[1]),gapTxt(v[2],v[1]),pct(tot?v[2]/tot:null)]; };
+    p.append(card('Segmen Komersial & User (same-store)','total per segmen, toko same-store thd '+y2,
+      mkTable(heads,[mkRow('KOMERSIAL',y=>T(y,'kom',idsY2)),mkRow('USER',y=>T(y,'usr',idsY2))])));
+  }
+
+  /* ---------- item sales (same-store penuh, idsFull — supaya satu angka konsisten 3 tahun) ---------- */
+  const host=el('div',{style:'display:flex;flex-direction:column;gap:18px'});
+  p.append(host);
+  host.append(el('div',{class:'empty'},'Memuat item sales same-store…'));
+  (async()=>{
+    try{
+      const dims=['store','category'];
+      const res={}; await Promise.all(dims.map(async d=>{ res[d]=await Promise.all([y1,y2,y3].map(y=>rollup(d,y,m1,m2,{limit:d==='store'?60:40,stores:idsFull}))); }));
+      host.innerHTML='';
+      const mk=(dim,title,limit)=>{
+        const mg=mergeRoll(res[dim]);
+        let arr=[...mg.entries()];
+        arr.sort((a,b)=>(b[1][2]?.qty||0)-(a[1][2]?.qty||0));
+        const heads=[H(title,{s:1}),...[y1,y2,y3].map(y=>H('ITEM '+y,{r:1})),H(`Δ ITEM ${y3} VS ${y2}`,{r:1}),
+          H(`NET SALES ${y3}`,{r:1}),H(`Δ NET ${y3}/${y2}`,{r:1}),H(`NET SALES GAP ${y3}/${y2}`,{r:1})];
+        const rows=arr.slice(0,limit).map(([k,v])=>{ const q=v.map(x=>x?x.qty:0), n=v.map(x=>x?x.sales:0);
+          return [k,...q.map(x=>int(x)),growthPill(q[2],q[1]),compact(n[2]),growthPill(n[2],n[1]),gapTxt(n[2],n[1])]; });
+        const tot=res[dim].map(r=>r.reduce((s,x)=>s+x.qty,0));
+        const totN=res[dim].map(r=>r.reduce((s,x)=>s+x.sales,0));
+        return card(`Item sales per ${title.toLowerCase()} (same-store penuh)`,`${idsFull.length} toko · ${y1}/${y2}/${y3}`,
+          mkTable(heads,rows,['TOTAL',...tot.map(x=>int(x)),growthPill(tot[2],tot[1]),compact(totN[2]),growthPill(totN[2],totN[1]),gapTxt(totN[2],totN[1])]));
+      };
+      host.append(mk('store','Toko',60));
+      host.append(mk('category','Kategori',40));
+    }catch(e){ host.innerHTML=''; host.append(el('div',{class:'note warn'},'Gagal memuat item sales: '+e.message)); }
+  })();
+}
+
+/* =====================================================================
    MARKETPLACE — Shopee & TikTok dari Sales Type
    ===================================================================== */
 function mktChannels(){
@@ -3519,14 +3761,19 @@ function renderMkt(){
   /* grafik per bulan per channel — round 7 item 6: SEBELUMNYA ditaruh dalam grid 2 kolom (g2) sehingga
      tiap chart groupedBars() tampil ±separuh lebar (teks/bar jadi kecil) dibanding chart H2H sepenuh-lebar
      yang memakai fungsi SAMA. Sekarang ditumpuk satu per baris, selebar card, agar ukurannya sepadan. */
+  /* round 9 item 5: bar Sales/Target + garis Achievement digabung dalam SATU chart (comboBarsLine),
+     bukan dua elemen (groupedBars + lineChart) ditumpuk seperti sebelumnya. */
   chs.slice(0,2).forEach(ch=>{
     const sales=MONTHS.map((_,i)=>mktRows(S.year,i+1,i+1,ch).reduce((a,r)=>a+N(r.amount),0));
     const tg=MONTHS.map((_,i)=>chanTarget(ch,S.year,i+1,i+1));
     const ser=[{name:'Sales',color:CH_COLOR[ch]||'var(--s1)',vals:sales},{name:'Target',color:'var(--grid)',vals:tg}];
     const ach=MONTHS.map((_,i)=>tg[i]>0&&sales[i]>0?sales[i]/tg[i]:null);
-    const wrap=el('div',{},legend(ser),groupedBars(MON3,ser,{h:320}));
-    if(ach.some(v=>v!=null)) wrap.append(el('div',{style:'margin-top:10px'},lineChart(MON3,ach,{h:150,ref:1,refLabel:'100%',name:'Achiev',color:CH_COLOR[ch],fmt:v=>(v*100).toFixed(0)+'%',tip:v=>pct(v)})));
-    p.append(chartCard(ch+' — sales vs target per bulan',S.year,wrap));
+    const wrap=el('div',{},
+      el('div',{style:'display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-bottom:6px'},
+        legend(ser), el('span',{class:'sub'},'— ● Achievement (garis, sumbu kanan %)')),
+      comboBarsLine(MON3,ser,ach,{h:320,lineRef:1,lineColor:CH_COLOR[ch]==='var(--s7)'?'var(--s1)':'var(--s7)',lineName:'Achievement'}),
+      el('div',{class:'sub',style:'margin-top:4px'},'Sumbu kiri: Rp (batang Sales/Target) · Sumbu kanan: % (garis Achievement, titik putus = bulan tanpa sales/target)'));
+    p.append(chartCard(ch+' — sales, target & achievement per bulan',S.year,wrap));
   });
 
   /* analisis otomatis */
@@ -3590,6 +3837,147 @@ function renderMkt(){
   p.append(ed);
   p.append(el('div',{class:'note'},el('b',{},'Catatan. '),'Penjualan marketplace tetap ikut dalam total sales toko (Sales Type Shopee/Tiktok terpetakan ke segmen User). '+
     'Halaman ini hanya memisahkannya untuk dianalisis. Channel tiap Sales Type diatur di Pengaturan → Database Sales Type.'));
+}
+
+/* =====================================================================
+   TRACKING DATA — status ingest per toko×bulan & deteksi anomali (round 9 item 4)
+   ===================================================================== */
+function dtStores(){ return S.stores.filter(s=>s.name!=='DC TIGALAPAN'); }   // DC bukan toko ritel, dikecualikan
+function dtStatus(store,year,month,row,todayY,todayM){
+  if(store.opening_date){
+    const d=new Date(store.opening_date+'T00:00:00');
+    if(!isNaN(d) && (year<d.getFullYear() || (year===d.getFullYear() && month<d.getMonth()+1))) return 'closed';   // belum buka
+  }
+  const sales=N(row&&row.total_sales);
+  if(sales>0) return 'ok';
+  const isFuture = year>todayY || (year===todayY && month>todayM);
+  if(isFuture) return 'future';                      // belum waktunya
+  return 'missing';                                   // kosong — sudah lewat tapi tak ada data
+}
+const DT_STATUS_LABEL={ok:'Ada data',missing:'Kosong',future:'Belum waktunya',closed:'Belum buka'};
+const DT_STATUS_CLASS={ok:'ok',missing:'bad',future:'neu',closed:'neu'};
+function renderDataTrack(){
+  parkFilters();
+  const p=$('#p-datatrack'); p.innerHTML='';
+  const today=new Date(), todayY=today.getFullYear(), todayM=today.getMonth()+1;
+  p.append(el('div',{class:'phead'},el('div',{},el('h1',{},'Tracking Data'),
+    el('p',{},`Status kelengkapan data per toko × bulan, dan deteksi anomali otomatis. Tahun ${S.year} · per ${today.toLocaleDateString('id-ID',{dateStyle:'long'})}.`))));
+  const pf=pageFilterBar('datatrack'); if(pf) p.append(pf);
+  if(S.demo) p.append(demoBanner());
+
+  const stores=dtStores();
+  const dashByKey=new Map(S.dashAll.filter(r=>r.year===S.year).map(r=>[r.store_id+'|'+r.month,r]));
+  const cells=[]; // {store,month,status}
+  stores.forEach(st=>{ for(let m=1;m<=12;m++){
+    cells.push({store:st,month:m,status:dtStatus(st,S.year,m,dashByKey.get(st.id+'|'+m),todayY,todayM)});
+  }});
+  const expected=cells.filter(c=>c.status==='ok'||c.status==='missing');
+  const covered=expected.filter(c=>c.status==='ok');
+  const lastLog=S.logs[0];   // sudah terurut created_at.desc dari loadAll()
+
+  /* ---------- anomali ---------- */
+  const anoms=[];
+  const trxByKey=new Map(S.trxAll.filter(r=>r.year===S.year).map(r=>[r.store_id+'|'+r.month,r]));
+  stores.forEach(st=>{
+    const aovHist=[];
+    for(let m=1;m<=12;m++){
+      const st_=dtStatus(st,S.year,m,dashByKey.get(st.id+'|'+m),todayY,todayM);
+      if(st_==='closed'||st_==='future') continue;
+      const row=dashByKey.get(st.id+'|'+m), trxRow=trxByKey.get(st.id+'|'+m);
+      const sales=N(row&&row.total_sales), target=N(row&&row.target_total);
+      const ym=MON3[m-1]+' '+S.year;
+      /* 1) achievement jauh di luar wajar — ambang <10% (hampir nol vs target nyata, kemungkinan data belum
+         masuk/salah input) atau >300% (pencapaian 3x lipat, patut dicek apa targetnya salah ketik). */
+      if(target>0 && sales>0){ const ach=sales/target;
+        if(ach<0.1) anoms.push({store:st.name,ym,metric:'Achievement',value:pct(ach),
+          note:`Sales hanya ${pct(ach)} dari target (${compact(sales)} vs target ${compact(target)}) — jauh di bawah wajar, kemungkinan data belum lengkap masuk.`});
+        else if(ach>3) anoms.push({store:st.name,ym,metric:'Achievement',value:pct(ach),
+          note:`Sales ${pct(ach)} dari target (${compact(sales)} vs target ${compact(target)}) — 300%+ dari target, cek apakah target salah input.`});
+      }
+      /* 2) lonjakan/penurunan MoM ekstrem — >70% turun atau >300% naik dibanding bulan sebelumnya */
+      if(m>1){ const prevRow=dashByKey.get(st.id+'|'+(m-1)), prev=N(prevRow&&prevRow.total_sales);
+        if(prev>0 && sales>=0){ const chg=(sales-prev)/prev;
+          if(chg<-0.7) anoms.push({store:st.name,ym,metric:'MoM sales',value:pct(chg),
+            note:`Sales turun ${pct(Math.abs(chg))} dari bulan sebelumnya (${compact(prev)} → ${compact(sales)}) — turun drastis, cek apakah data bulan ini sudah lengkap.`});
+          else if(chg>3) anoms.push({store:st.name,ym,metric:'MoM sales',value:'+'+pct(chg),
+            note:`Sales naik ${pct(chg)} dari bulan sebelumnya (${compact(prev)} → ${compact(sales)}) — lonjakan tajam, cek kemungkinan duplikasi data.`});
+        }
+      }
+      /* 3) AOV ekstrem dibanding rata² toko itu sendiri (>2.5x atau <0.4x) */
+      if(trxRow && N(trxRow.jumlah_transaksi)>0){
+        const aov=N(trxRow.nilai_transaksi)/N(trxRow.jumlah_transaksi);
+        if(aovHist.length>=2){ const avg=aovHist.reduce((a,b)=>a+b,0)/aovHist.length;
+          if(avg>0 && (aov>avg*2.5||aov<avg*0.4)) anoms.push({store:st.name,ym,metric:'AOV',value:rp(aov),
+            note:`AOV ${rp(aov)} jauh berbeda dari rata² toko ini (${rp(avg)}) — kemungkinan salah input nilai/jumlah transaksi.`});
+        }
+        aovHist.push(aov);
+      }
+      /* 4) sales vs transaksi tidak konsisten */
+      const trxCount=N(trxRow&&trxRow.jumlah_transaksi);
+      if(sales>0 && trxCount===0) anoms.push({store:st.name,ym,metric:'Konsistensi',value:compact(sales),
+        note:`Ada sales (${compact(sales)}) tapi jumlah transaksi tercatat 0 — data Sales Type & Transaksi tidak sinkron.`});
+      else if(sales===0 && trxCount>0) anoms.push({store:st.name,ym,metric:'Konsistensi',value:int(trxCount)+' trx',
+        note:`Ada ${int(trxCount)} transaksi tercatat tapi sales 0 — data Sales Type & Transaksi tidak sinkron.`});
+    }
+  });
+
+  /* ---------- tiles ringkasan ---------- */
+  const tl=el('div',{class:'grid g4'});
+  tl.append(tile('Cakupan data',expected.length?pct(covered.length/expected.length):'—',
+    `${int(covered.length)} dari ${int(expected.length)} toko×bulan terisi`,expected.length?covered.length/expected.length:null));
+  tl.append(tile('Toko×bulan hilang',int(expected.length-covered.length),'sudah lewat tanggalnya tapi belum ada sales',null,
+    el('span',{class:'pill '+((expected.length-covered.length)>0?'bad':'ok')},(expected.length-covered.length)>0?'Perlu dicek':'Lengkap')));
+  tl.append(tile('Sinkron terakhir',lastLog?new Date(lastLog.created_at).toLocaleString('id-ID',{dateStyle:'short',timeStyle:'short'}):'—',
+    lastLog?lastLog.file_name:'belum ada riwayat upload',null));
+  tl.append(tile('Anomali terdeteksi',int(anoms.length),'dari achievement, MoM, AOV & konsistensi',null,
+    el('span',{class:'pill '+(anoms.length?'bad':'ok')},anoms.length?'Ada temuan':'Bersih')));
+  p.append(tl);
+
+  /* ---------- matriks cakupan ---------- */
+  {
+    const heads=[H('TOKO',{s:1}),...MON3.map(m=>H(m,{r:1}))];
+    const rows=stores.map(st=>{
+      const rowCells=[st.name];
+      for(let m=1;m<=12;m++){ const c=cells.find(c=>c.store.id===st.id&&c.month===m);
+        rowCells.push(el('span',{class:'pill '+DT_STATUS_CLASS[c.status]},DT_STATUS_LABEL[c.status])); }
+      return rowCells;
+    });
+    p.append(card('Matriks cakupan per toko × bulan',`Tahun ${S.year} · Ada data = sales>0 · Kosong = sudah lewat tapi belum ada sales · Belum buka = sebelum opening_date toko · Belum waktunya = bulan di masa depan`,
+      mkTable(heads,rows)));
+  }
+
+  /* ---------- anomali ---------- */
+  if(anoms.length){
+    p.append(card('Anomali terdeteksi',`${anoms.length} temuan pada tahun ${S.year}`,
+      el('div',{class:'tw'},el('table',{},el('thead',{},el('tr',{},
+        ['TOKO','PERIODE','METRIK','NILAI','KETERANGAN'].map((h,i)=>el('th',{class:i===0?'sticky1':''},h)))),
+        el('tbody',{},anoms.map(a=>el('tr',{},
+          el('td',{class:'sticky1'},a.store), el('td',{},a.ym), el('td',{},a.metric),
+          el('td',{class:'mono'},a.value), el('td',{},a.note))))))));
+  } else {
+    p.append(el('div',{class:'note'},el('b',{},'Tidak ada anomali. '),'Tidak ada temuan achievement/MoM/AOV/konsistensi yang mencurigakan pada tahun '+S.year+'.'));
+  }
+
+  /* ---------- riwayat ingest_log ---------- */
+  if(S.logs.length){
+    const tb=el('tbody');
+    S.logs.forEach(l=>{ const st=S.stores.find(s=>s.id===l.store_id);
+      tb.append(el('tr',{},
+        el('td',{},new Date(l.created_at).toLocaleString('id-ID',{dateStyle:'short',timeStyle:'short'})),
+        el('td',{},l.kind), el('td',{class:'sticky1'},l.file_name),
+        el('td',{},st?st.name:'—'),
+        el('td',{},l.year&&l.month?MON3[l.month-1]+' '+l.year:'—'),
+        el('td',{class:'r'},int(l.rows_total)),
+        el('td',{class:'r'},int(l.rows_unmapped)),
+        el('td',{class:'r'},compact(l.total_amount)),
+        el('td',{},el('span',{class:'pill '+(l.status==='OK'?'ok':'bad')},l.status)))); });
+    p.append(card('Riwayat upload (ingest log)',`${S.logs.length} baris`,
+      el('div',{class:'tw'},el('table',{},el('thead',{},el('tr',{},
+        ['WAKTU','JENIS','FILE','TOKO','PERIODE','BARIS','BELUM MAP','NILAI','STATUS']
+          .map((h,i)=>el('th',{class:(i>4&&i<8?'r':'')+(i===2?' sticky1':'')},h)))),tb))));
+  } else {
+    p.append(el('div',{class:'empty'},el('b',{},'Belum ada riwayat upload'),'Mode contoh tidak menyimpan ingest_log — hubungkan Supabase untuk melihat riwayat yang sebenarnya.'));
+  }
 }
 
 /* =====================================================================
