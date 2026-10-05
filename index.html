@@ -683,7 +683,7 @@ const PAGES = [
   {g:'Analisis'},
   {id:'h2h',   t:'H2H Sales',       ic:'h2h'},
   {id:'sssg',  t:'Same Store Sales Growth', ic:'sssg'},
-  {id:'breakdown', t:'Breakdown Problem (5 Why)', ic:'breakdown'},
+  {id:'breakdown', t:'Breakdown Problem', ic:'breakdown'},
   {id:'mkt',   t:'Marketplace',     ic:'mkt'},
   {id:'brand', t:'Brand Performance', ic:'brand'},
   {id:'top',   t:'Top Product',     ic:'top'},
@@ -1259,10 +1259,50 @@ function legend(series){
   series.forEach(s=>d.append(el('span',{},el('i',{style:`background:${s.color}`}),s.name)));
   return d;
 }
+/* item 9 (ronde ini): tiap grafik bisa disalin langsung sebagai gambar (PNG) ke clipboard, supaya
+   bisa ditempel (Ctrl+V) langsung ke slide presentasi tanpa screenshot manual. SVG di-render ke
+   <canvas> dengan latar diisi solid (SVG transparan akan terlihat aneh di slide putih), dirender
+   2x lipat ukuran tampilan supaya tetap tajam saat diperbesar di slide. Fallback kalau Clipboard
+   API gambar tidak didukung (browser lama/Safari versi lama): unduh sebagai file .png saja. */
+async function copyChartAsImage(host,btn){
+  const svg=host&&host.querySelector('svg');
+  if(!svg){ toast('Tidak ada grafik untuk disalin di kartu ini.'); return; }
+  const old=btn.textContent;
+  try{
+    btn.disabled=true; btn.textContent='Menyiapkan…';
+    const rect=svg.getBoundingClientRect();
+    const scale=2, w=Math.max(1,Math.round(rect.width*scale)), h=Math.max(1,Math.round(rect.height*scale));
+    const clone=svg.cloneNode(true);
+    clone.setAttribute('width',String(rect.width)); clone.setAttribute('height',String(rect.height));
+    clone.setAttribute('xmlns','http://www.w3.org/2000/svg');
+    const xml=new XMLSerializer().serializeToString(clone);
+    const svgUrl='data:image/svg+xml;charset=utf-8;base64,'+btoa(unescape(encodeURIComponent(xml)));
+    const img=new Image();
+    await new Promise((res,rej)=>{ img.onload=res; img.onerror=()=>rej(new Error('gagal memuat SVG')); img.src=svgUrl; });
+    const canvas=document.createElement('canvas'); canvas.width=w; canvas.height=h;
+    const ctx=canvas.getContext('2d');
+    const bg=(getComputedStyle(document.body).backgroundColor)||'#ffffff';
+    ctx.fillStyle=bg; ctx.fillRect(0,0,w,h);
+    ctx.drawImage(img,0,0,w,h);
+    const blob=await new Promise(res=>canvas.toBlob(res,'image/png'));
+    if(!blob) throw new Error('gagal membuat gambar');
+    try{
+      await navigator.clipboard.write([new ClipboardItem({'image/png':blob})]);
+      toast('Grafik disalin — tempel (Ctrl+V) langsung ke slide presentasi.');
+    }catch(e2){
+      const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='grafik.png'; a.click();
+      toast('Browser ini tidak mendukung salin gambar — grafik diunduh sebagai PNG.');
+    }
+  }catch(e){ toast('Gagal menyalin grafik: '+e.message); }
+  btn.disabled=false; btn.textContent=old;
+}
 function chartCard(title, sub, node, extra){
   const c=el('div',{class:'card'});
-  c.append(el('header',{},el('h2',{},title), sub?el('span',{class:'sub'},sub):null, extra?el('span',{class:'spacer'}):null, extra||null));
-  c.append(el('div',{class:'chart'},node));
+  const chartWrap=el('div',{class:'chart'},node);
+  const copyBtn=el('button',{class:'btn sm',type:'button',title:'Salin grafik ini sebagai gambar — tempel langsung ke slide presentasi (Ctrl+V)',
+    onclick:e=>copyChartAsImage(chartWrap,e.currentTarget)},'⧉ Salin ke slide');
+  c.append(el('header',{},el('h2',{},title), sub?el('span',{class:'sub'},sub):null, el('span',{class:'spacer'}), extra||null, copyBtn));
+  c.append(chartWrap);
   return c;
 }
 
@@ -3318,6 +3358,24 @@ function trendColor(ratio){
 }
 function trendBg(ratio){ const c=trendColor(ratio); return `color-mix(in srgb, ${c} 14%, transparent)`; }
 function trendBorder(ratio){ const c=trendColor(ratio); return `color-mix(in srgb, ${c} 40%, transparent)`; }
+/* item 8 (ronde ini): gradien BESAR/KECIL untuk kolom net sales yang diurutkan dari terbesar ke
+   terkecil — beda tujuan dari trendColor() di atas (itu soal arah naik/turun, hijau/merah). Ini
+   soal rank: baris net sales paling besar = warna paling pekat/terang, makin kecil nilainya makin
+   pudar — supaya urutan besar→kecil langsung "kebaca" dari warnanya juga, bukan cuma posisi baris. */
+function magColor(v,max){
+  if(v==null||!isFinite(v)||!max||max<=0) return 'var(--ink)';
+  const frac=Math.max(0,Math.min(1,v/max));
+  const intensity=Math.round((0.35+Math.sqrt(frac)*0.65)*100);
+  return `color-mix(in srgb, var(--accent) ${intensity}%, var(--ink-2))`;
+}
+function magCell(v,max,txt){ return el('span',{style:`color:${magColor(v,max)};font-weight:700`},txt); }
+/* item 1 (ronde ini): pengganti paragraf metodologi yang panjang — daftar poin ringkas, bukan
+   prosa. Dipakai di SSSG dan bisa dipakai ulang di tempat lain yang butuh catatan serupa. */
+function noteList(title,points){
+  return el('div',{class:'note'},el('b',{},title),
+    el('ul',{style:'margin:7px 0 0;padding-left:18px;display:flex;flex-direction:column;gap:4px'},
+      points.filter(Boolean).map(pt=>el('li',{},pt))));
+}
 function growthPill(cur,prev){
   if(prev==null||!(prev>0)) return el('span',{style:'color:var(--muted)'},'');          // tanpa pembanding → kosong
   const g=(cur-prev)/prev, c=trendColor(g);
@@ -3603,10 +3661,11 @@ function renderH2H(){
      y2-vs-y1 dibuang (digantikan dua banding langsung thd y3 yang diminta pengguna). */
   {
     const heads=[H('TOKO',{s:1}),...st.y.map(y=>H('SALES '+y,{r:1})),H(`Δ ${y3} VS ${y2}`,{r:1}),H(`GAP ${y3}-${y2}`,{r:1}),H(`Δ ${y3} VS ${y1}`,{r:1}),H(`GAP ${y3}-${y1}`,{r:1}),H(`TARGET ${y3}`,{r:1}),H(`ACHIEV ${y3}`,{r:1})];
+    const maxSalesY3=liveIds.length?G(y3,liveIds[0],'sales'):0;   // liveIds sudah terurut y3 desc (lihat ids.sort di atas)
     const rows=liveIds.map(id=>{ const a=G(y1,id,'sales'),b=G(y2,id,'sales'),c=G(y3,id,'sales'),t=G(y3,id,'tgt');
-      return [names.get(id),compact(a),compact(b),compact(c),growthPill(c,b),gapTxt(c,b),growthPill(c,a),gapTxt(c,a),compact(t),pillCell(t>0?c/t:null)]; });
+      return [names.get(id),compact(a),compact(b),magCell(c,maxSalesY3,compact(c)),growthPill(c,b),gapTxt(c,b),growthPill(c,a),gapTxt(c,a),compact(t),pillCell(t>0?c/t:null)]; });
     const tt=T(y3,'tgt');
-    p.append(card('Sales per toko',ymLabel(y1,m1,m2)+' · '+ymLabel(y2,m1,m2)+' · '+ymLabel(y3,m1,m2),
+    p.append(card('Sales per toko',ymLabel(y1,m1,m2)+' · '+ymLabel(y2,m1,m2)+' · '+ymLabel(y3,m1,m2)+' · diurutkan sales '+y3+' terbesar→terkecil',
       mkTable(heads,rows,['TOTAL',...st.y.map(y=>compact(T(y,'sales'))),
         growthPill(T(y3,'sales'),T(y2,'sales')),gapTxt(T(y3,'sales'),T(y2,'sales')),
         growthPill(T(y3,'sales'),T(y1,'sales')),gapTxt(T(y3,'sales'),T(y1,'sales')),compact(tt),pillCell(tt>0?T(y3,'sales')/tt:null)])));
@@ -3651,7 +3710,10 @@ function renderH2H(){
       const mk=(dim,title,keyCell,limit)=>{
         const mg=mergeRoll(res[dim]);
         let arr=[...mg.entries()].filter(([k])=>!(dim==='color'&&k==='(Tanpa warna)')&&!(dim==='size'&&k==='(Tanpa size)'));
-        arr.sort((a,b)=>(b[1][2]?.qty||0)-(a[1][2]?.qty||0)||(b[1][1]?.qty||0)-(a[1][1]?.qty||0));
+        /* item 8 (ronde ini): diurutkan dari NET SALES y3 terbesar→terkecil (bukan qty) — tabel ini
+           menonjolkan NET SALES, jadi urutan & gradasi warnanya ikut metrik itu juga. */
+        arr.sort((a,b)=>(b[1][2]?.sales||0)-(a[1][2]?.sales||0));
+        const maxN=arr.length?(arr[0][1][2]?.sales||0):0;
         /* round 7 item 2: tambah NET SALES GAP y3/y2. round 8 item 3: tambah kolom banding LANGSUNG
            y3 vs y1 (qty growth & net sales growth+gap), selain y3 vs y2 yang sudah ada — kolom
            y2-vs-y1 (qty) dibuang supaya tabel 5-dimensi ini tidak makin lebar. */
@@ -3659,10 +3721,10 @@ function renderH2H(){
           H(`NET SALES ${y3}`,{r:1}),H(`Δ NET ${y3}/${y2}`,{r:1}),H(`NET SALES GAP ${y3}/${y2}`,{r:1}),H(`Δ NET ${y3}/${y1}`,{r:1}),H(`NET SALES GAP ${y3}/${y1}`,{r:1})];
         const rows=arr.slice(0,limit).map(([k,v])=>{ const q=v.map(x=>x?x.qty:0), n=v.map(x=>x?x.sales:0);
           return [keyCell(k),...q.map(x=>int(x)),growthPill(q[2],q[1]),growthPill(q[2],q[0]),
-            compact(n[2]),growthPill(n[2],n[1]),gapTxt(n[2],n[1]),growthPill(n[2],n[0]),gapTxt(n[2],n[0])]; });
+            magCell(n[2],maxN,compact(n[2])),growthPill(n[2],n[1]),gapTxt(n[2],n[1]),growthPill(n[2],n[0]),gapTxt(n[2],n[0])]; });
         const tot=res[dim].map(r=>r.reduce((s,x)=>s+x.qty,0));
         const totN=res[dim].map(r=>r.reduce((s,x)=>s+x.sales,0));
-        return card(`Item sales per ${title.toLowerCase()}`,`${ymLabel(y1,m1,m2)} · ${ymLabel(y2,m1,m2)} · ${ymLabel(y3,m1,m2)}`,
+        return card(`Item sales per ${title.toLowerCase()}`,`${ymLabel(y1,m1,m2)} · ${ymLabel(y2,m1,m2)} · ${ymLabel(y3,m1,m2)} · diurutkan NET SALES ${y3} terbesar→terkecil`,
           mkTable(heads,rows,dim==='store'||dim==='category'?['TOTAL',...tot.map(x=>int(x)),growthPill(tot[2],tot[1]),growthPill(tot[2],tot[0]),
             compact(totN[2]),growthPill(totN[2],totN[1]),gapTxt(totN[2],totN[1]),growthPill(totN[2],totN[0]),gapTxt(totN[2],totN[0])]:null));
       };
@@ -3708,10 +3770,17 @@ function sssgInit(){
   }
   return S.sssg;
 }
+/* round 11 item 2: y (tahun berjalan/y3) KINI TERKUNCI ke tahun kalender berjalan sebenarnya
+   (h2hCurrentYear() — sama persis dengan H2H), TIDAK LAGI ikut tahun dari tanggal "Sampai tanggal"
+   yang dipilih user. Hanya bulan & tanggal (m/day) dari date-picker itu yang dipakai sbg cut-off
+   jendela — direplikasi ke setiap tahun yang dibandingkan (lihat sssgWindowAnchor/sssgStoreWindowData
+   di bawah), persis seperti diminta: toko buka 23 Mar 2025 → jendela 23 Mar–cutoff di SETIAP tahun
+   (2025: 23 Mar 2025–cutoff; 2026: 23 Mar 2026–cutoff). */
 function sssgCutoffParsed(st){
+  const y3=h2hCurrentYear();
   const d=new Date((st.cutoffTo||'')+'T00:00:00');
-  if(isNaN(d)){ const t=new Date(); return {y:t.getFullYear(),m:t.getMonth()+1,day:t.getDate(),label:t.toLocaleDateString('id-ID',{dateStyle:'long'})}; }
-  return {y:d.getFullYear(),m:d.getMonth()+1,day:d.getDate(),label:d.toLocaleDateString('id-ID',{dateStyle:'long'})};
+  if(isNaN(d)){ const t=new Date(); return {y:y3,m:t.getMonth()+1,day:t.getDate(),label:t.toLocaleDateString('id-ID',{dateStyle:'long'})}; }
+  return {y:y3,m:d.getMonth()+1,day:d.getDate(),label:d.toLocaleDateString('id-ID',{dateStyle:'long'})};
 }
 /* Tanggal buka toko sebagai {m,day,year} — null kalau tidak ada opening_date atau tak valid */
 function sssgOpenMD(store){
@@ -3796,13 +3865,16 @@ function renderSSSG(){
   const idsFull=idsAll.filter(id=>hasY(y1,id)&&hasY(y3,id));  // valid same-window utk y3 vs y1 (3 tahun)
   const T=(y,k,set)=>set.reduce((s,id)=>s+G(y,id,k),0);
 
-  p.append(el('div',{class:'note'},el('b',{},'Metodologi SSSG (round 10). '),
-    `Setiap toko dibandingkan pada jendela [tanggal buka toko] → [${cf.label}], direplikasi persis di tiap tahun yang dibandingkan — BUKAN selalu 1 Jan. `+
-    `Database ini hanya punya sales bulanan (tidak ada rincian harian), jadi bulan pembuka & bulan cut-off jendela diperkirakan proporsional: sales bulan itu dibagi rata per hari lalu dikalikan jumlah hari yang termasuk jendela — sama seperti teknik cut-off H2H. Bulan-bulan penuh di antaranya dihitung 100% apa adanya; ini perkiraan yang jujur, bukan angka harian asli. `+
-    `Toko hanya dikeluarkan sepenuhnya kalau TIDAK punya opening_date, atau tanggal "ulang tahun buka"-nya belum lewat dibanding cut-off yang dipilih (window-nya jadi negatif di tahun manapun). `+
-    (noAnchor.length? `Saat ini tidak bisa dibandingkan pada cut-off ini: ${noAnchor.join(', ')}.` : `Semua toko pada cakupan filter saat ini bisa dibandingkan pada cut-off ini.`)));
+  p.append(noteList('Metodologi SSSG.',[
+    `Tiap toko dibandingkan pada jendela [tanggal buka toko] → [${cf.label}], direplikasi persis di tiap tahun yang dibandingkan (bukan selalu 1 Januari).`,
+    `Contoh: toko buka 23 Maret 2025 → jendelanya 23 Mar 2025–cut-off di tahun 2025, DAN 23 Mar 2026–cut-off di tahun 2026 — tanggal buka yang sama dipakai tiap tahun.`,
+    `Tahun berjalan (${y3}) terkunci ke tahun kalender sekarang — tidak ikut berubah walau tanggal cut-off yang dipilih diganti.`,
+    `Bulan pembuka & bulan cut-off diperkirakan proporsional per hari (database hanya punya sales bulanan, bukan harian) — sama seperti teknik cut-off di H2H. Bulan-bulan penuh di antaranya dihitung 100% apa adanya.`,
+    `Toko dikeluarkan sepenuhnya hanya kalau TIDAK punya opening_date, atau "ulang tahun buka"-nya belum lewat dibanding cut-off yang dipilih.`,
+    noAnchor.length?`Tidak bisa dibandingkan pada cut-off ini: ${noAnchor.join(', ')}.`:`Semua toko pada cakupan filter saat ini bisa dibandingkan.`
+  ]));
 
-  /* ---------- tiles ---------- */
+  /* ---------- tiles — item 2: 2024 vs 2026 (y1 vs y3) dan 2025 vs 2026 (y2 vs y3) lengkap dgn growth & GAP ---------- */
   const tl=el('div',{class:'grid g4'});
   const s3_2=T(y3,'sales',idsY2), s2_2=T(y2,'sales',idsY2);
   const g32=s2_2>0?(s3_2-s2_2)/s2_2:null;
@@ -3810,11 +3882,15 @@ function renderSSSG(){
   const g31=s1_1>0?(s3_1-s1_1)/s1_1:null;
   tl.append(tile(`SSSG ${y3} vs ${y2}`,pct(g32),`${idsY2.length} toko same-window · ${compact(s3_2)} vs ${compact(s2_2)}`,null,
     g32==null?el('span',{class:'pill neu'},'—'):el('span',{class:'pill '+(g32>=0?'ok':'bad')},g32>=0?'Tumbuh':'Turun')));
+  tl.append(tile(`GAP ${y3} vs ${y2}`,s2_2>0?compact(s3_2-s2_2):'—',`${compact(s3_2)} (${y3}) − ${compact(s2_2)} (${y2})`,null));
   tl.append(tile(`SSSG ${y3} vs ${y1}`,pct(g31),`${idsFull.length} toko same-window · ${compact(s3_1)} vs ${compact(s1_1)}`,null,
     g31==null?el('span',{class:'pill neu'},'—'):el('span',{class:'pill '+(g31>=0?'ok':'bad')},g31>=0?'Tumbuh':'Turun')));
-  tl.append(tile('GAP sales (same-window) '+y3+'/'+y2,s2_2>0?compact(s3_2-s2_2):'—','selisih absolut, toko dgn window valid thd '+y2+' saja',null));
-  tl.append(tile('Toko ikut dibandingkan',`${idsY2.length} / ${idsAll.length}`,'punya window valid thd '+y2+' · total toko pada cakupan filter',null));
+  tl.append(tile(`GAP ${y3} vs ${y1}`,s1_1>0?compact(s3_1-s1_1):'—',`${compact(s3_1)} (${y3}) − ${compact(s1_1)} (${y1})`,null));
   p.append(tl);
+  const tl2=el('div',{class:'grid g4'});
+  tl2.append(tile('Toko ikut — vs '+y2,`${idsY2.length} / ${idsAll.length}`,'punya window valid thd '+y2+' · total toko pada cakupan filter',null));
+  tl2.append(tile('Toko ikut — vs '+y1,`${idsFull.length} / ${idsAll.length}`,'punya window valid thd '+y1+' (3 tahun penuh) · total toko pada cakupan filter',null));
+  p.append(tl2);
 
   /* ---------- chart per bulan same-window (idsY2) — pendekatan: pakai sales bulanan apa adanya (tanpa
      pecahan hari) utk visual tren, karena jendela awal tiap toko berbeda-beda sehingga sumbu bulan Jan–Des
@@ -3824,6 +3900,20 @@ function renderSSSG(){
   const serSS=[y1,y2,y3].map((y,i)=>({name:String(y),color:cols[i],vals:monSS(y,idsY2)}));
   p.append(chartCard('Sales per bulan, toko same-window ('+y2+' & '+y3+')','bulan kalender penuh (ilustratif) — angka jendela presisi per toko ada di tabel di bawah',
     el('div',{},legend(serSS),groupedBars(MON3,serSS,{h:300}))));
+
+  /* ---------- Bulan demi bulan (same-window idsY2 & idsFull) — item 4: section yang ada di H2H tapi
+     belum ada di SSSG. Dihitung dari sales kalender bulanan apa adanya (sama seperti chart di atas,
+     bukan pecahan hari) karena jendela per-toko tidak selaras ke kalender Jan–Des yang sama. ---------- */
+  {
+    const serM={y1:monSS(y1,idsFull),y2:monSS(y2,idsY2),y3fory2:monSS(y3,idsY2),y3fory1:monSS(y3,idsFull)};
+    const heads=[H('BULAN',{s:1}),H('SALES '+y1,{r:1}),H('SALES '+y2,{r:1}),H('SALES '+y3,{r:1}),H(`Δ ${y3} VS ${y2}`,{r:1}),H(`GAP ${y3}-${y2}`,{r:1}),H(`Δ ${y3} VS ${y1}`,{r:1}),H(`GAP ${y3}-${y1}`,{r:1})];
+    const rows=MONTHS.map((mn,i)=>{ const a=serM.y1[i],b=serM.y2[i],c2=serM.y3fory2[i],c1=serM.y3fory1[i];
+      if(!a&&!b&&!c2&&!c1) return null;
+      return [mn,compact(a),compact(b),compact(c2),growthPill(c2,b),gapTxt(c2,b),growthPill(c1,a),gapTxt(c1,a)]; }).filter(Boolean);
+    const totA=serM.y1.reduce((s,v)=>s+v,0), totB=serM.y2.reduce((s,v)=>s+v,0), totC2=serM.y3fory2.reduce((s,v)=>s+v,0), totC1=serM.y3fory1.reduce((s,v)=>s+v,0);
+    p.append(card('Bulan demi bulan (same-window)','sales bulanan toko same-window — kolom '+y3+' vs '+y2+' pakai cakupan idsY2, kolom '+y3+' vs '+y1+' pakai cakupan idsFull (3 tahun penuh)',
+      mkTable(heads,rows,['TOTAL (12 bln)',compact(totA),compact(totB),compact(totC2),growthPill(totC2,totB),gapTxt(totC2,totB),growthPill(totC1,totA),gapTxt(totC1,totA)])));
+  }
 
   /* ---------- transaksi & AOV (same-window idsY2) ---------- */
   {
@@ -3844,14 +3934,16 @@ function renderSSSG(){
     const dash=()=>'—';
     const heads=[H('TOKO',{s:1}),H('BUKA SEJAK',{r:1}),...[y1,y2,y3].map(y=>H('SALES '+y,{r:1})),
       H(`Δ ${y3} VS ${y2}`,{r:1}),H(`GAP ${y3}-${y2}`,{r:1}),H(`Δ ${y3} VS ${y1}`,{r:1}),H(`GAP ${y3}-${y1}`,{r:1}),H(`TARGET ${y3}`,{r:1}),H(`ACHIEV ${y3}`,{r:1})];
-    const rows=idsAll.sort((a,b)=>G(y3,b,'sales')-G(y3,a,'sales')).map(id=>{
+    const rowsRaw=idsAll.sort((a,b)=>G(y3,b,'sales')-G(y3,a,'sales'));  // item 8: diurutkan besar→kecil berdasar sales y3
+    const maxSales=rowsRaw.length?G(y3,rowsRaw[0],'sales'):0;
+    const rows=rowsRaw.map(id=>{
       const rec=D.get(id);
       const a=hasY(y1,id)?G(y1,id,'sales'):null, b=hasY(y2,id)?G(y2,id,'sales'):null, c=hasY(y3,id)?G(y3,id,'sales'):null, t=G(y3,id,'tgt');
       const e2=hasY(y2,id)&&hasY(y3,id), e1=hasY(y1,id)&&hasY(y3,id);
-      return [names.get(id), rec.opening_date||'—', a==null?dash():compact(a), b==null?dash():compact(b), c==null?dash():compact(c),
+      return [names.get(id), rec.opening_date||'—', a==null?dash():compact(a), b==null?dash():compact(b), c==null?dash():magCell(c,maxSales,compact(c)),
         e2?growthPill(c,b):dash(), e2?gapTxt(c,b):'', e1?growthPill(c,a):dash(), e1?gapTxt(c,a):'',
         compact(t), pillCell(t>0&&c!=null?c/t:null)]; });
-    p.append(card('Sales per toko (jendela per toko)','Δ/GAP tampil untuk setiap toko yang punya ≥2 tahun dengan window valid pada cut-off ini; "—" hanya untuk tahun yang benar-benar belum ada (toko belum berdiri, atau window tak valid pada cut-off ini — lihat catatan metodologi di atas)',
+    p.append(card('Sales per toko (jendela per toko)','Diurutkan sales '+y3+' terbesar→terkecil (gradasi warna). Δ/GAP tampil untuk setiap toko yang punya ≥2 tahun dengan window valid pada cut-off ini; "—" hanya untuk tahun yang benar-benar belum ada (toko belum berdiri, atau window tak valid pada cut-off ini — lihat catatan metodologi di atas)',
       mkTable(heads,rows)));
   }
 
@@ -3864,31 +3956,58 @@ function renderSSSG(){
       mkTable(heads,[mkRow('KOMERSIAL',y=>T(y,'kom',idsY2)),mkRow('USER',y=>T(y,'usr',idsY2))])));
   }
 
+  /* ---------- Rincian Brand per Segmen (same-window idsY2) — item 4: section H2H yang belum ada di SSSG.
+     KOMERSIAL MAMU sengaja tidak diikutkan, sama persis kebijakan di H2H. ---------- */
+  {
+    const heads=[H('SEGMEN',{s:1}),...[y1,y2,y3].map(y=>H(String(y),{r:1})),H(`Δ ${y3} VS ${y2}`,{r:1}),H(`GAP ${y3}-${y2}`,{r:1}),H('PORSI '+y3,{r:1})];
+    const tot=T(y3,'kom',idsY2)+T(y3,'usr',idsY2);
+    const mkRow=(n,vfn)=>{ const v=[y1,y2,y3].map(y=>vfn(y)); return [n,...v.map(x=>compact(x)),growthPill(v[2],v[1]),gapTxt(v[2],v[1]),pct(tot?v[2]/tot:null)]; };
+    p.append(card('Rincian Brand per Segmen (same-window)','Komersial Tigalapan, User Tigalapan, dan User Mamu — toko dgn window valid thd '+y2,
+      mkTable(heads,[mkRow('KOMERSIAL TIGALAPAN',y=>T(y,'kt',idsY2)),mkRow('USER TIGALAPAN',y=>T(y,'ut',idsY2)),mkRow('USER MAMU',y=>T(y,'um',idsY2))])));
+  }
+
+  /* ---------- Segmen per toko (same-window idsY2) — item 4: section H2H yang belum ada di SSSG ---------- */
+  {
+    const heads=[H('TOKO',{s:1}),...[y1,y2,y3].map(y=>H('KOMERSIAL '+y,{r:1})),H(`Δ KOM ${y3}/${y2}`,{r:1}),H(`GAP KOM ${y3}-${y2}`,{r:1}),
+      ...[y1,y2,y3].map(y=>H('USER '+y,{r:1})),H(`Δ USER ${y3}/${y2}`,{r:1}),H(`GAP USER ${y3}-${y2}`,{r:1})];
+    const rows=idsY2.slice().sort((a,b)=>G(y3,b,'sales')-G(y3,a,'sales')).map(id=>[names.get(id),...[y1,y2,y3].map(y=>compact(G(y,id,'kom'))),
+      growthPill(G(y3,id,'kom'),G(y2,id,'kom')),gapTxt(G(y3,id,'kom'),G(y2,id,'kom')),
+      ...[y1,y2,y3].map(y=>compact(G(y,id,'usr'))),growthPill(G(y3,id,'usr'),G(y2,id,'usr')),gapTxt(G(y3,id,'usr'),G(y2,id,'usr'))]);
+    p.append(card('Segmen per toko (same-window)',`${y1}/${y2}/${y3} · diurutkan sales ${y3} terbesar→terkecil`,mkTable(heads,rows)));
+  }
+
   /* ---------- item sales (same-window penuh, idsFull — angka konsisten 3 tahun; m1/m2 kalender penuh
-     dipakai sbg pendekatan krn item_rollup tidak mendukung pecahan hari per toko) ---------- */
+     dipakai sbg pendekatan krn item_rollup tidak mendukung pecahan hari per toko). item 4: diperluas
+     dari 2 dimensi (toko/kategori) ke 5 dimensi persis seperti H2H (toko/kategori/produk/warna/ukuran). ---------- */
   const host=el('div',{style:'display:flex;flex-direction:column;gap:18px'});
   p.append(host);
   host.append(el('div',{class:'empty'},'Memuat item sales same-window…'));
   (async()=>{
     try{
-      const dims=['store','category'];
-      const res={}; await Promise.all(dims.map(async d=>{ res[d]=await Promise.all([y1,y2,y3].map(y=>rollup(d,y,1,cutoffM,{limit:d==='store'?60:40,stores:idsFull}))); }));
+      const dims=['store','category','product','color','size'];
+      const res={}; await Promise.all(dims.map(async d=>{ res[d]=await Promise.all([y1,y2,y3].map(y=>rollup(d,y,1,cutoffM,{limit:d==='product'?400:d==='store'?60:40,stores:idsFull}))); }));
       host.innerHTML='';
-      const mk=(dim,title,limit)=>{
+      const mk=(dim,title,keyCell,limit)=>{
         const mg=mergeRoll(res[dim]);
-        let arr=[...mg.entries()];
-        arr.sort((a,b)=>(b[1][2]?.qty||0)-(a[1][2]?.qty||0));
+        let arr=[...mg.entries()].filter(([k])=>!(dim==='color'&&k==='(Tanpa warna)')&&!(dim==='size'&&k==='(Tanpa size)'));
+        /* item 8: diurutkan dari NET SALES tahun berjalan (y3) terbesar→terkecil, bukan qty — tabel ini
+           soal net sales, jadi urutannya ikut net sales, sama seperti kolom bergradasinya. */
+        arr.sort((a,b)=>(b[1][2]?.sales||0)-(a[1][2]?.sales||0));
+        const maxN=arr.length?(arr[0][1][2]?.sales||0):0;
         const heads=[H(title,{s:1}),...[y1,y2,y3].map(y=>H('ITEM '+y,{r:1})),H(`Δ ITEM ${y3} VS ${y2}`,{r:1}),
           H(`NET SALES ${y3}`,{r:1}),H(`Δ NET ${y3}/${y2}`,{r:1}),H(`NET SALES GAP ${y3}/${y2}`,{r:1})];
         const rows=arr.slice(0,limit).map(([k,v])=>{ const q=v.map(x=>x?x.qty:0), n=v.map(x=>x?x.sales:0);
-          return [k,...q.map(x=>int(x)),growthPill(q[2],q[1]),compact(n[2]),growthPill(n[2],n[1]),gapTxt(n[2],n[1])]; });
+          return [keyCell(k),...q.map(x=>int(x)),growthPill(q[2],q[1]),magCell(n[2],maxN,compact(n[2])),growthPill(n[2],n[1]),gapTxt(n[2],n[1])]; });
         const tot=res[dim].map(r=>r.reduce((s,x)=>s+x.qty,0));
         const totN=res[dim].map(r=>r.reduce((s,x)=>s+x.sales,0));
-        return card(`Item sales per ${title.toLowerCase()} (same-window penuh)`,`${idsFull.length} toko · ${y1}/${y2}/${y3} · Jan–${MON3[cutoffM-1]} (pendekatan kalender)`,
-          mkTable(heads,rows,['TOTAL',...tot.map(x=>int(x)),growthPill(tot[2],tot[1]),compact(totN[2]),growthPill(totN[2],totN[1]),gapTxt(totN[2],totN[1])]));
+        return card(`Item sales per ${title.toLowerCase()} (same-window penuh)`,`${idsFull.length} toko · ${y1}/${y2}/${y3} · Jan–${MON3[cutoffM-1]} (pendekatan kalender) · diurutkan NET SALES ${y3} terbesar→terkecil`,
+          mkTable(heads,rows,dim==='store'||dim==='category'?['TOTAL',...tot.map(x=>int(x)),growthPill(tot[2],tot[1]),compact(totN[2]),growthPill(totN[2],totN[1]),gapTxt(totN[2],totN[1])]:null));
       };
-      host.append(mk('store','Toko',60));
-      host.append(mk('category','Kategori',40));
+      host.append(mk('store','Toko',k=>k,60));
+      host.append(mk('category','Kategori',k=>k,40));
+      host.append(mk('product','Produk',k=>k,60));
+      host.append(mk('color','Warna',k=>colorChip(k),30));
+      host.append(mk('size','Ukuran',k=>k,20));
     }catch(e){ host.innerHTML=''; host.append(el('div',{class:'note warn'},'Gagal memuat item sales: '+e.message)); }
   })();
 }
@@ -3948,17 +4067,20 @@ function renderMkt(){
   /* ringkasan + analisis per channel */
   const sumHeads=[H('CHANNEL',{s:1}),H('SALES',{r:1}),H('TARGET',{r:1}),H('ACHIEV',{r:1}),H('GAP',{r:1}),H('TRANSAKSI',{r:1}),H('AOV',{r:1}),
     H(`SALES ${S.year-1}`,{r:1}),H('GROWTH',{r:1}),H('GAP GROWTH',{r:1}),H('PORSI THD TOTAL',{r:1})];
-  const sumRows=chs.map(ch=>{ const rr=mktRows(S.year,m1,m2,ch), s=rr.reduce((a,r)=>a+N(r.amount),0), c=rr.reduce((a,r)=>a+N(r.trx),0);
+  const chSales=ch=>mktRows(S.year,m1,m2,ch).reduce((a,r)=>a+N(r.amount),0);
+  const chsSorted=chs.slice().sort((a,b)=>chSales(b)-chSales(a));   // item 8: diurutkan sales terbesar→terkecil
+  const maxChSales=chsSorted.length?chSales(chsSorted[0]):0;
+  const sumRows=chsSorted.map(ch=>{ const rr=mktRows(S.year,m1,m2,ch), s=rr.reduce((a,r)=>a+N(r.amount),0), c=rr.reduce((a,r)=>a+N(r.trx),0);
     const t=chanTarget(ch,S.year,m1,m2), py=mktRows(S.year-1,m1,m2,ch).reduce((a,r)=>a+N(r.amount),0);
-    return [ch,compact(s),t>0?compact(t):'—',pillCell(t>0?s/t:null),t>0?compact(s-t):'—',int(c),c>0?rp(s/c):'—',py>0?compact(py):'',growthPill(s,py),gapTxt(s,py),pct(allSales?s/allSales:null)]; });
-  p.append(card('Pencapaian per channel',ymLabel(S.year,m1,m2),mkTable(sumHeads,sumRows)));
+    return [ch,magCell(s,maxChSales,compact(s)),t>0?compact(t):'—',pillCell(t>0?s/t:null),t>0?compact(s-t):'—',int(c),c>0?rp(s/c):'—',py>0?compact(py):'',growthPill(s,py),gapTxt(s,py),pct(allSales?s/allSales:null)]; });
+  p.append(card('Pencapaian per channel',ymLabel(S.year,m1,m2)+' · diurutkan sales terbesar→terkecil',mkTable(sumHeads,sumRows)));
 
   /* grafik per bulan per channel — round 7 item 6: SEBELUMNYA ditaruh dalam grid 2 kolom (g2) sehingga
      tiap chart groupedBars() tampil ±separuh lebar (teks/bar jadi kecil) dibanding chart H2H sepenuh-lebar
      yang memakai fungsi SAMA. Sekarang ditumpuk satu per baris, selebar card, agar ukurannya sepadan. */
   /* round 9 item 5: bar Sales/Target + garis Achievement digabung dalam SATU chart (comboBarsLine),
      bukan dua elemen (groupedBars + lineChart) ditumpuk seperti sebelumnya. */
-  chs.slice(0,2).forEach(ch=>{
+  chsSorted.slice(0,2).forEach(ch=>{
     const sales=MONTHS.map((_,i)=>mktRows(S.year,i+1,i+1,ch).reduce((a,r)=>a+N(r.amount),0));
     const tg=MONTHS.map((_,i)=>chanTarget(ch,S.year,i+1,i+1));
     const ser=[{name:'Sales',color:CH_COLOR[ch]||'var(--s1)',vals:sales},{name:'Target',color:'var(--grid)',vals:tg}];
@@ -3992,14 +4114,17 @@ function renderMkt(){
 
   /* per toko x channel */
   {
-    const stores=[...new Set(mktRows(S.year,m1,m2).map(r=>r.store_name))];
+    const stores=[...new Set(mktRows(S.year,m1,m2).map(r=>r.store_name))]
+      .sort((a,b)=>mktRows(S.year,m1,m2).filter(r=>r.store_name===b).reduce((s,r)=>s+N(r.amount),0)-mktRows(S.year,m1,m2).filter(r=>r.store_name===a).reduce((s,r)=>s+N(r.amount),0));  // item 8: diurutkan total marketplace terbesar→terkecil
     const heads=[H('TOKO',{s:1}),...chs.flatMap(ch=>[H(ch+' SALES',{r:1}),H(ch+' TRX',{r:1})]),H('TOTAL MARKETPLACE',{r:1}),H('PORSI THD SALES TOKO',{r:1})];
-    const rows=stores.map(n=>{ const cells=chs.flatMap(ch=>{ const rr=mktRows(S.year,m1,m2,ch).filter(r=>r.store_name===n);
+    const totals=stores.map(n=>mktRows(S.year,m1,m2).filter(r=>r.store_name===n).reduce((a,r)=>a+N(r.amount),0));
+    const maxStoreMkt=Math.max(0,...totals);
+    const rows=stores.map((n,i)=>{ const cells=chs.flatMap(ch=>{ const rr=mktRows(S.year,m1,m2,ch).filter(r=>r.store_name===n);
         return [compact(rr.reduce((a,r)=>a+N(r.amount),0)),int(rr.reduce((a,r)=>a+N(r.trx),0))]; });
-      const tt=mktRows(S.year,m1,m2).filter(r=>r.store_name===n).reduce((a,r)=>a+N(r.amount),0);
+      const tt=totals[i];
       const ss=S.dash.filter(r=>r.store_name===n&&r.month>=m1&&r.month<=m2).reduce((a,r)=>a+N(r.total_sales),0);
-      return [n,...cells,compact(tt),pct(ss?tt/ss:null)]; });
-    p.append(card('Marketplace per toko',ymLabel(S.year,m1,m2),mkTable(heads,rows)));
+      return [n,...cells,magCell(tt,maxStoreMkt,compact(tt)),pct(ss?tt/ss:null)]; });
+    p.append(card('Marketplace per toko',ymLabel(S.year,m1,m2)+' · diurutkan total marketplace terbesar→terkecil',mkTable(heads,rows)));
   }
   /* per bulan */
   {
@@ -4145,6 +4270,52 @@ function renderDataTrack(){
       mkTable(heads,rows)));
   });
 
+  /* ---------- item 5 (ronde ini): cakupan per JENIS DATA upload (Item Sales / Sales Type / Transaksi),
+     bukan cuma gabungannya seperti matriks sales di atas. Item Sales & Sales Type dicek dari riwayat
+     ingest_log (yang menyimpan store_id/year/month per upload); Transaksi dicek dari data aktualnya
+     (S.trxAll) karena upload Transaksi bisa satu file gabungan tanpa store/periode di ingest_log itu
+     sendiri. "Lainnya" (Target, Master produk/DATABASE STOCK, Database Sales Type) bukan data per
+     toko×bulan, jadi ditampilkan sebagai status upload terakhir saja. ---------- */
+  {
+    const hasItemLog=(sid,y,m)=>S.logs.some(l=>l.kind==='ITEM_SALES'&&l.store_id===sid&&l.year===y&&l.month===m&&l.status==='OK');
+    const hasSalesTypeLog=(sid,y,m)=>S.logs.some(l=>l.kind==='SALES_TYPE'&&l.store_id===sid&&l.year===y&&l.month===m&&l.status==='OK');
+    const hasTrx=(sid,y,m)=>S.trxAll.some(r=>r.store_id===sid&&r.year===y&&r.month===m&&N(r.jumlah_transaksi)>0);
+    const typeStatus=(fn,st,year,month)=>{
+      if(st.opening_date){ const d=new Date(st.opening_date+'T00:00:00');
+        if(!isNaN(d)&&(year<d.getFullYear()||(year===d.getFullYear()&&month<d.getMonth()+1))) return 'closed'; }
+      if(fn(st.id,year,month)) return 'ok';
+      const isFuture=year>todayY||(year===todayY&&month>todayM);
+      return isFuture?'future':'missing';
+    };
+    const monthsCovered=(fn,st,year)=>{ let c=0,expect=0; for(let m=1;m<=12;m++){ const s=typeStatus(fn,st,year,m); if(s==='closed'||s==='future') continue; expect++; if(s==='ok') c++; } return {c,expect}; };
+    const typeDefs=[['ITEM_SALES','Item Sales',hasItemLog,'item'],['SALES_TYPE','Sales Type',hasSalesTypeLog,'sales'],['TRANSAKSI',"Transaksi",hasTrx,'trx']];
+
+    /* ringkasan tiles per jenis, gabungan semua tahun yang ditampilkan */
+    const tl2=el('div',{class:'grid g4'});
+    typeDefs.forEach(([kindKey,label,fn])=>{
+      let c=0,e=0; years.forEach(y=>stores.forEach(st=>{ const r=monthsCovered(fn,st,y); c+=r.c; e+=r.expect; }));
+      tl2.append(tile('Cakupan '+label,e?pct(c/e):'—',`${int(c)} dari ${int(e)} toko×bulan terisi · ${years.join('/')}`,e?c/e:null));
+    });
+    const lastMap=S.logs.find(l=>l.kind==='MAPPING'), lastKpi=S.logs.find(l=>l.kind==='KPI');
+    tl2.append(tile('Master/Mapping terakhir',lastMap?new Date(lastMap.created_at).toLocaleDateString('id-ID',{dateStyle:'short'}):'—',
+      lastMap?lastMap.file_name:'belum pernah diupload (Target/Master produk/Database Sales Type)',null));
+    p.append(tl2);
+
+    /* tabel ringkas per toko: bulan terisi dari 12, per jenis data, per tahun ditampilkan */
+    const heads2=[H('TOKO',{s:1}),...years.flatMap(y=>typeDefs.map(([,label])=>H(label+' '+y,{r:1})))];
+    const rows2=stores.map(st=>[st.name,...years.flatMap(y=>typeDefs.map(([,,fn])=>{ const r=monthsCovered(fn,st,y);
+      return el('span',{class:'pill '+(r.expect===0?'neu':r.c===r.expect?'ok':r.c===0?'bad':'mid')},r.expect===0?'—':`${r.c}/${r.expect}`); }))]);
+    p.append(el('div',{class:'note warn'},el('b',{},'Cara baca tabel di bawah. '),
+      'Item Sales & Sales Type dideteksi dari riwayat upload (ingest_log) yang tercatat lewat halaman Upload Data — kalau datanya pernah dimasukkan langsung ke database lewat jalur lain (mis. muat-massal/sinkronisasi manual), sel bisa tertulis "Kosong" di sini padahal datanya sebenarnya SUDAH ada. '+
+      'Silakan silang-cek dengan "Matriks cakupan per toko × bulan" di atas (itu berdasar data sales yang benar-benar tersimpan, bukan riwayat upload) sebelum menyimpulkan ada data yang hilang. Transaksi di bawah ini sudah dicek dari data aktualnya, bukan riwayat upload, jadi lebih bisa diandalkan.'));
+    p.append(card('Cakupan per jenis data upload',`Jumlah bulan terisi dari bulan yang seharusnya sudah ada (di luar "belum buka"/"belum waktunya") · ${years.join(', ')}`,
+      mkTable(heads2,rows2)));
+    p.append(el('div',{class:'rowline',style:'flex-wrap:wrap'},
+      el('span',{class:'sub'},'Unggah data yang masih kosong di halaman Upload Data: '),
+      ...typeDefs.map(([,label])=>el('button',{class:'btn sm',onclick:()=>go('upload')},'⭱ '+label)),
+      el('button',{class:'btn sm',onclick:()=>go('upload')},'⭱ Target / Master / Database Sales Type')));
+  }
+
   /* ---------- anomali (disaring ke bulan terpilih bila ada) ---------- */
   if(allAnoms.length){
     p.append(card('Anomali terdeteksi',`${allAnoms.length} temuan pada tahun ${years.join(', ')}`+(mFilter?' · '+MONTHS[mFilter-1]:''),
@@ -4217,7 +4388,10 @@ function renderBrand(){
       const tQty=b0.reduce((s,r)=>s+r.qty,0), tSales=b0.reduce((s,r)=>s+r.sales,0);
       if(!b0.length){ host.append(el('div',{class:'empty'},el('b',{},'Belum ada data item sales pada filter ini'),'Item Sales dimuat dari Drive / Upload Data.')); return; }
       const order=['TIGALAPAN','MAMU','MYNO','DEFECT','LAINNYA'];
-      const names=[...new Set([...order.filter(b=>b0.some(r=>r.k===b)||BRAND_TARGET_KEY[b]),...b0.map(r=>r.k)])];
+      /* item 8 (ronde ini): urutan brand diurutkan NET SALES terbesar→terkecil, bukan urutan tetap. */
+      const names=[...new Set([...order.filter(b=>b0.some(r=>r.k===b)||BRAND_TARGET_KEY[b]),...b0.map(r=>r.k)])]
+        .sort((a,b)=>N(get0(b)?.sales)-N(get0(a)?.sales));
+      function get0(k){ return b0.find(r=>r.k===k); }
       const get=(arr,k)=>arr.find(r=>r.k===k)||{qty:0,sales:0,refunded:0};
       /* tiles */
       const tl=el('div',{class:'grid g4'});
@@ -4228,23 +4402,26 @@ function renderBrand(){
       /* tabel brand */
       const heads=[H('BRAND',{s:1}),H('ITEM SOLD',{r:1}),H('NET SALES',{r:1}),H('SHARE',{r:1}),H('TARGET',{r:1}),H('ACHIEV',{r:1}),H('GAP',{r:1}),
         H(`NET ${S.year-1}`,{r:1}),H('GROWTH',{r:1}),H('GAP GROWTH',{r:1}),H('HARGA RATA2',{r:1})];
+      const maxBrandSales=names.length?Math.max(...names.map(b=>N(get(b0,b).sales))):0;
       const rows=names.map(b=>{ const r=get(b0,b), py=get(b1,b), t=brandTarget(b,S.year,m1,m2);
-        return [brandChip(b),int(r.qty),compact(r.sales),pct(tSales?r.sales/tSales:null),t>0?compact(t):'—',pillCell(t>0?r.sales/t:null),t>0?compact(r.sales-t):'—',
+        return [brandChip(b),int(r.qty),magCell(r.sales,maxBrandSales,compact(r.sales)),pct(tSales?r.sales/tSales:null),t>0?compact(t):'—',pillCell(t>0?r.sales/t:null),t>0?compact(r.sales-t):'—',
           py.sales>0?compact(py.sales):'',growthPill(r.sales,py.sales),gapTxt(r.sales,py.sales),r.qty>0?rp(r.sales/r.qty):'—']; });
-      host.append(card('Performa per brand',ymLabel(S.year,m1,m2),mkTable(heads,rows)));
+      host.append(card('Performa per brand',ymLabel(S.year,m1,m2)+' · diurutkan net sales terbesar→terkecil',mkTable(heads,rows)));
       /* chart brand vs target */
       const achItems=['TIGALAPAN','MAMU','MYNO'].map(b=>{ const r=get(b0,b), t=brandTarget(b,S.year,m1,m2);
         return t>0?{label:b,v:r.sales/t,tip:`<div class="row"><span>Net sales</span><span>${compact(r.sales)}</span></div><div class="row"><span>Target</span><span>${compact(t)}</span></div>`}:null; }).filter(Boolean);
       if(achItems.length) host.append(chartCard('Achievement brand terhadap TARGET BRAND',`${ymLabel(S.year,m1,m2)} · garis putus-putus = 100%`,hBars(achItems,{mode:'ach',fmt:v=>pct(v,0),name:'Achievement',min:1,lw:100})));
-      /* kategori */
+      /* kategori — item 8: diurutkan NET SALES terbesar→terkecil (bukan urutan dari RPC yg berdasar qty) */
+      const c0sorted=c0.slice().sort((a,b)=>b.sales-a.sales);
       const cHeads=[H('KATEGORI',{s:1}),H('BRAND'),H('ITEM SOLD',{r:1}),H('REFUND',{r:1}),H('NET SALES',{r:1}),H('SHARE',{r:1}),
         H(`NET ${S.year-1}`,{r:1}),H('GROWTH',{r:1}),H('GAP GROWTH',{r:1}),H('HARGA RATA2',{r:1})];
       const cTot=c0.reduce((s,r)=>s+r.sales,0);
-      const cRows=c0.map(r=>{ const py=get(c1,r.k); return [r.k,brandChip(cb.get(r.k)||brandFilter||'—'),int(r.qty),int(r.refunded),compact(r.sales),pct(cTot?r.sales/cTot:null),
+      const maxCatSales=c0sorted.length?c0sorted[0].sales:0;
+      const cRows=c0sorted.map(r=>{ const py=get(c1,r.k); return [r.k,brandChip(cb.get(r.k)||brandFilter||'—'),int(r.qty),int(r.refunded),magCell(r.sales,maxCatSales,compact(r.sales)),pct(cTot?r.sales/cTot:null),
         py.sales>0?compact(py.sales):'',growthPill(r.sales,py.sales),gapTxt(r.sales,py.sales),r.qty>0?rp(r.sales/r.qty):'—']; });
       host.append(chartCard('Net sales per kategori',(brandFilter||'semua brand')+' · 12 teratas',
-        hBars(c0.slice(0,12).map(r=>({label:r.k,v:r.sales,tip:`<div class="row"><span>Net sales</span><span>${compact(r.sales)}</span></div><div class="row"><span>Item sold</span><span>${int(r.qty)}</span></div>`})),{lw:170})));
-      host.append(card('Performa per kategori',`${c0.length} kategori · ${brandFilter||'semua brand'}`,mkTable(cHeads,cRows)));
+        hBars(c0sorted.slice(0,12).map(r=>({label:r.k,v:r.sales,tip:`<div class="row"><span>Net sales</span><span>${compact(r.sales)}</span></div><div class="row"><span>Item sold</span><span>${int(r.qty)}</span></div>`})),{lw:170})));
+      host.append(card('Performa per kategori',`${c0.length} kategori · ${brandFilter||'semua brand'} · diurutkan net sales terbesar→terkecil`,mkTable(cHeads,cRows)));
       host.append(el('div',{class:'note'},el('b',{},'Cara baca. '),'Net sales brand dihitung dari Item Sales (kemasan dikecualikan), jadi bisa sedikit berbeda dari angka Sales Type. '+
         'Brand ditentukan dari master produk (DATABASE STOCK) bila item ada di sana, kalau tidak dari kategori. Target mengikuti TARGET BRAND di sheet TARGET. '+
         'Tarik/unggah master di menu Upload Data supaya warna dan brand setiap item tepat.'));
@@ -4306,7 +4483,7 @@ function renderBreakdown(){
   if(!S.bdFilter) S.bdFilter={spv:'',store:'',m1:S.month||1,m2:S.month||lastMonthWithData(S.year)};
   const f=S.bdFilter;
   const y3=S.year, y2=S.year-1, y1=S.year-2, m1=f.m1||1, m2=f.m2||lastMonthWithData(y3);
-  p.append(el('div',{class:'phead'},el('div',{},el('h1',{},'Breakdown Problem · 5 Why'),
+  p.append(el('div',{class:'phead'},el('div',{},el('h1',{},'Breakdown Problem'),
     el('p',{},`Pemindaian menyeluruh indikasi masalah pada data: toko di bawah target, toko/produk/brand/warna/ukuran turun YoY, aktivitas nyaris nol, dan anomali transaksi/AOV — ditampilkan sebagai daftar temuan konkret per kategori, diakhiri sintesis 5 Why. `+ymLabel(y3,m1,m2)))));
   const pf_breakdown=pageFilterBar('breakdown');
   if(S.demo) p.append(demoBanner());
@@ -4349,6 +4526,32 @@ function renderBreakdown(){
     el('span',{class:'pill '+(gap>=0?'ok':'bad')},gap>=0?'Tumbuh':'Turun')));
   tl.append(tile('GAP thd target',compact(a.gap_sales),a.gap_sales>=0?'di atas target':'di bawah target',a.achiev_total));
   p.append(tl);
+
+  /* item 6 (ronde ini): kartu Transaksi & AOV dipindah ke paling atas, langsung di bawah card Sales —
+     sebelumnya ditaruh sebagai "7." di paling bawah halaman. Logika hitung (jendela tanggal H2H) tidak
+     diubah, hanya posisi tampilnya; deltaTrxY2/deltaAovY2 dkk tetap dipakai belakangan oleh
+     bdRenderSummary() (dipanggil lewat microtask setelah kode sinkron ini selesai, jadi urutan deklarasi
+     di sini tidak masalah). */
+  const h2 = bdH2h([y1,y2,y3],m1,m2);
+  const sumTrx=(y)=>{ let trx=0,val=0; h2[y].forEach(o=>{ trx+=o.trx; val+=o.val; }); return {trx,val,aov:trx>0?val/trx:null}; };
+  const t3=sumTrx(y3), t2=sumTrx(y2), t1=sumTrx(y1);
+  const deltaTrxY2 = t2.trx>0?(t3.trx-t2.trx)/t2.trx:null, deltaTrxY1 = t1.trx>0?(t3.trx-t1.trx)/t1.trx:null;
+  const deltaAovY2 = t2.aov>0?(t3.aov-t2.aov)/t2.aov:null, deltaAovY1 = t1.aov>0?(t3.aov-t1.aov)/t1.aov:null;
+  const atl=el('div',{class:'grid g4'});
+  atl.append(tile('Jumlah transaksi '+y3,int(t3.trx),ymLabel(y3,m1,m2),null));
+  atl.append(tile('vs '+y2,deltaTrxY2==null?'—':pct(deltaTrxY2),compact(t2.trx)+' transaksi di '+y2,null,
+    deltaTrxY2==null?null:el('span',{class:'pill '+(deltaTrxY2>=0?'ok':'bad')},deltaTrxY2>=0?'Naik':'Turun')));
+  atl.append(tile('vs '+y1,deltaTrxY1==null?'—':pct(deltaTrxY1),compact(t1.trx)+' transaksi di '+y1,null,
+    deltaTrxY1==null?null:el('span',{class:'pill '+(deltaTrxY1>=0?'ok':'bad')},deltaTrxY1>=0?'Naik':'Turun')));
+  atl.append(tile('AOV '+y3,rp(t3.aov),'rata-rata nilai per transaksi',null));
+  p.append(el('div',{class:'phead'},el('div',{},el('h2',{style:'font-size:17px'},'Transaksi & AOV'),
+    el('p',{},`Jumlah transaksi dan Average Order Value dibandingkan ${y2} dan ${y1}, memakai jendela tanggal yang sama dengan halaman H2H. `+ymLabel(y3,m1,m2)))));
+  p.append(atl);
+  p.append(card('Detail Transaksi & AOV','dibandingkan terhadap tahun berjalan, jendela tanggal sama seperti H2H',
+    mkTable([H('METRIK'),H(String(y1),{r:1}),H(String(y2),{r:1}),H(String(y3),{r:1}),H('Δ vs '+y1,{r:1}),H('Δ vs '+y2,{r:1})],
+      [['Jumlah transaksi',int(t1.trx),int(t2.trx),int(t3.trx),deltaTrxY1==null?'—':pct(deltaTrxY1),deltaTrxY2==null?'—':pct(deltaTrxY2)],
+       ['Nilai transaksi',compact(t1.val),compact(t2.val),compact(t3.val),'',''],
+       ['AOV',rp(t1.aov),rp(t2.aov),rp(t3.aov),deltaAovY1==null?'—':pct(deltaAovY1),deltaAovY2==null?'—':pct(deltaAovY2)]])));
 
   /* round 8 item 8: Pareto DIHAPUS dari halaman ini atas permintaan pengguna — fokus dipindah ke
      daftar temuan/indikasi masalah yang konkret, dikelompokkan per kategori isu, bukan bar-chart
@@ -4478,27 +4681,6 @@ function renderBreakdown(){
       el('div',{style:'display:flex;flex-direction:column;gap:9px'},...notes.map((n,i)=>el('div',{class:'item'},el('div',{class:'t'},`Why ${i+1} — ${n.t}`),el('div',{class:'c'},n.c))))));
   }
 
-  /* 7. Transaksi & AOV — banding y-1 & y-2, memakai logika jendela tanggal H2H */
-  const h2 = bdH2h([y1,y2,y3],m1,m2);
-  const sumTrx=(y)=>{ let trx=0,val=0; h2[y].forEach(o=>{ trx+=o.trx; val+=o.val; }); return {trx,val,aov:trx>0?val/trx:null}; };
-  const t3=sumTrx(y3), t2=sumTrx(y2), t1=sumTrx(y1);
-  const deltaTrxY2 = t2.trx>0?(t3.trx-t2.trx)/t2.trx:null, deltaTrxY1 = t1.trx>0?(t3.trx-t1.trx)/t1.trx:null;
-  const deltaAovY2 = t2.aov>0?(t3.aov-t2.aov)/t2.aov:null, deltaAovY1 = t1.aov>0?(t3.aov-t1.aov)/t1.aov:null;
-  const atl=el('div',{class:'grid g4'});
-  atl.append(tile('Jumlah transaksi '+y3,int(t3.trx),ymLabel(y3,m1,m2),null));
-  atl.append(tile('vs '+y2,deltaTrxY2==null?'—':pct(deltaTrxY2),compact(t2.trx)+' transaksi di '+y2,null,
-    deltaTrxY2==null?null:el('span',{class:'pill '+(deltaTrxY2>=0?'ok':'bad')},deltaTrxY2>=0?'Naik':'Turun')));
-  atl.append(tile('vs '+y1,deltaTrxY1==null?'—':pct(deltaTrxY1),compact(t1.trx)+' transaksi di '+y1,null,
-    deltaTrxY1==null?null:el('span',{class:'pill '+(deltaTrxY1>=0?'ok':'bad')},deltaTrxY1>=0?'Naik':'Turun')));
-  atl.append(tile('AOV '+y3,rp(t3.aov),'rata-rata nilai per transaksi',null));
-  p.append(el('div',{class:'phead'},el('div',{},el('h2',{style:'font-size:17px'},'7. Transaksi & AOV'),
-    el('p',{},`Jumlah transaksi dan Average Order Value dibandingkan ${y2} dan ${y1}, memakai jendela tanggal yang sama dengan halaman H2H. `+ymLabel(y3,m1,m2)))));
-  p.append(atl);
-  p.append(card('Detail Transaksi & AOV','dibandingkan terhadap tahun berjalan, jendela tanggal sama seperti H2H',
-    mkTable([H('METRIK'),H(String(y1),{r:1}),H(String(y2),{r:1}),H(String(y3),{r:1}),H('Δ vs '+y1,{r:1}),H('Δ vs '+y2,{r:1})],
-      [['Jumlah transaksi',int(t1.trx),int(t2.trx),int(t3.trx),deltaTrxY1==null?'—':pct(deltaTrxY1),deltaTrxY2==null?'—':pct(deltaTrxY2)],
-       ['Nilai transaksi',compact(t1.val),compact(t2.val),compact(t3.val),'',''],
-       ['AOV',rp(t1.aov),rp(t2.aov),rp(t3.aov),deltaAovY1==null?'—':pct(deltaAovY1),deltaAovY2==null?'—':pct(deltaAovY2)]])));
 }
 
 function renderPica(){
