@@ -145,6 +145,11 @@ select:focus-visible,input:focus-visible,textarea:focus-visible,button:focus-vis
 .card>header .sub{font-size:12.5px;color:var(--muted)}
 .grid{display:grid;gap:14px}
 .g4{grid-template-columns:repeat(4,minmax(0,1fr))}
+/* Round 19: grid auto-fit — dipakai baris tile yang jumlah itemnya variabel (mis. Marketplace, jumlah
+   channel bisa 2-5+) supaya baris TERAKHIR yang tidak genap kelipatan 4 tidak menyisakan tile
+   menggantung sendirian/terlalu kecil di pojok kiri (laporan user "card tidak proporsional") —
+   tiap tile punya lebar minimum 200px dan melar mengisi sisa baris secara merata. */
+.gauto{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
 .g3{grid-template-columns:repeat(3,minmax(0,1fr))}
 .g2{grid-template-columns:repeat(2,minmax(0,1fr))}
 .g23{grid-template-columns:minmax(0,1.55fr) minmax(0,1fr)}
@@ -899,10 +904,14 @@ function multiSelectDropdown(container, options, selected, onChange, opt={}){
     pop.append(optsHost);
     renderOpts();
     if(opt.allowAll!==false){
+      /* Round 19: "✕ Bersihkan" SEBELUMNYA hanya mengosongkan `selected` tapi MENINGGALKAN kotak cari
+         (`q`/searchBox.value) apa adanya — kalau user sempat mengetik kata kunci, daftar checkbox di
+         popover tetap tersaring sempit walau seleksinya sudah kosong, terasa seperti "belum benar-benar
+         kembali ke tampilan awal" (laporan user). Sekarang kedua tombol footer juga mereset kotak cari. */
       pop.append(el('div',{class:'msd-foot'},
         el('button',{type:'button',class:'btn sm',title:'Kosongkan pilihan (tampilkan semua)',
-          onclick:()=>{ selected.length=0; renderOpts(); renderLabel(); onChange(selected.slice()); }},'✕ Bersihkan'),
-        el('button',{type:'button',class:'btn sm',onclick:()=>{ selected.length=0; options.forEach(o=>selected.push(o.value)); renderOpts(); renderLabel(); onChange(selected.slice()); }},'Pilih semua')));
+          onclick:()=>{ selected.length=0; if(searchBox){ searchBox.value=''; q=''; } renderOpts(); renderLabel(); onChange(selected.slice()); }},'✕ Bersihkan'),
+        el('button',{type:'button',class:'btn sm',onclick:()=>{ selected.length=0; options.forEach(o=>selected.push(o.value)); if(searchBox){ searchBox.value=''; q=''; } renderOpts(); renderLabel(); onChange(selected.slice()); }},'Pilih semua')));
     }
   };
   buildPop(); renderLabel();
@@ -1363,9 +1372,16 @@ function stackBar(parts, total){
 function donutChart(parts, total, opt={}){
   if(!total){ return el('div',{class:'empty'},'Belum ada data sales.'); }
   const live=parts.filter(p=>p.v>0);
-  const SIZE=opt.size||190, R=SIZE/2-6, CX=SIZE/2, CY=SIZE/2, THICK=opt.thick||34;
+  const SIZE=opt.size||170, R=SIZE/2-6, CX=SIZE/2, CY=SIZE/2, THICK=opt.thick||30;
   const rInner=R-THICK;
-  const svg=sv('svg',{viewBox:`0 0 ${SIZE} ${SIZE}`,width:SIZE,height:SIZE,style:'flex:0 0 auto'});
+  /* Round 19: chartCard() membungkus node ini dalam div.chart, dan CSS ".chart svg{width:100%;height:auto}"
+     (dipakai chart lain spt groupedBars/comboBarsLine yang viewBox-nya memang didesain melebar penuh)
+     ikut menimpa svg donut ini juga — HTML attribute width/height presentational punya prioritas CSS
+     TERENDAH, jadi kalah oleh rule class itu dan donat jadi melebar sepenuh kartu (sangat besar, tidak
+     proporsional, sesuai laporan user). Diperbaiki dengan width/height eksplisit di ATRIBUT style inline
+     (bukan attribute width/height biasa) — inline style selalu menang atas selector class manapun yang
+     tidak pakai !important, jadi ukuran donat sekarang selalu tetap SIZE×SIZE px, lepas dari lebar kartu. */
+  const svg=sv('svg',{viewBox:`0 0 ${SIZE} ${SIZE}`,width:SIZE,height:SIZE,style:`flex:0 0 auto;width:${SIZE}px;height:${SIZE}px;max-width:100%`});
   const polar=(cx,cy,r,ang)=>[cx+r*Math.cos(ang),cy+r*Math.sin(ang)];
   let a0=-Math.PI/2;   // mulai dari atas (jam 12)
   const wrap=el('div',{style:'display:flex;gap:20px;align-items:center;flex-wrap:wrap'});
@@ -4746,29 +4762,46 @@ function renderProgram(){
             ['TOTAL',...years.map(y=>compact(totY(y))),growthPill(s3,s2),gapTxt(s3,s2),growthPill(s3,s1),gapTxt(s3,s1),pct(1)])));
       }
 
-      /* ---------- target per bulan — editable, 3 tahun sekaligus (y1/y2/y3), disimpan ke blob JSON program ---------- */
+      /* ---------- target per bulan — editable, 3 tahun sekaligus (y1/y2/y3), disimpan ke blob JSON program
+         Round 19: SEBELUMNYA tabel 12 baris (satu per bulan) selalu tampil utuh sekaligus — makan banyak
+         tempat vertikal untuk update satu-dua bulan saja (keluhan user). Diganti dropdown "Bulan" — hanya
+         SATU baris input (3 kolom tahun) yang tampil untuk bulan yang sedang dipilih; draft perubahan
+         disimpan di memori (`draft`, mulai dari salinan prog.targets) supaya berpindah bulan tidak
+         membuang input yang belum di-Simpan, dan tombol Simpan menulis SELURUH draft (bukan cuma bulan
+         yang sedang tampil) dalam satu panggilan. Daftar ringkas "bulan yang sudah terisi" ditambahkan di
+         bawah input supaya user tetap bisa melihat cakupan tanpa harus membuka tabel 12 baris. ---------- */
       {
-        const tgtBody=el('tbody');
-        const inputs={};
-        monthsArr.forEach(m=>{
-          const cells=[el('td',{},MONTHS[m-1])];
+        const draft={...prog.targets};
+        const nowM=new Date().getMonth()+1;
+        let curM=monthsArr.includes(nowM)?nowM:monthsArr[0];
+        const mSelTgt=el('select',{},...monthsArr.map(m=>el('option',{value:m},MONTHS[m-1])));
+        mSelTgt.value=String(curM);
+        const rowHost=el('div',{style:'display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end'});
+        const filledHost=el('div',{class:'sub',style:'margin-top:10px'});
+        function paintFilled(){
+          const withVal=monthsArr.filter(m=>years.some(y=>draft[y+'-'+m]!=null&&draft[y+'-'+m]!==''));
+          filledHost.textContent=withVal.length?('Bulan sudah terisi: '+withVal.map(m=>MONTHS[m-1]).join(', ')):'Belum ada bulan yang diisi.';
+        }
+        function paintRow(){
+          rowHost.innerHTML='';
           years.forEach(y=>{
-            const key=y+'-'+m;
-            const inp=el('input',{type:'number',min:'0',value:prog.targets[key]||'',style:'width:120px'});
-            inputs[key]=inp; cells.push(el('td',{},inp));
+            const key=y+'-'+curM;
+            const inp=el('input',{type:'number',min:'0',value:draft[key]!=null?draft[key]:'',style:'width:150px',
+              oninput:e=>{ const v=e.target.value; if(v==='') delete draft[key]; else draft[key]=N(v); paintFilled(); }});
+            rowHost.append(el('div',{class:'fld'},el('label',{},'Target '+y),inp));
           });
-          tgtBody.append(el('tr',{},...cells));
-        });
-        const tgtTable=el('div',{class:'tw'},el('table',{},
-          el('thead',{},el('tr',{},['BULAN',...years.map(y=>'TARGET '+y)].map((h,i)=>el('th',{class:i===0?'sticky1':''},h)))),tgtBody));
-        host.append(card('Target per bulan','Isi target program per bulan per tahun, lalu Simpan — dipakai utk kolom ACHIEV di tabel di atas (tahun berjalan '+y3+').',
-          tgtTable,
+        }
+        mSelTgt.onchange=e=>{ curM=Number(e.target.value); paintRow(); };
+        paintRow(); paintFilled();
+        host.append(card('Target per bulan','Pilih bulan, isi target per tahun, lalu Simpan — dipakai utk kolom ACHIEV di tabel di atas (tahun berjalan '+y3+').',
+          el('div',{style:'display:flex;flex-direction:column;gap:4px'},
+            el('div',{class:'fld',style:'max-width:220px'},el('label',{},'Bulan'),mSelTgt),
+            rowHost, filledHost),
           el('div',{class:'rowline',style:'margin-top:13px'},
             el('button',{class:'btn pri',onclick:async()=>{
               if(guard()) return;
               const arr=programsLoad(); const target=arr.find(pr=>pr.id===prog.id); if(!target) return;
-              target.targets=target.targets||{};
-              Object.keys(inputs).forEach(key=>{ const v=inputs[key].value; if(v==='') delete target.targets[key]; else target.targets[key]=N(v); });
+              target.targets=draft;
               try{ await programsSave(arr); toast('Target disimpan.'); renderProgram(); }catch(e){ toast('Gagal: '+e.message); } }},'Simpan target'))));
       }
     }catch(e){ host.innerHTML=''; host.append(el('div',{class:'note warn'},'Gagal memuat realisasi sales program: '+e.message)); }
@@ -4820,7 +4853,7 @@ function renderMkt(){
      datanya ada. Sekarang: 3 tile ringkasan (Total/Growth/Channel terbaik) LALU satu tile per channel
      yang BENAR-BENAR ada datanya (tanpa dibatasi jumlahnya) — grid g4 otomatis membungkus ke baris baru,
      jadi selalu lengkap sesuai channel yang tersedia. */
-  const tl=el('div',{class:'grid g4'});
+  const tl=el('div',{class:'grid g4 gauto'});
   const totCy=tot(S.year), totPy=tot(S.year-1);
   const mktGrowth=totPy>0?(totCy-totPy)/totPy:null;
   const chTotals=chs.map(ch=>({ch,s:mktRows(S.year,m1,m2,ch).reduce((a,r)=>a+N(r.amount),0)})).sort((a,b)=>b.s-a.s);
@@ -5834,7 +5867,14 @@ $('#f-custom-m1').onchange=$('#f-custom-m2').onchange=()=>{
   S.monthRange=[Math.min(m1,m2),Math.max(m1,m2)]; S.rangeTag='Custom'; render();
 };
 $('#f-clear').onclick=()=>{
+  /* Round 19: tombol Clear SEBELUMNYA mereset S.month jadi 0 (logika data memang sudah benar membaca
+     S.month, lihat storeOk()/periodM1M2() dkk), TAPI elemen <select id="f-month"> sendiri tidak pernah
+     di-set ulang .value-nya — jadi secara VISUAL dropdown Bulan tetap menampilkan bulan yang dipilih
+     sebelumnya walau datanya sudah balik ke "Semua (YTD)" di baliknya, persis laporan user "clear tidak
+     merubah ke tampilan awal". Diperbaiki dengan eksplisit mengembalikan .value tiap kontrol native
+     (<select>) yang TIDAK lewat multiSelectDropdown (f-month, f-range sudah ada sebelumnya). */
   S.year=2026; S.years=[2026]; S.month=0; S.brand=''; S.store=''; S.spv=''; S.monthRange=null; S.rangeTag=''; S.itemScope='';
+  $('#f-month').value='0';
   $('#f-range').value=''; $('#f-custom-wrap').style.display='none';
   fillFilters(); loadAll();
 };
