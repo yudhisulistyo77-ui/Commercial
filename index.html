@@ -4132,33 +4132,16 @@ function renderSSSG(){
     null,aovGF==null?null:el('span',{class:'pill '+(aovGF>=0?'ok':'bad')},aovGF>=0?'Naik':'Turun')));
   p.append(tl2);
 
-  /* ---------- baris tile tambahan KHAS SSSG (tidak ada padanannya di H2H karena H2H tidak punya konsep
-     "toko ikut"/window per-toko) — toko ikut & toko tumbuh/turun, round 12 item 3 ---------- */
-  const tl3=el('div',{class:'grid g4'});
-  tl3.append(tile('Toko ikut — vs '+y2,`${idsY2.length} / ${idsAll.length}`,'punya window valid thd '+y2+' · total toko pada cakupan filter',null));
-  tl3.append(tile('Toko ikut — vs '+y1,`${idsFull.length} / ${idsAll.length}`,'punya window valid thd '+y1+' (3 tahun penuh) · total toko pada cakupan filter',null));
-  const upCnt=idsY2.filter(id=>G(y3,id,'sales')>G(y2,id,'sales')).length, dnCnt=idsY2.filter(id=>G(y3,id,'sales')<G(y2,id,'sales')).length;
-  tl3.append(tile('Toko tumbuh vs '+y2,`${upCnt} / ${idsY2.length}`,'jumlah toko dgn sales '+y3+' lebih tinggi dari '+y2+' pada window-nya',idsY2.length?upCnt/idsY2.length:null));
-  tl3.append(tile('Toko turun vs '+y2,`${dnCnt} / ${idsY2.length}`,'jumlah toko dgn sales '+y3+' lebih rendah dari '+y2+' pada window-nya',null,
-    dnCnt?el('span',{class:'pill '+(dnCnt>upCnt?'bad':'neu')},dnCnt+' turun'):null));
-  p.append(tl3);
-
-  /* ---------- item 2/5: rata-rata sales HARIAN = total sales jendela ÷ jumlah hari dalam jendela
-     (hari mengikuti tanggal buka toko / ulang tahun buka di tiap tahun — field 'days' dari sssgStoreWindowData),
-     INI basis sesungguhnya dari "same store sales growth" yang diminta, bukan cuma total sales jendela. ---------- */
-  const avgDaily=(y,set)=>{ const d=T(y,'days',set); return d>0?T(y,'sales',set)/d:null; };
-  const tl4=el('div',{class:'grid g4'});
-  const ad3_2=avgDaily(y3,idsY2), ad2_2=avgDaily(y2,idsY2);
-  const gA32=ad2_2>0?(ad3_2-ad2_2)/ad2_2:null;
-  const ad3_1=avgDaily(y3,idsFull), ad1_1=avgDaily(y1,idsFull);
-  const gA31=ad1_1>0?(ad3_1-ad1_1)/ad1_1:null;
-  tl4.append(tile(`Rata² sales harian ${y3} vs ${y2}`,pct(gA32),`${rp(ad3_2)} vs ${rp(ad2_2)} /hari · total sales ÷ jumlah hari jendela`,null,
-    gA32==null?el('span',{class:'pill neu'},'—'):el('span',{class:'pill '+(gA32>=0?'ok':'bad')},gA32>=0?'Naik':'Turun')));
-  tl4.append(tile(`Rata² sales harian ${y3}`,rp(ad3_2),`${idsY2.length} toko same-window · dasar perhitungan SSSG`,null));
-  tl4.append(tile(`Rata² sales harian ${y3} vs ${y1}`,pct(gA31),`${rp(ad3_1)} vs ${rp(ad1_1)} /hari · 3 tahun`,null,
-    gA31==null?el('span',{class:'pill neu'},'—'):el('span',{class:'pill '+(gA31>=0?'ok':'bad')},gA31>=0?'Naik':'Turun')));
-  tl4.append(tile('Hari dihitung ('+y3+')',int(T(y3,'days',idsY2)),'total hari dlm jendela seluruh toko same-window, mengikuti tgl buka masing-masing toko',null));
-  p.append(tl4);
+  /* round 17 item 1: tile tambahan "Toko ikut/tumbuh/turun" (round 12) dan "Rata² sales harian" (round 16)
+     DIHAPUS dari sini — user melaporkan jumlah card SSSG kebanyakan & indikatornya tidak sama dengan H2H.
+     SSSG sekarang berhenti PERSIS di 8 tile (2 baris × 4), sama persis jumlah & jenis indikatornya dengan
+     H2H (Total sales y1/y2/y3 + Growth y3vsy2, lalu Growth y3vsy1 + Target harian + Pencapaian + AOV) —
+     tidak ada tile tambahan lagi. Info "toko ikut" tetap tersirat dari subtitle tile Total Sales ("N toko
+     same-window") dan dari baris warning di atas (toko yang tidak bisa dibandingkan pada cut-off ini);
+     metrik rata-rata sales harian per permintaan user (item 2 round 16) TETAP ADA, tapi dipindah penuh ke
+     tabel "Rata-rata Sales Harian per Toko" di bawah (lebih tepat sebagai tabel presisi per-toko daripada
+     tile ringkasan yang menambah jumlah card). `avgDaily`/field `days` TIDAK dihapus — tetap dipakai oleh
+     tabel tersebut. */
 
   /* ---------- chart per bulan same-window (idsY2) — pendekatan: pakai sales bulanan apa adanya (tanpa
      pecahan hari) utk visual tren, karena jendela awal tiap toko berbeda-beda sehingga sumbu bulan Jan–Des
