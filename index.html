@@ -96,13 +96,20 @@ nav button svg{width:17px;height:17px;flex:0 0 auto}
 .msd-btn span.lbl{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}
 .msd-btn svg{flex:0 0 auto;width:11px;height:11px;opacity:.65;transition:transform .12s}
 .msd.open .msd-btn svg{transform:rotate(180deg)}
-.msd-pop{position:absolute;top:calc(100% + 4px);left:0;z-index:50;min-width:170px;max-width:260px;max-height:260px;overflow-y:auto;
-  background:var(--surface);border:1px solid var(--line);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.18);padding:6px;display:none}
-.msd.open .msd-pop{display:block}
+.msd-pop{position:absolute;top:calc(100% + 4px);left:0;z-index:50;min-width:200px;max-width:280px;max-height:320px;
+  background:var(--surface);border:1px solid var(--line);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.18);padding:6px;display:none;
+  flex-direction:column}
+.msd.open .msd-pop{display:flex}
+/* Round 18: kotak cari — field tetap di atas, baris foot (Bersihkan/Pilih semua) tetap di bawah, hanya
+   daftar opsi (.msd-opts) yang scroll bila panjang. */
+.msd-search{width:100%;box-sizing:border-box;padding:6px 8px;margin-bottom:4px;border:1px solid var(--line);
+  border-radius:7px;background:var(--surface-2);font-size:12.5px;flex:0 0 auto}
+.msd-opts{overflow-y:auto;flex:1 1 auto;min-height:0}
+.msd-empty{padding:8px 7px;font-size:12.5px;color:var(--muted)}
 .msd-opt{display:flex;align-items:center;gap:7px;padding:5px 7px;border-radius:6px;cursor:pointer;font-size:13px}
 .msd-opt:hover{background:var(--surface-2)}
 .msd-opt input{margin:0}
-.msd-foot{display:flex;gap:6px;padding:5px 6px 2px;border-top:1px solid var(--ring);margin-top:4px}
+.msd-foot{display:flex;gap:6px;padding:5px 6px 2px;border-top:1px solid var(--ring);margin-top:4px;flex:0 0 auto}
 .msd-foot button{flex:1;font-size:11px;padding:3px 6px}
 /* ---------- per-page filter row (item 2) ---------- */
 .pagefilters{display:flex;gap:8px 12px;flex-wrap:wrap;align-items:flex-end;padding:9px 14px;margin:0;
@@ -166,6 +173,10 @@ select:focus-visible,input:focus-visible,textarea:focus-visible,button:focus-vis
 .pill.mid{background:color-mix(in srgb,var(--warn) 17%,transparent);color:#8a5a00;border-color:color-mix(in srgb,var(--warn) 38%,transparent)}
 :root[data-theme="dark"] .pill.mid,:root:not([data-theme="light"]) .pill.mid{color:var(--warn)}
 .pill.neu{background:var(--surface-2);color:var(--ink-2);border-color:var(--ring)}
+/* Round 18: nilai negatif APAPUN (Rp, %, angka biasa) yang dibentuk lewat T()/rp()/compact()/pct()/int()
+   otomatis dibungkus span.negval di el() — supaya minus konsisten merah di SELURUH app tanpa menyentuh
+   tiap titik pemanggilan satu per satu. */
+.negval{color:var(--crit);font-weight:700}
 .badge{display:inline-flex;align-items:center;height:34px;padding:0 12px;border-radius:9px;font-size:13px;font-weight:700;
   background:var(--surface-2);color:var(--ink);border:1px solid var(--ring)}
 
@@ -332,8 +343,8 @@ th[data-t]:hover{background:var(--line)}
       </div>
       <div class="fld"><label id="f-brand-label">Brand</label>
         <div id="f-brand" aria-labelledby="f-brand-label" title="Pilih satu atau beberapa brand"></div></div>
-      <div class="fld"><label for="f-spv">SPV Area</label>
-        <select id="f-spv"><option value="">Semua SPV</option></select></div>
+      <div class="fld"><label id="f-spv-label">SPV Area</label>
+        <div id="f-spv" aria-labelledby="f-spv-label" title="Pilih satu atau beberapa SPV Area"></div></div>
       <div class="fld"><label id="f-store-label">Toko</label>
         <div id="f-store" aria-labelledby="f-store-label" title="Pilih satu atau beberapa toko"></div></div>
       <button class="btn sm" id="f-clear" title="Reset semua filter ke default">Clear</button>
@@ -397,7 +408,12 @@ const el = (t,a={},...kids)=>{const n=document.createElement(t);
     if(k==='class')n.className=v; else if(k==='html')n.innerHTML=v;
     else if(k.startsWith('on'))n.addEventListener(k.slice(2),v); else n.setAttribute(k,v); }
   for(const kd of kids.flat()){ if(kd==null||kd===false)continue;
-    if(kd instanceof String && kd.raw!=null && t==='td' && n.dataset.v==null) n.dataset.v=kd.raw;
+    if(kd instanceof String && kd.raw!=null){
+      if(t==='td' && n.dataset.v==null) n.dataset.v=kd.raw;
+      /* Round 18: bungkus nilai negatif jadi span.negval (merah) di mana pun T()-string dipakai —
+         generik untuk rp()/compact()/pct()/int() tanpa menyentuh tiap pemanggil satu-satu. */
+      if(kd.raw<0){ n.append(el('span',{class:'negval'},String(kd))); continue; }
+    }
     n.append(kd.nodeType?kd:document.createTextNode(kd)); }
   return n;};
 const esc = s => String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -421,6 +437,41 @@ function int(v){ return (v==null||isNaN(v))?T('—'):T(Math.round(v).toLocaleStr
 function achClass(a){ if(a==null)return 'neu'; if(a>=1)return 'ok'; if(a>=.9)return 'mid'; return 'bad'; }
 function achMeter(a){ if(a==null)return ''; if(a>=1)return 'ok'; if(a>=.9)return 'mid'; return 'bad'; }
 
+/* Round 18: PDCA — lampirkan link yang bisa dibuka langsung di browser. Tabel `pdca` di Supabase tidak
+   punya kolom URL khusus (sesi ini tidak punya akses tool database utk migrasi skema), jadi link
+   disimpan sebagai baris terakhir teks `content` sendiri ("Link: https://…") — tanpa perlu kolom baru.
+   `linkify()` lalu mengubah SETIAP url http(s):// yang ada di content (baris Link ini, atau url apa pun
+   yang diketik user di tengah teks) jadi <a> yang bisa langsung diklik saat ditampilkan. */
+const URL_RE=/\bhttps?:\/\/[^\s<>()"']+/gi;
+function linkify(text){
+  const frag=document.createDocumentFragment();
+  if(!text){ return frag; }
+  let last=0, m;
+  const re=new RegExp(URL_RE);
+  while((m=re.exec(text))){
+    if(m.index>last) frag.append(document.createTextNode(text.slice(last,m.index)));
+    let url=m[0].replace(/[.,;)]+$/,'');
+    frag.append(el('a',{href:url,target:'_blank',rel:'noopener noreferrer'},url));
+    last=m.index+url.length;
+    if(url.length<m[0].length) frag.append(document.createTextNode(m[0].slice(url.length)));
+  }
+  if(last<text.length) frag.append(document.createTextNode(text.slice(last)));
+  return frag;
+}
+/* Pisahkan baris "Link: <url>" dari sisa content, utk mengisi field Link terpisah di form edit. */
+function splitPdcaLink(content){
+  const lines=(content||'').split('\n');
+  const li=lines.findIndex(l=>/^Link:\s*https?:\/\//i.test(l.trim()));
+  if(li<0) return {body:content||'', link:''};
+  const link=lines[li].trim().replace(/^Link:\s*/i,'');
+  lines.splice(li,1);
+  return {body:lines.join('\n').replace(/\n+$/,''), link};
+}
+function joinPdcaLink(body,link){
+  const b=(body||'').trim();
+  if(!link) return b;
+  return (b?b+'\n':'')+'Link: '+link.trim();
+}
 function toast(m){ const t=$('#toast'); t.textContent=m; t.classList.add('on'); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove('on'),2600); }
 
 /* round 8 item 5: indikator loading reusable, dipakai bungkus tombol async (reload, simpan/edit,
@@ -814,33 +865,51 @@ function multiSelectDropdown(container, options, selected, onChange, opt={}){
     el('svg',{viewBox:'0 0 24 24',width:'11',height:'11',fill:'none',stroke:'currentColor','stroke-width':'3'},
       el('path',{d:'M6 9l6 6 6-6'})));
   const pop=el('div',{class:'msd-pop'});
+  /* Round 18: kotak cari di dalam popover — penting untuk filter berisi banyak opsi (Toko, Kategori,
+     dkk). Query disimpan di closure `q` (direset tiap popover dibuka) dan dicocokkan case-insensitive
+     substring terhadap label opsi. */
+  let q='';
+  const searchBox = (options.length>6) ? el('input',{type:'text',class:'msd-search',placeholder:'Cari…',
+    onclick:e=>e.stopPropagation(),
+    oninput:e=>{ q=e.target.value.toLowerCase(); renderOpts(); }}) : null;
+  const optsHost=el('div',{class:'msd-opts'});
   const renderLabel=()=>{
     if(!selected.length) lbl.textContent=opt.allLabel||'Semua';
     else if(selected.length===1){ const o=options.find(o=>o.value===selected[0]); lbl.textContent=o?o.label:selected[0]; }
     else lbl.textContent=selected.length+' dipilih';
     lbl.title=lbl.textContent;
   };
-  const buildPop=()=>{
-    pop.innerHTML='';
-    options.forEach(o=>{
+  const renderOpts=()=>{
+    optsHost.innerHTML='';
+    const filtered=q?options.filter(o=>o.label.toLowerCase().includes(q)):options;
+    if(!filtered.length){ optsHost.append(el('div',{class:'msd-empty'},'Tidak ada hasil.')); return; }
+    filtered.forEach(o=>{
       const cb=el('input',{type:'checkbox'}); cb.checked=selected.includes(o.value);
       cb.onchange=()=>{
         const i=selected.indexOf(o.value);
         if(cb.checked){ if(i<0) selected.push(o.value); } else if(i>=0) selected.splice(i,1);
         renderLabel(); onChange(selected.slice());
       };
-      pop.append(el('label',{class:'msd-opt'},cb,document.createTextNode(o.label)));
+      optsHost.append(el('label',{class:'msd-opt'},cb,document.createTextNode(o.label)));
     });
+  };
+  const buildPop=()=>{
+    pop.innerHTML='';
+    if(searchBox){ searchBox.value=''; q=''; pop.append(searchBox); }
+    pop.append(optsHost);
+    renderOpts();
     if(opt.allowAll!==false){
       pop.append(el('div',{class:'msd-foot'},
-        el('button',{type:'button',class:'btn sm',onclick:()=>{ selected.length=0; buildPop(); renderLabel(); onChange(selected.slice()); }},'Semua'),
-        el('button',{type:'button',class:'btn sm',onclick:()=>{ selected.length=0; options.forEach(o=>selected.push(o.value)); buildPop(); renderLabel(); onChange(selected.slice()); }},'Pilih semua')));
+        el('button',{type:'button',class:'btn sm',title:'Kosongkan pilihan (tampilkan semua)',
+          onclick:()=>{ selected.length=0; renderOpts(); renderLabel(); onChange(selected.slice()); }},'✕ Bersihkan'),
+        el('button',{type:'button',class:'btn sm',onclick:()=>{ selected.length=0; options.forEach(o=>selected.push(o.value)); renderOpts(); renderLabel(); onChange(selected.slice()); }},'Pilih semua')));
     }
   };
   buildPop(); renderLabel();
   btn.onclick=e=>{ e.stopPropagation(); const willOpen=!msd.classList.contains('open');
     document.querySelectorAll('.msd.open').forEach(m=>{ if(m!==msd) m.classList.remove('open'); });
-    msd.classList.toggle('open',willOpen); };
+    msd.classList.toggle('open',willOpen);
+    if(willOpen && searchBox) setTimeout(()=>searchBox.focus(),0); };
   msd.append(btn,pop); container.append(msd);
   return { rebuild:(newOptions,newSelected)=>{ options=newOptions; if(newSelected){ selected.length=0; selected.push(...newSelected); } buildPop(); renderLabel(); } };
 }
@@ -864,21 +933,24 @@ function fillFilters(){
   multiSelectDropdown($('#f-brand'), brandOpts, brandSel,
     arr=>{ S.brand=arr.join(','); syncStoreOptions(); S.itemScope=''; render(); },
     {allLabel:'Semua brand'});
-  const sp=$('#f-spv'), curS=sp.value;
-  sp.innerHTML=''; sp.append(el('option',{value:''},'Semua SPV'));
   const spvs=[...new Set([...S.people.filter(p=>p.role==='SPV'&&p.is_active!==false).map(p=>p.name),
                           ...S.stores.map(s=>s.spv).filter(Boolean)])].sort();
-  spvs.forEach(n=>sp.append(el('option',{value:n},spvLabel(n))));
-  sp.value=spvs.includes(curS)?curS:''; S.spv=sp.value;
+  const spvOpts=spvs.map(n=>({value:n,label:spvLabel(n)}));
+  const spvSel=spvList().filter(v=>spvs.includes(v));
+  S.spv=spvSel.join(',');
+  multiSelectDropdown($('#f-spv'), spvOpts, spvSel,
+    arr=>{ S.spv=arr.join(','); syncStoreOptions(); S.itemScope=''; render(); },
+    {allLabel:'Semua SPV'});
   syncStoreOptions();
 }
 function spvLabel(n){ const p=S.people.find(x=>x.name===n); return p?p.label:(n?('SPV '+n[0]+n.slice(1).toLowerCase()):''); }
 function brandList(){ return (S.brand||'').split(',').filter(Boolean); }
 function storeList(){ return (S.store||'').split(',').filter(Boolean); }
+function spvList(){ return (S.spv||'').split(',').filter(Boolean); }
 function firstStoreId(){ return storeList()[0]||''; }
 function syncStoreOptions(){
-  const bl=brandList(), prevSel=storeList();
-  const opts=S.stores.filter(s=>(!bl.length||bl.includes(s.brand))&&(!S.spv||s.spv===S.spv)).map(s=>({value:String(s.id),label:s.name}));
+  const bl=brandList(), pl=spvList(), prevSel=storeList();
+  const opts=S.stores.filter(s=>(!bl.length||bl.includes(s.brand))&&(!pl.length||pl.includes(s.spv))).map(s=>({value:String(s.id),label:s.name}));
   const keep=prevSel.filter(v=>opts.some(o=>o.value===v));
   S.store=keep.join(',');
   multiSelectDropdown($('#f-store'), opts, keep,
@@ -956,7 +1028,7 @@ function storeOk(sid){
   const st=S.stores.find(s=>s.id===sid); if(!st) return false;
   const sl=storeList(); if(sl.length && !sl.includes(String(sid))) return false;
   const bl=brandList(); if(bl.length && !bl.includes(st.brand)) return false;
-  if(S.spv && st.spv!==S.spv) return false;
+  const pl=spvList(); if(pl.length && !pl.includes(st.spv)) return false;
   return true;
 }
 function scopeStoreIds(){ const ids=S.stores.filter(s=>storeOk(s.id)).map(s=>s.id);
@@ -1040,10 +1112,14 @@ function periodLabel(){
   let p;
   if(S.monthRange){ const [m1,m2]=S.monthRange; p=(m1===m2?MONTHS[m1-1]:MONTHS[m1-1]+'–'+MONTHS[m2-1])+' '+S.year+(S.rangeTag?' ('+S.rangeTag+')':''); }
   else p = S.month ? MONTHS[S.month-1]+' '+S.year : 'Jan–Des '+S.year;
-  const sl=storeList(), bl=brandList();
-  const w = sl.length ? (sl.length===1?(S.stores.find(s=>String(s.id)===sl[0])?.name||''):sl.length+' toko')
-          : [bl.length?(bl.length===1?bl[0]:bl.length+' brand'):'', S.spv?('SPV '+spvLabel(S.spv)):''].filter(Boolean).join(' · ') || 'semua toko';
-  return p+' · '+w;
+  return p+' · '+scopeLabel();
+}
+/* Label ringkas cakupan Brand/SPV/Toko terpilih — dipakai periodLabel() dan subtitle H2H/SSSG,
+   satu titik supaya multi-select SPV (round 18) konsisten di mana pun label ini dirender. */
+function scopeLabel(){
+  const sl=storeList(), bl=brandList(), pl=spvList();
+  return sl.length ? (sl.length===1?(S.stores.find(s=>String(s.id)===sl[0])?.name||''):sl.length+' toko')
+    : [bl.length?(bl.length===1?bl[0]:bl.length+' brand'):'', pl.length?(pl.length===1?('SPV '+spvLabel(pl[0])):pl.length+' SPV'):''].filter(Boolean).join(' · ') || 'semua toko';
 }
 
 /* =====================================================================
@@ -1097,7 +1173,9 @@ function groupedBars(labels, series, opt={}){
       if(bar>=8){   // label nilai langsung di atas bar, biar tak perlu hover
         const stagger=series.length>1?(j%2)*11:0;   // zig-zag anti-tumpang-tindih antar seri bersebelahan
         const lt=sv('text',{x:x+bar/2,y:y-4-stagger,'text-anchor':'middle',fill:'var(--ink-2)','font-size':8.5,'font-weight':600,'font-family':'var(--font-ui)'});
-        lt.setAttribute('style','font-variant-numeric:tabular-nums'); lt.textContent=fmtLbl(v); svg.append(lt);
+        /* Round 18: halo surface di belakang teks (lihat comboBarsLine) supaya label tidak hilang saat
+           bertumpuk dengan bar/label seri lain. */
+        lt.setAttribute('style','font-variant-numeric:tabular-nums;paint-order:stroke;stroke:var(--surface);stroke-width:3px'); lt.textContent=fmtLbl(v); svg.append(lt);
       }
     });
     const t=sv('text',{x:PL+bw*i+bw/2,y:H-9,'text-anchor':'middle',fill:'var(--muted)','font-size':10,'font-family':'var(--font-ui)'});
@@ -1140,7 +1218,11 @@ function comboBarsLine(labels, barSeries, lineVals, opt={}){
       svg.append(r);
       if(bar>=8){ const stagger=barSeries.length>1?(j%2)*11:0;
         const lt=sv('text',{x:x+bar/2,y:y-4-stagger,'text-anchor':'middle',fill:'var(--ink-2)','font-size':8.5,'font-weight':600,'font-family':'var(--font-ui)'});
-        lt.setAttribute('style','font-variant-numeric:tabular-nums'); lt.textContent=fmtLbl(v); svg.append(lt); }
+        /* Round 18: halo putih/surface di belakang teks (stroke tebal digambar SEBELUM fill lewat
+           paint-order) supaya label bar tetap terbaca walau garis Achievement atau label lain lewat di
+           atasnya — lebih robust daripada hanya menggeser posisi (stagger) saja. */
+        lt.setAttribute('style','font-variant-numeric:tabular-nums;paint-order:stroke;stroke:var(--surface);stroke-width:3px');
+        lt.textContent=fmtLbl(v); svg.append(lt); }
     });
     const t=sv('text',{x:PL+bw*i+bw/2,y:H-9,'text-anchor':'middle',fill:'var(--muted)','font-size':10,'font-family':'var(--font-ui)'});
     t.textContent=lb; svg.append(t);
@@ -1163,7 +1245,8 @@ function comboBarsLine(labels, barSeries, lineVals, opt={}){
     const txt=`<b>${esc(lb)}</b><div class="row"><span>${esc(opt.lineName||'Achievement')}</span><span>${pct(lineVals[i])}</span></div>`;
     c.addEventListener('pointerenter',e=>tipShow(e,txt)); c.addEventListener('pointermove',e=>tipShow(e,txt)); c.addEventListener('pointerleave',tipHide);
     svg.append(c);
-    const lv=sv('text',{x:pts[i][0],y:pts[i][1]-9,'text-anchor':'middle',fill:lcolor,'font-size':9,'font-weight':700,'font-family':'var(--font-ui)'});
+    const lv=sv('text',{x:pts[i][0],y:pts[i][1]-9,'text-anchor':'middle',fill:lcolor,'font-size':9,'font-weight':700,'font-family':'var(--font-ui)',
+      style:'paint-order:stroke;stroke:var(--surface);stroke-width:3px'});
     lv.textContent=pct(lineVals[i],0); svg.append(lv); });
   return svg;
 }
@@ -1271,6 +1354,53 @@ function stackBar(parts, total){
   const lg=el('div',{class:'legend',style:'margin:11px 0 0'});
   parts.forEach(p=>lg.append(el('span',{},el('i',{style:`background:${p.color}`}),`${p.name} · ${compact(p.v)} (${total?pct(p.v/total,0):'—'})`)));
   wrap.append(lg);
+  return wrap;
+}
+/* Round 18: diagram donat — dipakai utk "Komposisi segmen" Dashboard (sebelumnya stackBar/bar horizontal
+   tunggal). Donat lebih jelas membaca porsi tiap bagian dibanding bar satu baris, dan di sini tiap
+   slice-nya diberi label nilai+persen langsung di sampingnya (bukan cuma di tooltip) sesuai permintaan
+   "lengkap dengan isi data dan persentasenya" — legend saja dianggap kurang karena user harus hover dulu. */
+function donutChart(parts, total, opt={}){
+  if(!total){ return el('div',{class:'empty'},'Belum ada data sales.'); }
+  const live=parts.filter(p=>p.v>0);
+  const SIZE=opt.size||190, R=SIZE/2-6, CX=SIZE/2, CY=SIZE/2, THICK=opt.thick||34;
+  const rInner=R-THICK;
+  const svg=sv('svg',{viewBox:`0 0 ${SIZE} ${SIZE}`,width:SIZE,height:SIZE,style:'flex:0 0 auto'});
+  const polar=(cx,cy,r,ang)=>[cx+r*Math.cos(ang),cy+r*Math.sin(ang)];
+  let a0=-Math.PI/2;   // mulai dari atas (jam 12)
+  const wrap=el('div',{style:'display:flex;gap:20px;align-items:center;flex-wrap:wrap'});
+  live.forEach(p=>{
+    const frac=p.v/total, a1=a0+frac*Math.PI*2;
+    const large=(a1-a0)>Math.PI?1:0;
+    const [x0,y0]=polar(CX,CY,R,a0), [x1,y1]=polar(CX,CY,R,a1);
+    const [xi1,yi1]=polar(CX,CY,rInner,a1), [xi0,yi0]=polar(CX,CY,rInner,a0);
+    const d = (frac>=0.999)
+      ? `M${CX-R},${CY} A${R},${R} 0 1 1 ${CX+R-0.01},${CY} L${CX+R-0.01-THICK},${CY} A${rInner},${rInner} 0 1 0 ${CX-R+THICK},${CY} Z`
+      : `M${x0.toFixed(2)},${y0.toFixed(2)} A${R},${R} 0 ${large} 1 ${x1.toFixed(2)},${y1.toFixed(2)} `+
+        `L${xi1.toFixed(2)},${yi1.toFixed(2)} A${rInner},${rInner} 0 ${large} 0 ${xi0.toFixed(2)},${yi0.toFixed(2)} Z`;
+    const path=sv('path',{d,fill:p.color,stroke:'var(--surface)','stroke-width':1.5});
+    path.style.cursor='pointer';
+    path.addEventListener('pointerenter',e=>tipShow(e,`<b>${esc(p.name)}</b><div class="row"><span>Nilai</span><span>${compact(p.v)}</span></div><div class="row"><span>Porsi</span><span>${pct(p.v/total)}</span></div>`));
+    path.addEventListener('pointermove',e=>tipShow(e,TIP.innerHTML));
+    path.addEventListener('pointerleave',tipHide);
+    svg.append(path);
+    a0=a1;
+  });
+  const ctot=sv('text',{x:CX,y:CY-3,'text-anchor':'middle',fill:'var(--ink)','font-size':13,'font-weight':800,'font-family':'var(--font-ui)'});
+  ctot.textContent=String(compact(total)); svg.append(ctot);
+  const clbl=sv('text',{x:CX,y:CY+13,'text-anchor':'middle',fill:'var(--muted)','font-size':9.5,'font-weight':600,'font-family':'var(--font-ui)'});
+  clbl.textContent=opt.centerLabel||'TOTAL'; svg.append(clbl);
+  wrap.append(svg);
+  /* daftar rincian di samping donat — nama, nilai, dan persentase eksplisit per baris (bukan cuma warna) */
+  const list=el('div',{style:'display:flex;flex-direction:column;gap:7px;min-width:180px'});
+  parts.forEach(p=>{
+    list.append(el('div',{style:'display:flex;align-items:center;gap:8px;font-size:13px'},
+      el('i',{style:`width:11px;height:11px;border-radius:3px;background:${p.color};flex:0 0 auto`}),
+      el('span',{style:'flex:1 1 auto;color:var(--ink-2)'},p.name),
+      el('span',{style:'font-weight:700'},compact(p.v)),
+      el('span',{style:'color:var(--muted);min-width:52px;text-align:right'},total?pct(p.v/total,1):'—')));
+  });
+  wrap.append(list);
   return wrap;
 }
 function legend(series){
@@ -1631,24 +1761,30 @@ function renderDash(){
   tiles2.append(tile('AOV',aov==null?'—':rp(aov), 'rata-rata nilai per transaksi',null));
   p.append(tiles2);
 
-  /* sales vs target per bulan */
+  /* Round 18: sales, target DAN achievement SEBELUMNYA dua chart terpisah ("Sales vs Target per bulan"
+     pakai groupedBars, "Achievement per bulan" pakai lineChart sendiri) — digabung jadi SATU chart
+     (comboBarsLine, sama seperti yang sudah dipakai Marketplace sejak round 9) sesuai permintaan
+     eksplisit user. Halo putih di belakang teks label (lihat comboBarsLine/groupedBars di atas) menjaga
+     semua nilai tetap terbaca walau garis Achievement melintasi bar Sales/Target. */
   const ser=[{name:'Sales',color:'var(--s1)',vals:m.map(x=>x.total_sales)},
              {name:'Target',color:'var(--s2)',vals:m.map(x=>x.target_total)}];
+  const achVals=m.map(x=>x.achiev_total);
   const wrap=el('div',{});
-  wrap.append(legend(ser), groupedBars(MON3,ser,{h:300}));
-  p.append(chartCard('Sales vs Target per bulan', S.year, wrap));
+  wrap.append(
+    el('div',{style:'display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-bottom:6px'},
+      legend(ser), el('span',{class:'sub'},'— ● Achievement (garis, sumbu kanan %, putus-putus = 100%)')),
+    comboBarsLine(MON3,ser,achVals,{h:320,lineRef:1,lineColor:'var(--ink)',lineName:'Achievement'}),
+    el('div',{class:'sub',style:'margin-top:4px'},'Sumbu kiri: Rp (batang Sales/Target) · Sumbu kanan: % (garis Achievement)'));
+  p.append(chartCard('Sales, Target & Achievement per bulan', S.year, wrap));
 
-  /* achievement per bulan + komposisi */
-  const row=el('div',{class:'grid g23'});
-  row.append(chartCard('Achievement per bulan','garis putus-putus = 100%',
-    lineChart(MON3, m.map(x=>x.achiev_total), {h:235,ref:1,refLabel:'100%',name:'Achievement',
-      fmt:v=>(v*100).toFixed(0)+'%', tip:v=>pct(v)})));
+  /* komposisi segmen — Round 18: diganti dari stackBar (bar horizontal) jadi donatChart, dan chart
+     Achievement-nya sendiri sudah menyatu ke chart Sales/Target di atas (lihat komentar di atas), jadi
+     kartu ini sekarang berdiri sendiri selebar kartu (bukan lagi berbagi grid 2-kolom dengan Achievement). */
   const comp=[{name:'Komersial Tigalapan',v:a.sales_komersial_tigalapan,color:'var(--s1)'},
               {name:'User Tigalapan',v:a.sales_user_tigalapan,color:'var(--s3)'},
               {name:'User Mamu',v:a.sales_user_mamu,color:'var(--s4)'}];
   const compTot=comp.reduce((s,x)=>s+x.v,0);
-  row.append(chartCard('Komposisi segmen', compTot?'dari mapping Sales Type':'—', stackBar(comp,compTot)));
-  p.append(row);
+  p.append(chartCard('Komposisi segmen', compTot?'dari mapping Sales Type':'—', donutChart(comp,compTot,{centerLabel:'TOTAL'})));
 
   /* achievement per toko */
   const st=byStore(rows).filter(r=>r.target_total>0||r.total_sales>0)
@@ -2529,7 +2665,7 @@ function renderPdca(){
       const st=S.stores.find(s=>s.id===x.store_id);
       body.append(el('div',{class:'item'},
         el('div',{class:'t'},x.title||'(tanpa judul)'),
-        x.content?el('div',{class:'c'},x.content):null,
+        x.content?el('div',{class:'c'},linkify(x.content)):null,
         el('div',{class:'f'},
           el('span',{class:'pill '+(x.status==='DONE'?'ok':x.status==='ON_PROGRESS'?'mid':x.status==='DROPPED'?'neu':'neu')},
             {OPEN:'Belum jalan',ON_PROGRESS:'Berjalan',DONE:'Selesai',DROPPED:'Dibatalkan'}[x.status]||x.status),
@@ -2613,11 +2749,13 @@ async function buildCheck(){
   }catch(e){ toast('Gagal: '+e.message); }
 }
 function pdcaForm(x={}){
+  const {body:bodyOnly,link:existingLink}=splitPdcaLink(x.content);
   const bx=el('div',{class:'box'});
   const phase=el('select',{id:'pd-phase'},PHASES.map(p=>el('option',{value:p.k,selected:x.phase===p.k?'':null},p.t)));
   const title=el('input',{type:'text',id:'pd-title',value:x.title||'',placeholder:'Ringkas dan jelas',style:'width:100%'});
   const content=el('textarea',{id:'pd-content',rows:'4',placeholder:'Detail, angka, atau langkah',style:'width:100%'});
-  content.value=x.content||'';
+  content.value=bodyOnly;
+  const link=el('input',{type:'url',id:'pd-link',value:existingLink,placeholder:'https://… (dokumen, foto, spreadsheet, dsb)',style:'width:100%'});
   const store=el('select',{id:'pd-store'},el('option',{value:''},'Semua toko'),
     S.stores.map(s=>el('option',{value:String(s.id),selected:String(x.store_id)===String(s.id)?'':null},s.name)));
   const month=el('select',{id:'pd-month'},MONTHS.map((m,i)=>el('option',{value:String(i+1),
@@ -2633,6 +2771,7 @@ function pdcaForm(x={}){
       el('div',{class:'fld'},el('label',{for:'pd-month'},'Bulan'),month)),
     el('div',{class:'fld'},el('label',{for:'pd-title'},'Judul'),title),
     el('div',{class:'fld'},el('label',{for:'pd-content'},'Isi'),content),
+    el('div',{class:'fld'},el('label',{for:'pd-link'},'Link (opsional)'),link),
     el('div',{class:'grid g2'},
       el('div',{class:'fld'},el('label',{for:'pd-store'},'Toko'),store),
       el('div',{class:'fld'},el('label',{for:'pd-status'},'Status'),status)),
@@ -2644,7 +2783,7 @@ function pdcaForm(x={}){
     el('button',{class:'btn',onclick:()=>modal.remove()},'Batal'),
     el('button',{class:'btn pri',onclick:async()=>{
       const body={store_id:store.value?Number(store.value):null,year:S.year,month:Number(month.value),
-        phase:phase.value,title:title.value.trim(),content:content.value.trim(),
+        phase:phase.value,title:title.value.trim(),content:joinPdcaLink(content.value,link.value.trim()),
         owner:owner.value.trim()||null,due_date:due.value||null,status:status.value};
       if(guard()) return;
       if(!body.title){ toast('Judul belum diisi.'); return; }
@@ -3388,7 +3527,27 @@ const COLOR_BASE={HITAM:'#161616',BLACK:'#161616',PUTIH:'#f7f7f5',WHITE:'#f7f7f5
   TURKIS:'#19b3a6',FANTA:'#ff8a3d',CINNAMON:'#9c5a34',TOFFEE:'#8a5a34',GRN:'#2f8f46',YLW:'#f3c40f',LM:'#c6e21e',
   MAUVE:'#8a6b7a',PLUM:'#6b2e4a',WOOD:'#8a6a52',SEAFOAM:'#8fd9c4',ELECTRIC:'#c6e21e',ALMOND:'#b98a55',MAPPLE:'#8a6a52',
   STEEL:'#4c6b8a',DUSTY:'#a98f98',TWILIGHT:'#8a6b7a',BLUSH:'#e8a9ab',SALMON:'#f28f74',BUTTER:'#f5e6a3',DARK:'#5a4a1a',
-  MINERAL:'#5a8aa0',CAMEO:'#7fb3d8',DEEP:'#163a7a'};
+  MINERAL:'#5a8aa0',CAMEO:'#7fb3d8',DEEP:'#163a7a',
+  /* Round 18: perluasan besar-besaran — user melaporkan masih sangat banyak warna item (Mamu, Tigalapan,
+     Myno, dkk) yang jatuh ke fallback hash (hue acak dari hash nama) karena belum tertangkap daftar di
+     atas. Sesi ini tidak punya akses query langsung ke tabel master produk Supabase utk menarik daftar
+     PERSIS nama warna yang dipakai produksi (lihat keterbatasan di log project), jadi perbaikannya di sini
+     adalah memperluas kosakata nama warna industri fashion ID/EN yang paling umum dipakai supaya makin
+     jarang jatuh ke fallback — bukan menebak satu per satu nama di database yang tidak bisa dibaca sesi
+     ini. Nama yang masih belum tertangkap tetap tampil dengan NAMA ASLINYA di chip (tidak hilang), hanya
+     warnanya yang berasal dari hash sampai ditambahkan ke daftar ini.*/
+  NUDE:'#dcb8a0',KULIT:'#dcb8a0',EMAS:'#c9a227',PERAK:'#c3c7cd',PASIR:'#d8c7a0',BATU:'#b9b5a8',
+  DAUN:'#2f8f46',LAUT:'#14808a',MATAHARI:'#f3c40f',DARAH:'#7b1e2e',ANGGUR:'#6b2e4a',JAMBU:'#f08cb0',
+  IVORY:'#f3ecd8',APRICOT:'#f0a868',ONYX:'#1c1c1e',JADE:'#38a18a',EMERALD:'#1f6f4a',FOREST:'#1f5a37',
+  MOSS:'#5c6b2c',RUST:'#9c4a2e',BRICK:'#a1442e',COPPER:'#b06a3a',BRONZE:'#8c6a2e',PEWTER:'#8a8d91',
+  SLATE:'#596a78',AQUA:'#2fb3b0',CYAN:'#17b8c4',HOTPINK:'#e0398a',
+  BABYBLUE:'#a9d4ef',ROYAL:'#1b3fa0',COBALT:'#2447a6',TOMATO:'#e2492f',CARROT:'#e8762a',
+  AMBER:'#e0a62a',HONEY:'#d9a524',CARAMEL:'#a9712f',LATTE:'#b08a62',ESPRESSO:'#3d2a21',CHOCOLATE:'#4a2e1c',
+  VANILLA:'#f2e6b8',PEARL:'#efe9df',CHAMPAGNE:'#ead9ab',PLATINUM:'#d6d6d6',GUNMETAL:'#4a4e54',
+  ASH:'#a0a3a6',SMOKE:'#b9bcbf',FOG:'#c9ccce',MIST:'#cfe0dd',FROST:'#d7eaf0',SNOW:'#f7f9fb',CLOUD:'#e7eaec',
+  FLAMINGO:'#f06a9a',WATERMELON:'#e8495a',GRAPE:'#6b3fa0',MOCCASIN:'#e8c99a',
+  CANDY:'#f05a8a',BUBBLEGUM:'#f08cc4',SEAGREEN:'#2e8b6e',PINE:'#1f4d2e',JUNGLE:'#1f5a30',
+  SAFFRON:'#f0b429',CURRY:'#c98a1a',OCHRE:'#c08a2a',SIENNA:'#9e5a3a',UMBER:'#6b4a33',CLAY:'#a8593a'};
 const COLOR_COMPOUND={'HIJAU TNI':'#4a5a2a','ABU MISTY':'#a3a9b3','ABU MUDA':'#bcc0c7','ABU TUA':'#4b4f56','ABU SEDANG':'#81868e',
   'ABU ABU':'#8b9099','HIJAU BOTOL':'#0f5a3a','HIJAU LUMUT':'#5c6b2c','BIRU DONGKER':'#1d2b5e','BIRU LANGIT':'#79b8ea',
   'BIRU MUDA':'#8fb6ee','BIRU TUA':'#16347a','MERAH MAROON':'#7b1e2e','OFF WHITE':'#efeadf','BLUE BENHUR':'#2b4aa0',
@@ -3407,7 +3566,12 @@ function colorHex(name){
   if(_colorMemo.has(key)) return _colorMemo.get(key);
   const clean=key.replace(/[^A-Z ]/g,' ').replace(/\s+/g,' ').trim();
   let hex=null;
-  for(const c in COLOR_COMPOUND) if(clean===c||clean.startsWith(c+' ')){ hex=COLOR_COMPOUND[c]; break; }
+  /* Round 18: cocokkan kompon di MANA PUN dalam nama (bukan cuma prefix) — nama warna di data sering
+     diawali kode SKU/prefix lain sebelum nama warnanya sendiri, mis. "01 DUSTY PINK" atau "DEFECT NAVY
+     BIRU TUA". `' '+clean+' '` dibubuhi spasi di kedua ujung supaya pencocokan kata-utuh konsisten di
+     awal/tengah/akhir string tanpa exception khusus. */
+  const padded=' '+clean+' ';
+  for(const c in COLOR_COMPOUND) if(padded.includes(' '+c+' ')){ hex=COLOR_COMPOUND[c]; break; }
   if(!hex){
     const toks=clean.split(' ');
     for(const t of toks){ if(COLOR_BASE[t]){ hex=COLOR_BASE[t]; break; } }
@@ -3874,7 +4038,7 @@ function renderH2H(){
     MONTHS.map((m,i)=>el('option',{value:String(i+1),selected:st[k]===i+1?'':null},m)));
   p.append(el('div',{class:'phead'},el('div',{},el('h1',{},'H2H Sales'),
     el('p',{},`Selalu terhadap tahun berjalan ${y3} (tetap, tidak ikut filter Tahun di atas): ${y1} vs ${y3} dan ${y2} vs ${y3} · periode `+(m1===m2?MONTHS[m1-1]:MONTHS[m1-1]+' – '+MONTHS[m2-1])+' · '+
-      (storeList().length?(storeList().length===1?S.stores.find(s=>String(s.id)===storeList()[0])?.name:storeList().length+' toko'):(brandList().length||S.spv?[brandList().join('/'),S.spv?('SPV '+spvLabel(S.spv)):''].filter(Boolean).join(' · '):'semua toko'))))));
+      scopeLabel()))));
   const pf_h2h=pageFilterBar('h2h');
   if(S.demo) p.append(demoBanner());
   const dimLast=daysInMonth(y3,m2);
@@ -4178,7 +4342,7 @@ function renderSSSG(){
   const cf=sssgCutoffParsed(sst), y3=cf.y, y2=y3-1, y1=y3-2, cutoffM=cf.m, cutoffDay=cf.day;
   p.append(el('div',{class:'phead'},el('div',{},el('h1',{},'Same Store Sales Growth'),
     el('p',{},`Tiap toko dibandingkan pada jendela tanggal buka toko itu sendiri s.d. ${cf.label} (${y1}, ${y2}, ${y3}) · `+
-      (storeList().length?(storeList().length===1?S.stores.find(s=>String(s.id)===storeList()[0])?.name:storeList().length+' toko'):(brandList().length||S.spv?[brandList().join('/'),S.spv?('SPV '+spvLabel(S.spv)):''].filter(Boolean).join(' · '):'semua toko'))))));
+      scopeLabel()))));
   const pf=pageFilterBar('sssg');
   if(S.demo) p.append(demoBanner());
 
@@ -4465,33 +4629,33 @@ function renderProgram(){
   const mgCard=el('div',{class:'card'});
   mgCard.append(el('header',{},el('h2',{},'Buat Program Baru'),el('span',{class:'sub'},programs.length+' program terdaftar')));
   const nameIn=el('input',{type:'text',placeholder:'mis. Program Lebaran 2026',style:'min-width:240px'});
-  const catsHost=el('div',{style:'margin-top:10px'},el('div',{class:'sub'},'Memuat daftar kategori…'));
-  const catState=new Set();
+  /* Round 18: daftar kategori diganti dari chip-toggle (bisa jadi deretan tombol sangat panjang kalau
+     kategori banyak) jadi dropdown multi-select reusable (multiSelectDropdown — sama dengan filter
+     Brand/SPV/Toko), lebih rapi dan sudah otomatis dapat kotak cari begitu kategori >6. */
+  const catState=[];
+  const catHostWrap=el('div',{class:'fld',style:'min-width:220px'},el('label',{},'Kategori'),
+    el('div',{},el('span',{class:'sub'},'Memuat daftar kategori…')));
   (async()=>{
     const cats=await itemCategoryList();
-    catsHost.innerHTML='';
-    if(!cats.length){ catsHost.append(el('span',{class:'sub'},'Belum ada kategori item pada data.')); return; }
-    const row=el('div',{class:'rowline',style:'flex-wrap:wrap;gap:6px'});
-    cats.forEach(c=>{
-      const chip=el('button',{type:'button',class:'btn sm',onclick:()=>{
-        if(catState.has(c)){ catState.delete(c); chip.className='btn sm'; } else { catState.add(c); chip.className='btn sm pri'; } }},c);
-      row.append(chip);
-    });
-    catsHost.append(row);
+    const catDiv=el('div');
+    catHostWrap.lastChild.replaceWith(catDiv);
+    if(!cats.length){ catDiv.append(el('span',{class:'sub'},'Belum ada kategori item pada data.')); return; }
+    multiSelectDropdown(catDiv, cats.map(c=>({value:c,label:c})), catState, arr=>{ catState.length=0; catState.push(...arr); },
+      {allLabel:'Pilih kategori',allowAll:false});
   })();
   mgCard.append(el('div',{class:'rowline',style:'flex-wrap:wrap;align-items:flex-end'},
     el('div',{class:'fld'},el('label',{},'Nama program'),nameIn),
+    catHostWrap,
     el('button',{class:'btn pri',onclick:async()=>{
       if(guard()) return;
       if(!nameIn.value.trim()){ toast('Isi nama programnya dulu.'); return; }
-      if(!catState.size){ toast('Pilih minimal 1 kategori di bawah.'); return; }
+      if(!catState.length){ toast('Pilih minimal 1 kategori di atas.'); return; }
       const arr=programsLoad();
       arr.push({id:'pr'+Date.now(),name:nameIn.value.trim(),categories:[...catState],targets:{}});
       try{ await programsSave(arr); S.programSel=arr[arr.length-1].id; toast('Program "'+nameIn.value.trim()+'" dibuat.'); render(); }
       catch(e){ toast('Gagal: '+e.message); } }},'Buat program')));
   mgCard.append(el('p',{class:'note',style:'margin-top:10px'},
-    'Pilih satu atau beberapa kategori (klik utk menandai) lalu beri nama & buat program. Realisasi sales program = jumlah NET SALES seluruh item pada kategori yang dipilih, pada cakupan toko/brand/SPV filter di atas.'));
-  mgCard.append(catsHost);
+    'Pilih satu atau beberapa kategori dari dropdown di atas lalu beri nama & buat program. Realisasi sales program = jumlah NET SALES seluruh item pada kategori yang dipilih, pada cakupan toko/brand/SPV filter di atas.'));
   p.append(mgCard);
 
   if(!programs.length){ p.append(el('div',{class:'empty'},el('b',{},'Belum ada program.'),'Buat program pertama Anda di kartu di atas.')); return; }
@@ -4650,18 +4814,24 @@ function renderMkt(){
   if(!S.mkt.length) p.append(el('div',{class:'note warn'},el('b',{},'Belum ada penjualan marketplace pada data. '),
     'Sales Type yang namanya mengandung Shopee atau Tiktok otomatis dikenali. Tipe lain (mis. Tokopedia, Lazada) bisa ditandai di Pengaturan → Database Sales Type → kolom Channel.'));
 
-  /* item 5: 4 kartu — Total, Growth vs tahun lalu, lalu 2 channel teratas (biar genap 4 di grid g4) */
+  /* Round 18: SEBELUMNYA dibatasi tepat 4 tile (Total/Growth/Channel terbaik + maks 2 channel lain) —
+     begitu channel bertambah dari 2 default (Shopee/Tiktok) jadi 3-4 (Tokopedia/Lazada, round 17 item 3
+     menyebut "bisa ditambah nantinya"), channel ke-3/4 tidak pernah tampil di tile sama sekali walau
+     datanya ada. Sekarang: 3 tile ringkasan (Total/Growth/Channel terbaik) LALU satu tile per channel
+     yang BENAR-BENAR ada datanya (tanpa dibatasi jumlahnya) — grid g4 otomatis membungkus ke baris baru,
+     jadi selalu lengkap sesuai channel yang tersedia. */
   const tl=el('div',{class:'grid g4'});
   const totCy=tot(S.year), totPy=tot(S.year-1);
   const mktGrowth=totPy>0?(totCy-totPy)/totPy:null;
-  const bestCh=chs.map(ch=>({ch,s:mktRows(S.year,m1,m2,ch).reduce((a,r)=>a+N(r.amount),0)})).sort((a,b)=>b.s-a.s)[0];
+  const chTotals=chs.map(ch=>({ch,s:mktRows(S.year,m1,m2,ch).reduce((a,r)=>a+N(r.amount),0)})).sort((a,b)=>b.s-a.s);
+  const bestCh=chTotals[0];
   tl.append(tile('Total marketplace',compact(totCy),`${pct(allSales?totCy/allSales:null)} dari total sales toko`,null));
   tl.append(tile(`Growth vs ${S.year-1}`, mktGrowth!=null?pct(mktGrowth):'—',
     mktGrowth!=null?(mktGrowth>=0?'naik':'turun')+' dibanding tahun lalu':`belum ada data ${S.year-1}`, mktGrowth!=null?(mktGrowth>=0?1:0):null));
   if(bestCh&&bestCh.s>0) tl.append(tile('Channel terbaik',bestCh.ch,`${compact(bestCh.s)} · ${pct(totCy?bestCh.s/totCy:null)} dari total marketplace`,null));
-  chs.filter(ch=>ch!==bestCh?.ch).slice(0,tl.children.length>=3?1:2).forEach(ch=>{
-    const s=mktRows(S.year,m1,m2,ch).reduce((a,r)=>a+N(r.amount),0), t=chanTarget(ch,S.year,m1,m2);
-    tl.append(tile(ch,compact(s),t>0?`target ${compact(t)} · GAP ${compact(s-t)}`:'target belum diisi (lihat bawah)',t>0?s/t:null));
+  chTotals.forEach(({ch,s})=>{
+    const t=chanTarget(ch,S.year,m1,m2);
+    tl.append(tile(ch,compact(s),t>0?`target ${compact(t)} · GAP ${compact(s-t)}`:(s>0?'target belum diisi (lihat bawah)':'belum ada data pada periode ini'),t>0?s/t:null));
   });
   p.append(tl);
 
@@ -4681,7 +4851,10 @@ function renderMkt(){
      yang memakai fungsi SAMA. Sekarang ditumpuk satu per baris, selebar card, agar ukurannya sepadan. */
   /* round 9 item 5: bar Sales/Target + garis Achievement digabung dalam SATU chart (comboBarsLine),
      bukan dua elemen (groupedBars + lineChart) ditumpuk seperti sebelumnya. */
-  chsSorted.slice(0,2).forEach(ch=>{
+  /* Round 18: sebelumnya dibatasi `.slice(0,2)` (cuma 2 chart teratas) — sekarang tampilkan chart utk
+     SEMUA channel yang punya data pada tahun ini ATAU tahun lalu (bukan cuma 2 teratas tahun ini),
+     supaya channel baru (Tokopedia/Lazada dkk) tetap kebagian analisisnya begitu datanya ada. */
+  chsSorted.filter(ch=>chSales(ch)>0||mktRows(S.year-1,m1,m2,ch).reduce((a,r)=>a+N(r.amount),0)>0).forEach(ch=>{
     const sales=MONTHS.map((_,i)=>mktRows(S.year,i+1,i+1,ch).reduce((a,r)=>a+N(r.amount),0));
     const tg=MONTHS.map((_,i)=>chanTarget(ch,S.year,i+1,i+1));
     const ser=[{name:'Sales',color:CH_COLOR[ch]||'var(--s1)',vals:sales},{name:'Target',color:'var(--grid)',vals:tg}];
@@ -5632,10 +5805,9 @@ $('#railtog').onclick=()=>$('#rail').classList.toggle('open');
     try{ localStorage.setItem('sc_rail_collapsed', shell.classList.contains('railcollapsed')?'1':'0'); }catch(e){}
   };
 })();
-/* #f-year, #f-brand, #f-store kini dropdown multi-select (multiSelectDropdown) — listenernya
+/* #f-year, #f-brand, #f-spv, #f-store kini dropdown multi-select (multiSelectDropdown) — listenernya
    dipasang sekali per build di dalam fillFilters()/syncStoreOptions(), bukan di sini. */
 $('#f-month').onchange=e=>{ S.month=Number(e.target.value); S.itemScope=''; S.monthRange=null; S.rangeTag=''; $('#f-range').value=''; $('#f-custom-wrap').style.display='none'; render(); };
-$('#f-spv').onchange=e=>{ S.spv=e.target.value; syncStoreOptions(); S.itemScope=''; render(); };
 function fillCustomMonthSelects(){
   ['#f-custom-m1','#f-custom-m2'].forEach(sel=>{
     const s=$(sel); if(s.options.length) return;
