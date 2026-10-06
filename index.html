@@ -2326,8 +2326,14 @@ function kpiMonthCalc(mt,year,month){
   let target=null,realisasi=null,source='none';
   if(wk){ target=wk.target; realisasi=wk.realisasi; source='weekly'; }
   if(isAutoRevenueCode(mt.code)){
-    /* Realisasi KPI bertipe Revenue SELALU ditimpa dari data Sales & Target live (bukan Weekly) —
-       target tetap dari Weekly (diisi manual per bulan), hanya realisasi yang otomatis. */
+    /* Round 21b: Realisasi DAN Target KPI bertipe Revenue sekarang SAMA-SAMA ditarik live dari Sales
+       & Target (target_total/target_komersial/target_user yang sudah ada di menu Sales & Target),
+       tidak perlu diketik ulang manual di Weekly. Kalau user memang mengisi Target secara manual di
+       Weekly utk bulan tertentu (mis. mau pakai angka target yang beda dari Sales & Target), itu
+       dipakai sbg OVERRIDE utk bulan itu saja — supaya tombol "Muat Template" / isian lama tidak hilang
+       begitu saja, tapi defaultnya sekarang otomatis mengikuti Sales & Target. */
+    const autoTarget=autoTargetForMonth(mt.code,year,month);
+    if(target==null) target=autoTarget;
     realisasi=autoRevenueForMonth(mt.code,year,month); source='auto_revenue';
   } else {
     const reportMonth = S.month || lastMonthWithData(year);
@@ -2350,7 +2356,11 @@ function kpiMonthCalc(mt,year,month){
   const bobot=N(mt.weight);
   const skor = running && adj!=null ? adj*bobot/100 : 0;
   const [green,yellow]=kpiGreenYellow();
-  let indikator = (realisasi==null) ? 'Belum ada data' : (adj>=green?'Tercapai':adj>=yellow?'Waspada':'Kritis');
+  /* Round 21b: dicek dari adj==null (capaian tidak bisa dihitung), BUKAN cuma realisasi==null — KPI
+     auto-revenue selalu punya realisasi angka (0 kalau belum ada baris sales sama sekali di bulan itu,
+     bukan null), jadi kalau cuma cek realisasi==null, bulan tanpa Target (mis. belum ada baris Sales &
+     Target sama sekali utk bulan itu) salah tampil 'Kritis' padahal seharusnya 'Belum ada data'. */
+  let indikator = (adj==null) ? 'Belum ada data' : (adj>=green?'Tercapai':adj>=yellow?'Waspada':'Kritis');
   if(!running) indikator=mt.status;
   return {mt,year,month,target,realisasi,capaian,adj,skor,bobot,running,indikator,grade:gradeOf(adj),source};
 }
@@ -2378,7 +2388,7 @@ function kpiYtdCalc(mt,year,uptoMonth){
   const bobot=N(mt.weight);
   const skor = running && adj!=null ? adj*bobot/100 : 0;
   const [green,yellow]=kpiGreenYellow();
-  let indikator=(realisasiYtd==null)?'Belum ada data':(adj>=green?'Tercapai':adj>=yellow?'Waspada':'Kritis');
+  let indikator=(adj==null)?'Belum ada data':(adj>=green?'Tercapai':adj>=yellow?'Waspada':'Kritis'); // lihat catatan di kpiMonthCalc soal adj vs realisasi
   if(!running) indikator=mt.status;
   return {mt,targetYtd,realisasiYtd,capaian,adj,skor,bobot,running,indikator,grade:gradeOf(adj),months};
 }
@@ -2464,11 +2474,16 @@ function renderKpiInput(p){
       const txt=(f,w)=>{ const inp=el('input',{value:d[f]||'',style:`width:${w}px`}); inp.oninput=()=>d[f]=inp.value; return inp; };
       const num_=(f,w)=>{ const inp=el('input',{type:'text',value:d[f]!=null?String(d[f]):'',style:`width:${w}px;text-align:right`}); inp.oninput=()=>d[f]=num(inp.value); return inp; };
       const sel_=(f,opts,w)=>{ const s=el('select',{style:`width:${w}px`},opts.map(o=>el('option',{value:o,selected:d[f]===o?'':null},o))); s.onchange=()=>d[f]=s.value; return s; };
-      /* Round 21: "Sumber Realisasi" — kalau dipilih salah satu opsi Otomatis, kolom Realisasi di tab
-         ini & Weekly tidak lagi diisi manual, melainkan selalu ditarik live dari Sales & Target
-         (lihat isAutoRevenueCode()/autoRevenueForMonth()). Target tetap manual seperti biasa. */
-      const codeOpts=[['','Manual (isi di tab Weekly)'],['REVENUE_RP','Otomatis — Total Sales (Rp)'],
-        ['REVENUE_KOM_RP','Otomatis — Sales Komersial (Rp)'],['REVENUE_USER_RP','Otomatis — Sales User (Rp)']];
+      /* Round 21/21b: "Sumber Target & Realisasi" — kalau dipilih salah satu opsi Otomatis, TARGET
+         maupun REALISASI KPI ini tidak perlu diisi manual lagi di tab Weekly, melainkan sama-sama
+         ditarik live per bulan dari Sales & Target (target_total/target_komersial/target_user dan
+         total_sales/sales_komersial/sales_user) — lihat isAutoRevenueCode()/autoTargetForMonth()/
+         autoRevenueForMonth(). Weekly tab tetap bisa dipakai utk menimpa (override) Target bulan
+         tertentu secara manual kalau memang perlu beda dari Sales & Target. */
+      const codeOpts=[['','Manual (isi target & realisasi sendiri di tab Weekly)'],
+        ['REVENUE_RP','Otomatis — Total Sales (Target+Realisasi dari Sales & Target)'],
+        ['REVENUE_KOM_RP','Otomatis — Sales Komersial (Target+Realisasi dari Sales & Target)'],
+        ['REVENUE_USER_RP','Otomatis — Sales User (Target+Realisasi dari Sales & Target)']];
       const selCode=el('select',{style:'width:220px'},codeOpts.map(([v,l])=>el('option',{value:v,selected:d.code===v?'':null},l)));
       selCode.onchange=()=>d.code=selCode.value;
       cells=[String(i+1),
@@ -2520,7 +2535,7 @@ function renderKpiInput(p){
   p.append(el('div',{class:'card'},
     el('header',{},el('h2',{},'Input KPI'),el('span',{class:'sub'},'klik Edit untuk mengubah metadata; Target/Realisasi YTD otomatis dari tab Weekly bila terisi')),
     el('div',{class:'tw'},el('table',{},el('thead',{},el('tr',{},
-      ['NO','KPI','PERSPEKTIF','UOM','PERIODE','BOBOT','POLARITAS','STATUS','METODE YTD','TARGET YTD','REALISASI YTD','CATATAN','SUMBER REALISASI','CAPAIAN AKTUAL','CAPAIAN (ADJ)','SKOR KPI','INDIKATOR','AKSI']
+      ['NO','KPI','PERSPEKTIF','UOM','PERIODE','BOBOT','POLARITAS','STATUS','METODE YTD','TARGET YTD','REALISASI YTD','CATATAN','SUMBER TARGET & REALISASI','CAPAIAN AKTUAL','CAPAIAN (ADJ)','SKOR KPI','INDIKATOR','AKSI']
         .map((h,i)=>el('th',{class:(i===5||i>=9&&i<=10||i>=13&&i<=15?'r':'')+(i===1?' sticky1':'')},h)))),tb))),
     el('div',{class:'rowline',style:'margin-top:11px'},
       el('button',{class:'btn sm',onclick:async()=>{
@@ -2544,7 +2559,9 @@ function renderKpiWeekly(p){
     el('div',{class:'fld'},el('label',{},'Bulan diisi'),mSel),
     el('span',{class:'note',style:'flex:1;margin:0;padding:8px 12px;font-size:12px'},
       'Isi Target dan realisasi mingguan (W1=tgl 1–7, W2=8–14, W3=15–21, W4=22–28, W5=29–akhir bulan). '+
-      '"Bulanan" bila diisi akan menggantikan hasil rollup W1–W5. MTD dihitung otomatis sesuai Metode MTD.')));
+      '"Bulanan" bila diisi akan menggantikan hasil rollup W1–W5. MTD dihitung otomatis sesuai Metode MTD. '+
+      'KPI dengan Sumber Realisasi "Otomatis" (lihat tab Input KPI) — Target DAN Realisasi-nya sama-sama '+
+      'sudah ditarik otomatis dari Sales & Target; baris itu tidak perlu diisi di sini kecuali mau menimpa target bulan tertentu.')));
   const tb=el('tbody');
   S.metrics.slice().sort((a,b)=>(a.sort_order||0)-(b.sort_order||0)).forEach((mt,i)=>{
     const w=kpiWeeklyRow(mt.id,S.year,month)||{};
@@ -2558,10 +2575,15 @@ function renderKpiWeekly(p){
       const selm=el('select',{style:'width:95px'},['Akumulasi','Rata-rata'].map(o=>el('option',{value:o,selected:d.metode_mtd===o?'':null},o)));
       selm.onchange=()=>d.metode_mtd=selm.value;
       /* Round 21: KPI dengan Sumber Realisasi "Otomatis" (lihat tab Input KPI) sudah dapat realisasinya
-         live dari Sales & Target — kolom W1-W5/Bulanan/Metode MTD jadi tidak relevan dan disembunyikan
-         supaya tidak membingungkan (user tidak perlu isi dua kali), hanya Target yang tetap bisa diedit. */
+         live dari Sales & Target — kolom W1-W5/Bulanan/Metode MTD jadi tidak relevan dan disembunyikan.
+         Round 21b: Target KPI jenis ini SEKARANG JUGA otomatis dari Sales & Target secara default —
+         input di sini cuma dipakai kalau mau MENIMPA (override) target otomatis utk bulan itu saja;
+         dikosongkan (Simpan tanpa isi) = ikut otomatis lagi. Placeholder menampilkan angka otomatis yang
+         sedang berlaku supaya kelihatan apa yang akan dipakai kalau tidak diisi. */
+      const autoTgtHint=autoTargetForMonth(mt.code,S.year,month);
+      const targetInp=num_('target'); if(autoRev) targetInp.placeholder=autoTgtHint!=null?fmtKpi(autoTgtHint,mt.unit)+' (otomatis)':'(otomatis)';
       cells=autoRev
-        ? [num_('target'),el('span',{class:'sub'},'otomatis'),el('span',{class:'sub'},'otomatis'),el('span',{class:'sub'},'otomatis'),el('span',{class:'sub'},'otomatis'),el('span',{class:'sub'},'otomatis'),el('span',{class:'sub'},'otomatis'),el('span',{class:'sub'},'—'),
+        ? [targetInp,el('span',{class:'sub'},'otomatis'),el('span',{class:'sub'},'otomatis'),el('span',{class:'sub'},'otomatis'),el('span',{class:'sub'},'otomatis'),el('span',{class:'sub'},'otomatis'),el('span',{class:'sub'},'otomatis'),el('span',{class:'sub'},'—'),
             el('span',{style:'display:flex;gap:5px'},
               el('button',{class:'btn sm pri',onclick:async()=>{
                 try{
@@ -2583,10 +2605,18 @@ function renderKpiWeekly(p){
       const f=v=>v==null?'—':fmtKpi(v,mt.unit);
       const hasEntry=[w.target,w.w1,w.w2,w.w3,w.w4,w.w5,w.bulanan_override].some(v=>v!=null);
       const autoTag=el('span',{class:'pill ok'},'otomatis · Sales');
+      /* Round 21b: Target untuk KPI auto-revenue DITAMPILKAN dari calc.target (hasil kpiMonthCalc, yang
+         otomatis dari Sales & Target bila tidak ada override manual) — bukan w.target mentah, supaya
+         kolom ini tidak tampil "—" padahal sebenarnya sudah otomatis terisi. */
       cells=autoRev
-        ? [f(w.target),autoTag,'','','','','','',
+        ? [calc.target==null?'—':fmtKpi(calc.target,mt.unit), w.target!=null?el('span',{class:'pill neu'},'override manual') : autoTag,'','','','','','',
             el('span',{style:'display:flex;gap:5px'},
-              el('button',{class:'btn sm',onclick:()=>{ window.S_kpiWeekEditing.add(key); renderKpi(); }},'Edit'))]
+              el('button',{class:'btn sm',onclick:()=>{ window.S_kpiWeekEditing.add(key); renderKpi(); }},'Edit'),
+              w.target!=null?el('button',{class:'btn sm',onclick:async()=>{
+                if(guard()) return;
+                try{ await DB.del('kpi_weekly',`kpi_id=eq.${mt.id}&year=eq.${S.year}&month=eq.${month}`);
+                  toast('Kembali ke target otomatis.'); await loadAll(); renderKpi(); }
+                catch(e){ toast('Gagal: '+e.message); } }},'Kembali ke otomatis'):null)]
         : [f(w.target),f(w.w1),f(w.w2),f(w.w3),f(w.w4),f(w.w5),f(w.bulanan_override),w.metode_mtd||'Akumulasi',
         el('span',{style:'display:flex;gap:5px'},
           el('button',{class:'btn sm',onclick:()=>{ window.S_kpiWeekEditing.add(key); renderKpi(); }},'Edit'),
@@ -2802,24 +2832,26 @@ function renderKpiSettings(p){
 
 /* "Muat template Scorecard Commercial" — mengisi 3 KPI contoh (Revenue/Customer Satisfaction/Akurasi
    Stock Store) persis seperti file Scorecard_KPI_COMMERCIAL_Sep2026.xlsx yang dilampirkan user: bobot,
-   perspektif, polaritas, status & TARGET bulanan Jan-Des ("sudah di input langsung target"). Revenue
-   diset Sumber Realisasi = Otomatis (Total Sales) sesuai permintaan ("untuk revenue ambil dari data
-   pencapaian") — realisasinya TIDAK ditulis statis, akan selalu dihitung live dari Sales & Target.
-   Customer Satisfaction & Akurasi Stock Store diisi target + realisasi historis Jan-Sep PERSIS seperti
-   file (data riil yang sudah user input sendiri di Excel-nya), Okt-Des sengaja dibiarkan kosong (belum
-   ada data di file aslinya juga) — bulan-bulan berikutnya tinggal diisi manual lewat tab Weekly.
-   Upsert memakai `code` sbg kunci (REVENUE_RP/CSAT_SCORE/STOCK_ACC_PCT) sehingga tombol ini AMAN diklik
-   ulang (memperbarui, bukan menduplikasi baris). */
-const KPI_TEMPLATE_REVENUE_TARGET=[8173459200,8293979875,9123645408,8834668012,10906900000,11179000000,14126000000,21534000000,12549000000,13519000000,19755000000,18670000000];
+   perspektif, polaritas, status. Revenue diset Sumber = Otomatis (Total Sales) sesuai permintaan user
+   ("untuk revenue ambil dari data pencapaian", lalu diperjelas lagi: "target bisa ditarik otomatis dari
+   target sales yang sudah ada") — TARGET maupun REALISASI-nya TIDAK ditulis statis dari file Excel sama
+   sekali, keduanya selalu dihitung live dari target_total & total_sales di Sales & Target (lihat
+   isAutoRevenueCode()/autoTargetForMonth()/autoRevenueForMonth()). Customer Satisfaction & Akurasi Stock
+   Store (KPI yang TIDAK punya sumber data otomatis di app ini) diisi target + realisasi historis Jan-Sep
+   PERSIS seperti file (data riil yang sudah user input sendiri di Excel-nya), Okt-Des sengaja dibiarkan
+   kosong (belum ada data di file aslinya juga) — bulan-bulan berikutnya tinggal diisi manual lewat tab
+   Weekly. Upsert memakai `code` sbg kunci (REVENUE_RP/CSAT_SCORE/STOCK_ACC_PCT) sehingga tombol ini AMAN
+   diklik ulang (memperbarui, bukan menduplikasi baris). */
 const KPI_TEMPLATE_CSAT=[[4,null],[4,4.65],[4,4.52],[4,4.71],[4,4.77],[4,4.64],[4,5],[4,5],[4,4.83],[4,null],[4,null],[4,null]];
 const KPI_TEMPLATE_STOCK=[[.95,.9624],[.95,.9749],[.95,.9763],[.95,.9533],[.95,.9561],[.95,.9644],[.95,.9508],[.95,.9089],[.95,.923],[.95,null],[.95,null],[.95,null]];
 function kpiTemplateSeedCard(){
   return el('div',{class:'card'},
     el('header',{},el('h2',{},'Muat Template Scorecard Commercial'),el('span',{class:'sub'},'dari Scorecard_KPI_COMMERCIAL_Sep2026.xlsx')),
     el('p',{style:'margin:0 0 12px;color:var(--ink-2);font-size:13px'},
-      '3 KPI contoh (Revenue, Customer Satisfaction, Akurasi Stock Store) akan dibuat/diperbarui dengan bobot, perspektif, '+
-      'polaritas & TARGET bulanan Jan–Des '+new Date().getFullYear()+' persis seperti file yang dilampirkan. Revenue otomatis tersambung ke data Sales & Target '+
-      '(realisasinya live, tidak ditulis statis). Customer Satisfaction & Akurasi Stock Store diisi target+realisasi Jan–Sep sesuai file (Okt–Des dikosongkan, tinggal diisi manual tiap bulan di tab Weekly). '+
+      '3 KPI contoh (Revenue, Customer Satisfaction, Akurasi Stock Store) akan dibuat/diperbarui dengan bobot, perspektif & '+
+      'polaritas persis seperti file yang dilampirkan. Revenue disambungkan ke Sumber Otomatis — Target MAUPUN Realisasi-nya '+
+      'live dari menu Sales & Target (bukan angka statis dari file Excel), jadi akan selalu mengikuti target & pencapaian sales terbaru Anda. '+
+      'Customer Satisfaction & Akurasi Stock Store diisi target+realisasi Jan–Sep sesuai file (Okt–Des dikosongkan, tinggal diisi manual tiap bulan di tab Weekly). '+
       'Aman diklik berkali-kali — menimpa (bukan menduplikasi) baris yang sama.'),
     el('button',{class:'btn sm',onclick:async()=>{
       if(guard()) return;
@@ -2838,13 +2870,16 @@ function kpiTemplateSeedCard(){
         S.rollCache.clear(); await loadAll();
         const kpiByCode=code=>S.metrics.find(m=>m.code===code);
         const rev=kpiByCode('REVENUE_RP'), csat=kpiByCode('CSAT_SCORE'), stock=kpiByCode('STOCK_ACC_PCT');
+        /* Round 21b: Revenue TIDAK LAGI diberi baris kpi_weekly sama sekali — target & realisasinya
+           sekarang otomatis penuh dari Sales & Target (lihat isAutoRevenueCode()), menulis target
+           statis dari file Excel di sini justru akan jadi OVERRIDE yang mengunci angkanya, bertentangan
+           dengan permintaan "target bisa ditarik otomatis dari target sales yang sudah ada". */
         const weekly=[];
         for(let m=1;m<=12;m++){
-          if(rev) weekly.push({kpi_id:rev.id,year:y,month:m,target:KPI_TEMPLATE_REVENUE_TARGET[m-1],w1:null,w2:null,w3:null,w4:null,w5:null,bulanan_override:null,metode_mtd:'Akumulasi'});
           if(csat) weekly.push({kpi_id:csat.id,year:y,month:m,target:KPI_TEMPLATE_CSAT[m-1][0],w1:null,w2:null,w3:null,w4:null,w5:null,bulanan_override:KPI_TEMPLATE_CSAT[m-1][1],metode_mtd:'Rata-rata'});
           if(stock) weekly.push({kpi_id:stock.id,year:y,month:m,target:KPI_TEMPLATE_STOCK[m-1][0],w1:null,w2:null,w3:null,w4:null,w5:null,bulanan_override:KPI_TEMPLATE_STOCK[m-1][1],metode_mtd:'Rata-rata'});
         }
-        await DB.write('kpi_weekly',weekly,'kpi_id,year,month');
+        if(weekly.length) await DB.write('kpi_weekly',weekly,'kpi_id,year,month');
         toast('Template Scorecard Commercial dimuat untuk tahun '+y+'.'); S.rollCache.clear(); await loadAll(); renderKpi();
       }catch(e){ toast('Gagal memuat template: '+e.message); }
     }},'Muat template Scorecard Commercial'));
@@ -2880,16 +2915,32 @@ function autoKpi(code){
 }
 /* Round 21: kode KPI yang REALISASI-nya SELALU ditarik langsung dari data Sales & Target (bukan
    menunggu KPI itu kosong dari Weekly dulu seperti jalur legacy autoKpi() di atas) — ini yang
-   dipakai KPI "Revenue" sesuai permintaan user ("untuk revenue ambil dari data pencapaian"). Target
-   TETAP diisi manual lewat tab Weekly/Input KPI (sesuai template: hanya Realisasi yang otomatis),
-   dan nilainya LIVE per bulan dari v_sales_dashboard — bukan dari tabel Weekly sama sekali — supaya
+   dipakai KPI "Revenue" sesuai permintaan user ("untuk revenue ambil dari data pencapaian"), dan
+   nilainya LIVE per bulan dari v_sales_dashboard — bukan dari tabel Weekly sama sekali — supaya
    selalu sinkron begitu ada input sales baru, untuk tahun/bulan MANAPUN (pakai dashAllRows(), bukan
-   S.dash yang di mode nyata cuma berisi tahun filter aktif). */
-const AUTO_REVENUE_CODES={REVENUE_RP:r=>N(r.total_sales), REVENUE_KOM_RP:r=>N(r.sales_komersial), REVENUE_USER_RP:r=>N(r.sales_user)};
+   S.dash yang di mode nyata cuma berisi tahun filter aktif).
+   Round 21b: user minta TARGET-nya juga ditarik otomatis ("target bisa ditarik otomatis dari target
+   sales yang sudah ada") — sebelumnya hanya realisasi yang otomatis, target masih harus diketik ulang
+   manual di tab Weekly padahal angkanya SAMA PERSIS dengan target_total/target_komersial/target_user
+   yang sudah ada di menu Sales & Target. Ditambahkan getter target paralel per kode, dan kalau KPI-nya
+   auto-revenue, Weekly tab TIDAK PERLU diisi sama sekali lagi (baik target maupun realisasi) — hanya
+   dipakai sbg override opsional kalau user memang mau menimpa angka target utk bulan tertentu. */
+const AUTO_REVENUE_CODES={
+  REVENUE_RP:    {realisasi:r=>N(r.total_sales),      target:r=>N(r.target_total)},
+  REVENUE_KOM_RP:{realisasi:r=>N(r.sales_komersial),   target:r=>N(r.target_komersial)},
+  REVENUE_USER_RP:{realisasi:r=>N(r.sales_user),       target:r=>N(r.target_user)}
+};
 function isAutoRevenueCode(code){ return !!AUTO_REVENUE_CODES[code]; }
 function autoRevenueForMonth(code,year,month){
   const f=AUTO_REVENUE_CODES[code]; if(!f) return null;
-  return dashAllRows().filter(r=>r.year===year&&r.month===month).reduce((s,r)=>s+f(r),0);
+  return dashAllRows().filter(r=>r.year===year&&r.month===month).reduce((s,r)=>s+f.realisasi(r),0);
+}
+function autoTargetForMonth(code,year,month){
+  const f=AUTO_REVENUE_CODES[code]; if(!f) return null;
+  const rows=dashAllRows().filter(r=>r.year===year&&r.month===month);
+  if(!rows.length) return null; // belum ada baris Sales & Target bulan itu sama sekali -> biarkan null, bukan 0
+  const t=rows.reduce((s,r)=>s+f.target(r),0);
+  return t>0?t:null;
 }
 
 /* ---------- PDCA ---------- */
