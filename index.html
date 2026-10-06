@@ -428,14 +428,25 @@ const N = v => (v==null||v===''||isNaN(v))?0:Number(v);
 const T=(s,raw)=>{ const o=new String(s); o.raw=(raw==null||isNaN(raw))?null:Number(raw); return o; };
 function rp(v,dec=0){ if(v==null||isNaN(v))return T('—');
   return T('Rp '+Number(v).toLocaleString('id-ID',{minimumFractionDigits:dec,maximumFractionDigits:dec}),v); }
+/* Round 20: user minta SEMUA kolom bernilai Rupiah tetap ringkas (format jt/M/rb/T seperti sebelumnya),
+   tapi sampai 2 angka di belakang koma dan TIDAK dibulatkan ke atas — angka apa adanya sesuai nilai sales
+   yang ada. Sebelumnya tier jt/rb dipotong 0 desimal dan tier T/M dipotong 2 desimal TAPI lewat
+   `toLocaleString(maximumFractionDigits)` yang MEMBULATKAN (round-half-up/even), bukan memotong — mis.
+   Rp 1.236.000 pada tier "jt" sebelumnya tampil "Rp 1 jt" (dibulatkan dari 1,236), sekarang harus tampil
+   "Rp 1,23 jt" (dipotong/truncate, bukan dibulatkan ke 1,24). `trunc2()` memotong ke 2 desimal dengan
+   Math.floor SEBELUM diformat, baru `toLocaleString` dipanggil hanya untuk pemisah ribuan + menjamin 2
+   desimal selalu tampil (minimumFractionDigits:2) — toLocaleString tidak lagi sempat membulatkan karena
+   angkanya sudah tepat 2 desimal saat masuk ke situ. */
+function trunc2(x){ return Math.floor(x*100+1e-9)/100; }
 function compact(v){ if(v==null||isNaN(v))return T('—');
   const a=Math.abs(v), s=v<0?'-':'';
+  const f2=x=>trunc2(x).toLocaleString('id-ID',{minimumFractionDigits:2,maximumFractionDigits:2});
   let t;
-  if(a>=1e12) t=s+'Rp '+(a/1e12).toLocaleString('id-ID',{maximumFractionDigits:2})+' T';
-  else if(a>=1e9)  t=s+'Rp '+(a/1e9 ).toLocaleString('id-ID',{maximumFractionDigits:2})+' M';
-  else if(a>=1e6)  t=s+'Rp '+(a/1e6 ).toLocaleString('id-ID',{maximumFractionDigits:0})+' jt';
-  else if(a>=1e3)  t=s+'Rp '+(a/1e3 ).toLocaleString('id-ID',{maximumFractionDigits:0})+' rb';
-  else t=s+'Rp '+a.toLocaleString('id-ID');
+  if(a>=1e12) t=s+'Rp '+f2(a/1e12)+' T';
+  else if(a>=1e9)  t=s+'Rp '+f2(a/1e9 )+' M';
+  else if(a>=1e6)  t=s+'Rp '+f2(a/1e6 )+' jt';
+  else if(a>=1e3)  t=s+'Rp '+f2(a/1e3 )+' rb';
+  else t=s+'Rp '+f2(a);
   return T(t,v); }
 function pct(v,dec=2){ return (v==null||isNaN(v))?T('—'):T((v*100).toLocaleString('id-ID',{minimumFractionDigits:dec,maximumFractionDigits:dec})+'%',v); }
 function int(v){ return (v==null||isNaN(v))?T('—'):T(Math.round(v).toLocaleString('id-ID'),Math.round(v)); }
@@ -1884,9 +1895,42 @@ function renderSales(){
     el('p',{},'Satu baris per toko per bulan, mengikuti kolom sheet SALES. '+periodLabel()))));
   const pf_sales=pageFilterBar('sales'); if(pf_sales) p.append(pf_sales);
   if(S.demo) p.append(demoBanner());
+
+  /* Round 20: SEBELUMNYA satu-satunya cara mengisi target adalah "Edit" inline pada baris tabel di
+     bawah — tapi tabel itu HANYA menampilkan baris yang sudah punya target_total>0 ATAU total_sales>0
+     (lihat filter `rows` di bawah), jadi toko+bulan yang BELUM punya data/target sama sekali tidak
+     pernah muncul sebagai baris dan tidak bisa diisi target-nya sama sekali lewat halaman ini — harus
+     menunggu sales masuk dulu baru baris muncul. Ditambahkan form "Tambah/Update Target Manual" yang
+     menulis langsung ke tabel `targets` (upsert berdasar store_id+year+month, sama seperti "Simpan" edit
+     inline di bawah), konsisten dengan pola form manual yang sudah ada di menu lain (mis. "Tambah
+     aturan" di Database Sales Type, Pengaturan). Diletakkan SEBELUM filter `rows` dan return awal supaya
+     tetap tampil walau tabel di bawahnya kosong. */
+  const addStore=el('select',{},S.stores.map(s=>el('option',{value:String(s.id)},s.name)));
+  const addYear=el('select',{},[2024,2025,2026,2027].map(y=>el('option',{value:String(y),selected:y===S.year?'':null},String(y))));
+  const addMonth=el('select',{},MONTHS.map((m,i)=>el('option',{value:String(i+1),selected:(S.month||new Date().getMonth()+1)===i+1?'':null},m)));
+  const addTk=el('input',{type:'text',inputmode:'numeric',placeholder:'0',style:'width:130px;text-align:right'});
+  const addTu=el('input',{type:'text',inputmode:'numeric',placeholder:'0',style:'width:130px;text-align:right'});
+  p.append(card('Tambah / Update Target Manual',
+    'Isi Toko, Tahun, Bulan, lalu target Komersial/User, lalu Simpan — kombinasi yang sudah ada akan diperbarui (bukan diduplikasi). Berguna untuk toko/bulan yang belum punya baris sama sekali di tabel di bawah.',
+    el('div',{class:'rowline',style:'flex-wrap:wrap;align-items:flex-end'},
+      el('div',{class:'fld'},el('label',{},'Toko'),addStore),
+      el('div',{class:'fld'},el('label',{},'Tahun'),addYear),
+      el('div',{class:'fld'},el('label',{},'Bulan'),addMonth),
+      el('div',{class:'fld'},el('label',{},'Target Komersial'),addTk),
+      el('div',{class:'fld'},el('label',{},'Target User'),addTu),
+      el('button',{class:'btn pri',onclick:async()=>{
+        if(guard()) return;
+        const sid=Number(addStore.value), y=Number(addYear.value), m=Number(addMonth.value);
+        if(!sid){ toast('Pilih toko dulu.'); return; }
+        const tk=num(addTk.value)||0, tu=num(addTu.value)||0;
+        try{
+          await DB.write('targets',[{store_id:sid,year:y,month:m,target_komersial:tk,target_user:tu,target_total:tk+tu}],'store_id,year,month');
+          toast('Target disimpan.'); addTk.value=''; addTu.value=''; S.rollCache.clear(); await loadAll(); renderSales();
+        }catch(e){ toast('Gagal menyimpan target: '+e.message); } }},'Simpan target manual'))));
+
   const rows=scope(S.dash).filter(r=>r.target_total>0||r.total_sales>0)
     .sort((a,b)=>a.month-b.month||a.store_name.localeCompare(b.store_name));
-  if(!rows.length){ p.append(el('div',{class:'empty'},el('b',{},'Tidak ada baris pada filter ini'),'Coba ubah bulan atau toko.')); return; }
+  if(!rows.length){ p.append(el('div',{class:'empty'},el('b',{},'Tidak ada baris pada filter ini'),'Coba ubah bulan atau toko, atau gunakan form di atas untuk menambah target baru.')); return; }
   const gmap=new Map(S.growth.map(r=>[r.store_id+'|'+r.month,r]));
   const head=['STORE','BULAN','SALES KOMERSIAL','TARGET KOMERSIAL','ACHIEV KOM','SALES USER','TARGET USER','ACHIEV USER',
     'KOM TIGALAPAN','USER TIGALAPAN','USER MAMU','TOTAL SALES','TOTAL TARGET','GAP SALES','TOTAL ACHIEV',
@@ -3563,7 +3607,18 @@ const COLOR_BASE={HITAM:'#161616',BLACK:'#161616',PUTIH:'#f7f7f5',WHITE:'#f7f7f5
   ASH:'#a0a3a6',SMOKE:'#b9bcbf',FOG:'#c9ccce',MIST:'#cfe0dd',FROST:'#d7eaf0',SNOW:'#f7f9fb',CLOUD:'#e7eaec',
   FLAMINGO:'#f06a9a',WATERMELON:'#e8495a',GRAPE:'#6b3fa0',MOCCASIN:'#e8c99a',
   CANDY:'#f05a8a',BUBBLEGUM:'#f08cc4',SEAGREEN:'#2e8b6e',PINE:'#1f4d2e',JUNGLE:'#1f5a30',
-  SAFFRON:'#f0b429',CURRY:'#c98a1a',OCHRE:'#c08a2a',SIENNA:'#9e5a3a',UMBER:'#6b4a33',CLAY:'#a8593a'};
+  SAFFRON:'#f0b429',CURRY:'#c98a1a',OCHRE:'#c08a2a',SIENNA:'#9e5a3a',UMBER:'#6b4a33',CLAY:'#a8593a',
+  /* Round 20: user melaporkan "hampir semua warna di brand MAMU tidak ada" (jatuh ke fallback hash).
+     Tanpa akses baca tabel master warna produksi sesi ini, tidak bisa dipastikan nama PERSIS yang
+     dipakai MAMU — perbaikan di sini tetap best-effort: (a) singkatan 3 huruf umum yang sering dipakai
+     di kode SKU retail (BRW/NVY/BLK/WHT/GRY/PPL/PNK/ORG/BRN/GRN/YLW sudah ada), dan (b) kosakata warna
+     kulit/bahan yang umum dipakai produk tas/aksesoris (MAMU kemungkinan brand non-apparel, beda
+     kosakata dari TIGALAPAN yang lebih banyak pakai istilah fashion kain) — cognac, chestnut, dkk. */
+  BRW:'#6b4a3a',NVY:'#1d2b5e',BLK:'#161616',WHT:'#f7f7f5',GRY:'#8b9099',PPL:'#7a4bb8',PNK:'#f08cb0',
+  ORG:'#f07a1a',BRN:'#6b4a3a',COGNAC:'#8a4a28',CHESTNUT:'#6e3b23',WALNUT:'#5a3a26',MAHOGANY:'#4e2a1e',
+  OXBLOOD:'#5c1f23',TAUPE:'#8a7968',ECRU:'#e3d9bf',BONE:'#e8e2d4',ALABASTER:'#eeece4',GADING:'#f3ecd8',
+  TULANG:'#e8e2d4',ZAITUN:'#6b7a2f',KOPI:'#5a4032',SUSU:'#f7f7f0',DEBU:'#b9b5a8',NATURAL:'#d8c7a0',
+  NATURE:'#d8c7a0'};
 const COLOR_COMPOUND={'HIJAU TNI':'#4a5a2a','ABU MISTY':'#a3a9b3','ABU MUDA':'#bcc0c7','ABU TUA':'#4b4f56','ABU SEDANG':'#81868e',
   'ABU ABU':'#8b9099','HIJAU BOTOL':'#0f5a3a','HIJAU LUMUT':'#5c6b2c','BIRU DONGKER':'#1d2b5e','BIRU LANGIT':'#79b8ea',
   'BIRU MUDA':'#8fb6ee','BIRU TUA':'#16347a','MERAH MAROON':'#7b1e2e','OFF WHITE':'#efeadf','BLUE BENHUR':'#2b4aa0',
@@ -3591,7 +3646,19 @@ function colorHex(name){
   if(!hex){
     const toks=clean.split(' ');
     for(const t of toks){ if(COLOR_BASE[t]){ hex=COLOR_BASE[t]; break; } }
-    if(hex){ if(toks.includes('MUDA')) hex=mixHex(hex,'w',.45); else if(toks.includes('TUA')) hex=mixHex(hex,'k',.3); }
+    /* Round 20: modifier MUDA/TUA (dipakai sejak awal) diperluas juga ke padanan Inggris LIGHT/DARK
+       (dan TERANG/GELAP) — user melaporkan banyak warna brand MAMU masih jatuh ke fallback hash. Tanpa
+       akses baca tabel master warna produksi, satu hipotesis paling mungkin: MAMU memakai kombinasi
+       "LIGHT/DARK + nama warna dasar" (mis. "DARK GREY", "LIGHT BROWN") alih-alih "nama + MUDA/TUA" ala
+       TIGALAPAN — sebelumnya kombinasi itu HANYA tertangkap kalau sudah di-hardcode satu-satu di
+       COLOR_COMPOUND (mis. "LIGHT BROWN" ada, tapi "LIGHT GREY"/"DARK BLUE" dkk tidak) dan jatuh ke hash
+       begitu kombinasinya belum terdaftar. Generalisasi ini membuat SEMUA kombinasi LIGHT/DARK + warna
+       dasar yang sudah ada di COLOR_BASE otomatis dikenali, tanpa perlu mendaftarkan tiap kombinasi
+       satu per satu. */
+    if(hex){
+      if(toks.includes('MUDA')||toks.includes('LIGHT')||toks.includes('TERANG')) hex=mixHex(hex,'w',.45);
+      else if(toks.includes('TUA')||toks.includes('DARK')||toks.includes('GELAP')) hex=mixHex(hex,'k',.3);
+    }
   }
   if(!hex){ let h=0; for(const ch of clean) h=(h*31+ch.charCodeAt(0))%360;
     hex=rgbHex(hslRgb(h,.42,.55)); }
@@ -4627,6 +4694,23 @@ async function programCategorySales(categories,year,m1,m2){
   const perMonth=await Promise.all(months.map(m=>rollup('category',year,m,m,{})));
   return perMonth.map(rows=>rows.filter(r=>categories.includes(r.k)).reduce((s,r)=>s+r.sales,0));
 }
+/* Round 20: target program SEBELUMNYA selalu satu angka blended utk SELURUH program (kunci polos
+   "tahun-bulan"), walau programnya punya beberapa kategori — tidak ada cara mengisi target terpisah per
+   kategori ("masing2 punya target untuk dicapai", keluhan user). Diubah jadi kunci majemuk
+   "KATEGORI|tahun-bulan" supaya tiap kategori di dalam satu program bisa punya target sendiri; migrasi
+   data lama (kunci polos, dibuat sebelum round ini) ditangani oleh progCatTarget() sendiri — dibaca
+   sebagai fallback HANYA kalau programnya memang cuma 1 kategori (supaya tidak salah assign ke kategori
+   yang keliru pada program multi-kategori lama, yang sebelum round ini memang tidak pernah mendukung
+   per-kategori sama sekali). Target per-bulan (fungsi tgtOf di renderProgram) menjumlah progCatTarget()
+   di semua kategori program, jadi "Target {y3}" tile/kolom TOTAL otomatis tetap benar tanpa perlu
+   disentuh — hanya sumber datanya yang sekarang per-kategori. */
+function progCatTarget(targetsObj,prog,cat,y,m){
+  const t=targetsObj||{};
+  const k=cat+'|'+y+'-'+m;
+  if(t[k]!=null && t[k]!=='') return N(t[k]);
+  if(prog.categories.length===1){ const legacy=t[y+'-'+m]; if(legacy!=null && legacy!=='') return N(legacy); }
+  return 0;
+}
 function renderProgram(){
   parkFilters();
   const p=$('#p-program'); p.innerHTML='';
@@ -4705,7 +4789,9 @@ function renderProgram(){
       const byYear={};
       await Promise.all(years.map(async y=>{ byYear[y]=await programCategorySales(prog.categories,y,m1,m2); }));
       const totY=y=>byYear[y].reduce((s,v)=>s+v,0);
-      const tgtOf=(y,m)=>N(prog.targets[y+'-'+m]);
+      /* Round 20: tgtOf() sekarang menjumlah target PER KATEGORI (progCatTarget) di seluruh kategori
+         program, bukan membaca satu angka blended — lihat komentar progCatTarget() di atas. */
+      const tgtOf=(y,m)=>prog.categories.reduce((s,c)=>s+progCatTarget(prog.targets,prog,c,y,m),0);
       const tgtY=y=>monthsArr.reduce((s,m)=>s+tgtOf(y,m),0);
       /* total sales perusahaan pada periode+scope yang sama, utk tile "Porsi thd total sales" */
       const companyTot=y=>S.dashAll.filter(r=>r.year===y&&r.month>=m1&&r.month<=m2&&storeOk(r.store_id)).reduce((s,r)=>s+N(r.total_sales),0);
@@ -4737,6 +4823,22 @@ function renderProgram(){
       host.append(chartCard('Sales program per bulan, tiga tahun',ymLabel(y1,m1,m2)+' · '+ymLabel(y2,m1,m2)+' · '+ymLabel(y3,m1,m2),
         el('div',{},legend(ser),groupedBars(MON3.slice(m1-1,m2),ser,{h:300}))));
 
+      /* ---------- Round 20: chart trend Sales vs Target + Achievement (tahun berjalan y3) — SEBELUMNYA
+         Program Sales hanya punya chart 3-tahun di atas tanpa target/achievement sama sekali. Memakai
+         comboBarsLine() yang sama dipakai Dashboard/Marketplace: bar Sales/Target sumbu kiri (Rp), garis
+         Achievement sumbu kanan (%). ---------- */
+      {
+        const salesY3=byYear[y3], tgtArr=monthsArr.map(m=>tgtOf(y3,m));
+        const achArr=monthsArr.map((m,i)=>tgtArr[i]>0&&salesY3[i]>0?salesY3[i]/tgtArr[i]:null);
+        const ser2=[{name:'Sales '+y3,color:'var(--s1)',vals:salesY3},{name:'Target '+y3,color:'var(--grid)',vals:tgtArr}];
+        host.append(chartCard(`Sales vs Target & Achievement per bulan (${y3})`,ymLabel(y3,m1,m2),
+          el('div',{},
+            el('div',{style:'display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-bottom:6px'},
+              legend(ser2), el('span',{class:'sub'},'— ● Achievement (garis, sumbu kanan %)')),
+            comboBarsLine(MON3.slice(m1-1,m2),ser2,achArr,{h:300,lineRef:1,lineColor:'var(--s7)',lineName:'Achievement'}),
+            el('div',{class:'sub',style:'margin-top:4px'},'Sumbu kiri: Rp (batang Sales/Target) · Sumbu kanan: % (garis Achievement, titik putus = bulan tanpa sales/target)'))));
+      }
+
       /* ---------- tabel bulan demi bulan — H2H style persis (growth y3vsy2 & y3vsy1 langsung, +GAP, +TOTAL footer) ---------- */
       {
         const heads=[H('BULAN',{s:1}),...years.map(y=>H('SALES '+y,{r:1})),H(`Δ ${y3} VS ${y2}`,{r:1}),H(`GAP ${y3}-${y2}`,{r:1}),H(`Δ ${y3} VS ${y1}`,{r:1}),H(`GAP ${y3}-${y1}`,{r:1}),H(`TARGET ${y3}`,{r:1}),H(`ACHIEV ${y3}`,{r:1})];
@@ -4747,53 +4849,76 @@ function renderProgram(){
           mkTable(heads,rows,['TOTAL',...years.map(y=>compact(totY(y))),growthPill(s3,s2),gapTxt(s3,s2),growthPill(s3,s1),gapTxt(s3,s1),compact(t3),pillCell(t3>0?s3/t3:null)])));
       }
 
-      /* ---------- per kategori (kalau program punya >1 kategori) ---------- */
+      /* ---------- per kategori (kalau program punya >1 kategori) ----------
+         Round 20: ditambah kolom TARGET {y3}/ACHIEV {y3} per kategori — SEBELUMNYA tabel ini hanya
+         menunjukkan sales & growth per kategori, tanpa target sama sekali (padahal target sekarang
+         memang disimpan per kategori, lihat progCatTarget() di atas), jadi tidak terlihat kategori mana
+         yang tercapai/tidak. */
       if(prog.categories.length>1){
         const perCatYear={};
         await Promise.all(years.map(async y=>{
           const rows=await rollup('category',y,m1,m2,{});
           perCatYear[y]=new Map(rows.map(r=>[r.k,r.sales]));
         }));
-        const heads=[H('KATEGORI',{s:1}),...years.map(y=>H(String(y),{r:1})),H(`Δ ${y3} VS ${y2}`,{r:1}),H(`GAP ${y3}-${y2}`,{r:1}),H(`Δ ${y3} VS ${y1}`,{r:1}),H(`GAP ${y3}-${y1}`,{r:1}),H('PORSI '+y3,{r:1})];
-        const catRows=prog.categories.map(c=>{ const v=years.map(y=>N(perCatYear[y].get(c))); return [c,...v.map(x=>compact(x)),growthPill(v[2],v[1]),gapTxt(v[2],v[1]),growthPill(v[2],v[0]),gapTxt(v[2],v[0]),pct(s3?v[2]/s3:null)]; })
+        const catTgtY3=c=>monthsArr.reduce((s,m)=>s+progCatTarget(prog.targets,prog,c,y3,m),0);
+        const heads=[H('KATEGORI',{s:1}),...years.map(y=>H(String(y),{r:1})),H(`Δ ${y3} VS ${y2}`,{r:1}),H(`GAP ${y3}-${y2}`,{r:1}),H(`Δ ${y3} VS ${y1}`,{r:1}),H(`GAP ${y3}-${y1}`,{r:1}),H(`TARGET ${y3}`,{r:1}),H(`ACHIEV ${y3}`,{r:1}),H('PORSI '+y3,{r:1})];
+        const catRows=prog.categories.map(c=>{ const v=years.map(y=>N(perCatYear[y].get(c))); const t=catTgtY3(c);
+          return [c,...v.map(x=>compact(x)),growthPill(v[2],v[1]),gapTxt(v[2],v[1]),growthPill(v[2],v[0]),gapTxt(v[2],v[0]),compact(t),pillCell(t>0?v[2]/t:null),pct(s3?v[2]/s3:null)]; })
           .sort((ra,rb)=>N(rb[3].props?.['data-v'])-N(ra[3].props?.['data-v']));
-        host.append(card('Per kategori',`Rincian sales program per kategori (${years.join('/')})`,
+        host.append(card('Per kategori',`Rincian sales program per kategori, lengkap target & achievement masing-masing (${years.join('/')})`,
           mkTable(heads,catRows,
-            ['TOTAL',...years.map(y=>compact(totY(y))),growthPill(s3,s2),gapTxt(s3,s2),growthPill(s3,s1),gapTxt(s3,s1),pct(1)])));
+            ['TOTAL',...years.map(y=>compact(totY(y))),growthPill(s3,s2),gapTxt(s3,s2),growthPill(s3,s1),gapTxt(s3,s1),compact(t3),pillCell(t3>0?s3/t3:null),pct(1)])));
       }
 
       /* ---------- target per bulan — editable, 3 tahun sekaligus (y1/y2/y3), disimpan ke blob JSON program
-         Round 19: SEBELUMNYA tabel 12 baris (satu per bulan) selalu tampil utuh sekaligus — makan banyak
-         tempat vertikal untuk update satu-dua bulan saja (keluhan user). Diganti dropdown "Bulan" — hanya
-         SATU baris input (3 kolom tahun) yang tampil untuk bulan yang sedang dipilih; draft perubahan
-         disimpan di memori (`draft`, mulai dari salinan prog.targets) supaya berpindah bulan tidak
-         membuang input yang belum di-Simpan, dan tombol Simpan menulis SELURUH draft (bukan cuma bulan
-         yang sedang tampil) dalam satu panggilan. Daftar ringkas "bulan yang sudah terisi" ditambahkan di
-         bawah input supaya user tetap bisa melihat cakupan tanpa harus membuka tabel 12 baris. ---------- */
+         Round 19: tabel 12-baris diganti dropdown "Bulan" — hanya SATU baris input per bulan yang tampil
+         sekaligus, draft disimpan di memori supaya pindah bulan tidak membuang input yang belum Simpan.
+         Round 20: SEBELUMNYA satu baris input itu cuma 1 target blended utk SELURUH program — tidak bisa
+         dipisah per kategori saat program punya >1 kategori (keluhan user "masing² punya target untuk
+         dicapai"). Sekarang, kalau program punya >1 kategori, baris input digandakan per kategori (satu
+         grup input per kategori, label namanya di atas) untuk bulan yang sama; kunci draft memakai format
+         majemuk "KATEGORI|tahun-bulan" (lihat progCatTarget()) — utk program 1-kategori tetap cukup satu
+         grup input saja (UI tidak berubah dari sebelumnya), migrasi data lama ditangani progCatTarget()
+         sendiri saat draft di-inisialisasi di bawah. ---------- */
       {
-        const draft={...prog.targets};
+        /* migrasi: draft SELALU memakai kunci majemuk kategori|tahun-bulan; kunci lama (polos, dari
+           sebelum round 20, hanya mungkin ada pada program 1-kategori) disalin ke kunci baru di sini —
+           sekali disimpan ulang lewat tombol "Simpan target", kunci lama otomatis tidak terpakai lagi. */
+        const draft={};
+        Object.keys(prog.targets||{}).forEach(k=>{ if(k.includes('|')) draft[k]=prog.targets[k]; });
+        if(prog.categories.length===1){
+          const cat=prog.categories[0];
+          Object.keys(prog.targets||{}).forEach(k=>{
+            if(!k.includes('|')){ const nk=cat+'|'+k; if(draft[nk]==null) draft[nk]=prog.targets[k]; }
+          });
+        }
         const nowM=new Date().getMonth()+1;
         let curM=monthsArr.includes(nowM)?nowM:monthsArr[0];
         const mSelTgt=el('select',{},...monthsArr.map(m=>el('option',{value:m},MONTHS[m-1])));
         mSelTgt.value=String(curM);
-        const rowHost=el('div',{style:'display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end'});
+        const rowHost=el('div',{style:'display:flex;flex-direction:column;gap:12px'});
         const filledHost=el('div',{class:'sub',style:'margin-top:10px'});
         function paintFilled(){
-          const withVal=monthsArr.filter(m=>years.some(y=>draft[y+'-'+m]!=null&&draft[y+'-'+m]!==''));
+          const withVal=monthsArr.filter(m=>prog.categories.some(c=>years.some(y=>{ const v=draft[c+'|'+y+'-'+m]; return v!=null&&v!==''; })));
           filledHost.textContent=withVal.length?('Bulan sudah terisi: '+withVal.map(m=>MONTHS[m-1]).join(', ')):'Belum ada bulan yang diisi.';
         }
         function paintRow(){
           rowHost.innerHTML='';
-          years.forEach(y=>{
-            const key=y+'-'+curM;
-            const inp=el('input',{type:'number',min:'0',value:draft[key]!=null?draft[key]:'',style:'width:150px',
-              oninput:e=>{ const v=e.target.value; if(v==='') delete draft[key]; else draft[key]=N(v); paintFilled(); }});
-            rowHost.append(el('div',{class:'fld'},el('label',{},'Target '+y),inp));
+          prog.categories.forEach(cat=>{
+            const grp=el('div',{style:'display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end'});
+            if(prog.categories.length>1) grp.append(el('div',{class:'fld',style:'min-width:150px'},el('label',{},'Kategori'),el('div',{style:'font-weight:700;padding:7px 0'},cat)));
+            years.forEach(y=>{
+              const key=cat+'|'+y+'-'+curM;
+              const inp=el('input',{type:'number',min:'0',value:draft[key]!=null?draft[key]:'',style:'width:150px',
+                oninput:e=>{ const v=e.target.value; if(v==='') delete draft[key]; else draft[key]=N(v); paintFilled(); }});
+              grp.append(el('div',{class:'fld'},el('label',{},'Target '+y),inp));
+            });
+            rowHost.append(grp);
           });
         }
         mSelTgt.onchange=e=>{ curM=Number(e.target.value); paintRow(); };
         paintRow(); paintFilled();
-        host.append(card('Target per bulan','Pilih bulan, isi target per tahun, lalu Simpan — dipakai utk kolom ACHIEV di tabel di atas (tahun berjalan '+y3+').',
+        host.append(card('Target per bulan',(prog.categories.length>1?'Target dipisah per kategori — ':'')+'pilih bulan, isi target per tahun, lalu Simpan — dipakai utk kolom ACHIEV di tabel di atas (tahun berjalan '+y3+').',
           el('div',{style:'display:flex;flex-direction:column;gap:4px'},
             el('div',{class:'fld',style:'max-width:220px'},el('label',{},'Bulan'),mSelTgt),
             rowHost, filledHost),
