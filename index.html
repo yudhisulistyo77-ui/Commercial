@@ -350,6 +350,7 @@ th[data-t]:hover{background:var(--line)}
     <section class="page" id="p-mkt"></section>
     <section class="page" id="p-h2h"></section>
     <section class="page" id="p-sssg"></section>
+    <section class="page" id="p-program"></section>
     <section class="page" id="p-breakdown"></section>
     <section class="page" id="p-pica"></section>
     <section class="page" id="p-trx"></section>
@@ -674,7 +675,8 @@ const ICONS = {
   set:'<path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2 2 2 0 1 1-4 0 1.7 1.7 0 0 0-2.9-1.2l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.7 1.7 0 0 0 2 15a2 2 0 1 1 0-4 1.7 1.7 0 0 0 1.4-2.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.7 1.7 0 0 0 9 4a2 2 0 1 1 4 0 1.7 1.7 0 0 0 2.9 1.4l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1A1.7 1.7 0 0 0 20 11a2 2 0 1 1 0 4Z" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linejoin="round"/>',
   breakdown:'<path d="M12 3v6l4.5 4.5M12 21a9 9 0 1 1 6.4-15.3" stroke="currentColor" stroke-width="1.9" fill="none" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="9" r="1.4" fill="currentColor"/>',
   datatrack:'<path d="M9 4.5h6a1 1 0 0 1 1 1V6h2a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h2v-.5a1 1 0 0 1 1-1Z" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linejoin="round"/><path d="M8.3 12.3l1.6 1.6 3-3.2M8 17h5" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
-  sssg:'<path d="M4 20V13m5 7V9m5 11V6m5 14V4" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/><path d="M3 20h18" stroke="currentColor" stroke-width="1.5"/><circle cx="19" cy="4" r="2.2" fill="currentColor"/>'
+  sssg:'<path d="M4 20V13m5 7V9m5 11V6m5 14V4" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/><path d="M3 20h18" stroke="currentColor" stroke-width="1.5"/><circle cx="19" cy="4" r="2.2" fill="currentColor"/>',
+  program:'<circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="1.7" fill="none"/><circle cx="12" cy="12" r="4.5" stroke="currentColor" stroke-width="1.7" fill="none"/><circle cx="12" cy="12" r="1.4" fill="currentColor"/>'
 };
 const PAGES = [
   {g:'Ringkasan'},
@@ -684,6 +686,7 @@ const PAGES = [
   {g:'Analisis'},
   {id:'h2h',   t:'H2H Sales',       ic:'h2h'},
   {id:'sssg',  t:'Same Store Sales Growth', ic:'sssg'},
+  {id:'program', t:'Program Sales',  ic:'program'},
   {id:'breakdown', t:'Breakdown Problem', ic:'breakdown'},
   {id:'mkt',   t:'Marketplace',     ic:'mkt'},
   {id:'brand', t:'Brand Performance', ic:'brand'},
@@ -749,6 +752,9 @@ const FILTER_VISIBILITY={
      bisa diatur user di kartu filter halaman itu sendiri), jadi 'year'/'month'/'range' global tetap
      disembunyikan di sini; hanya Brand/SPV/Toko yang relevan untuk mempersempit cakupan toko yang dibandingkan. */
   sssg:['brand','spv','store'],
+  /* Program Sales: tahun/bulan diatur sendiri di dalam kartu halaman (mirip H2H) — hanya Brand/SPV/Toko
+     dari filter global yang relevan utk mempersempit cakupan toko pada realisasi sales program. */
+  program:['brand','spv','store'],
   pdca:['year','month','range','brand','spv','store'],
   breakdown:['year'],
   /* round 9 item 4: matriks cakupan ditata per-tahun (Jan–Des sekaligus terlihat), jadi hanya Tahun yang
@@ -909,6 +915,18 @@ async function loadAll(){
       opt(DB.sel('kpi_weekly?select=*'))
     ]);
     const dash=dashAll.filter(r=>r.year===S.year), trx=trxAll.filter(r=>r.year===S.year);
+    /* round 17: channel "MARKETPLACE" (bucket generik round 10, dipakai sbg override MAMU TSM dkk) DIGABUNG
+       jadi SHOPEE di SETIAP tempat channel dibaca — dilakukan di SATU titik di sini (bukan di tiap
+       pemanggil) supaya konsisten di seluruh app tanpa perlu migrasi SQL manual ke tabel produksi (sesi ini
+       tidak punya akses tool database langsung). Baris lama di `sales_type_map`/`channel_targets` yang
+       masih tersimpan dengan channel='MARKETPLACE' TETAP ada apa adanya di database — ini hanya normalisasi
+       di sisi tampilan/perhitungan, dilakukan di titik tunggal ini setiap kali data dimuat, jadi hasilnya
+       selalu konsisten (dan kalau datanya nanti benar-benar dimigrasikan di database, tidak ada efek
+       apa pun di sini karena nilainya memang sudah SHOPEE). */
+    const normCh=v=>{ const u=String(v||'').toUpperCase(); return u==='MARKETPLACE'?'SHOPEE':(u||null); };
+    map.forEach(m=>{ if(m.channel) m.channel=normCh(m.channel); });
+    (chanTargets||[]).forEach(t=>{ if(t.channel) t.channel=normCh(t.channel); });
+    (mkt||[]).forEach(r=>{ if(r.channel) r.channel=normCh(r.channel); });
     Object.assign(S,{stores,aliases,dash,dashAll,growth,trx,trxAll,map,unmapped,metrics,entries,pdca,logs,
       people,brandTargets,chanTargets,mkt,pica,kpiWeekly,ready:true,demo:false});
     S.rollCache.clear();
@@ -1288,6 +1306,38 @@ function canonColor(v){
     return a>=0.999?`rgb(${d[0]}, ${d[1]}, ${d[2]})`:`rgba(${d[0]}, ${d[1]}, ${d[2]}, ${a.toFixed(3)})`;
   }catch(e){ return v; }
 }
+/* round 17: html2canvas (dipakai capturePngOfNode di bawah) membawa parser CSS-nya sendiri yang TIDAK
+   mengerti sintaks warna CSS Color 4 modern `color(srgb r g b / a)` — nilai itu muncul dari
+   getComputedStyle() pada elemen manapun yang warnanya (langsung ATAU tidak langsung, mis. lewat
+   `color-mix()`/custom property) diresolve browser ke sintaks itu, bukan `rgb()/rgba()` klasik. Baking
+   warna yang DIBUAT round 13 (bakeVisualStyles, lihat di bawah) hanya menimpa daftar properti terkurasi
+   (color/backgroundColor/border*Color) — cukup untuk clipboard HTML (dibaca aplikasi lain, bukan
+   di-parse html2canvas), tapi TIDAK cukup untuk html2canvas: SEMUA properti CSS pada elemen manapun bisa
+   memuat `color(` (box-shadow, background-image gradient, outline-color, dst) dan html2canvas akan
+   melempar error begitu bertemu satu saja. `bakeColorFunctions()` ini memindai SELURUH computed style
+   setiap elemen (bukan daftar terkurasi) dan HANYA menimpa properti yang nilainya benar-benar memuat
+   `color(` — surgical & ringan (sebagian besar elemen tidak kena sama sekali), dikonversi lewat
+   `canonColor()` yang sama (kanvas 1×1 piksel) jadi `rgb()/rgba()` yang selalu bisa diparse html2canvas. */
+function bakeColorFunctions(orig,clone){
+  const walk=(o,c)=>{
+    if(!o||!c||o.nodeType!==1||c.nodeType!==1) return;
+    const cs=getComputedStyle(o);
+    let extra='';
+    for(let i=0;i<cs.length;i++){
+      const prop=cs[i];
+      let val;
+      try{ val=cs.getPropertyValue(prop); }catch(e){ continue; }
+      if(val && val.indexOf('color(')!==-1){
+        const fixed=val.replace(/color\([^)]*\)/g,m=>canonColor(m));
+        extra+=`${prop}:${fixed};`;
+      }
+    }
+    if(extra) c.setAttribute('style',(c.getAttribute('style')||'')+';'+extra);
+    const oc=o.children, cc=c.children;
+    for(let i=0;i<oc.length;i++) walk(oc[i],cc[i]);
+  };
+  walk(orig,clone);
+}
 function bakeSvgPaint(orig,clone){
   const walk=(o,c)=>{
     if(!o||!c||o.nodeType!==1||c.nodeType!==1) return;
@@ -1319,16 +1369,30 @@ async function capturePngOfNode(node){
   const hideEls=[...node.querySelectorAll('button')];
   const prevVis=hideEls.map(b=>b.style.visibility);
   hideEls.forEach(b=>{ b.style.visibility='hidden'; });
+  let host=null;
   try{
     const bgHost=node.closest('.card')||node;
-    const bg=getComputedStyle(bgHost).backgroundColor;
-    const canvas=await html2canvas(node,{
+    const bgRaw=getComputedStyle(bgHost).backgroundColor;
+    const bg=canonColor(bgRaw);   // round 17: canonicalize juga — bgRaw bisa berupa color(srgb...) pada tema tertentu
+    /* round 17: kloning + "bake" SELURUH fungsi warna color(...) jadi rgb()/rgba() literal pada clone
+       (lihat bakeColorFunctions di atas), lalu clone itu yang dipasang sesaat ke DOM (off-screen, tidak
+       terlihat pengguna) sebelum dikirim ke html2canvas — bukan node ASLI secara langsung seperti
+       sebelumnya. Ini memastikan html2canvas (parser CSS sendiri) tidak pernah bertemu sintaks warna yang
+       tidak didukungnya, apapun sumbernya (var(), color-mix(), atau color(srgb...) langsung). */
+    const rect=node.getBoundingClientRect();
+    const clone=node.cloneNode(true);
+    bakeColorFunctions(node,clone);
+    host=el('div',{style:`position:fixed;left:-99999px;top:0;width:${Math.ceil(rect.width)}px;background:${(!bg||bg==='rgba(0, 0, 0, 0)')?'#ffffff':bg}`});
+    host.append(clone);
+    document.body.append(host);
+    const canvas=await html2canvas(clone,{
       backgroundColor:(!bg||bg==='rgba(0, 0, 0, 0)')?'#ffffff':bg,
       scale:2, useCORS:true, logging:false
     });
     return await new Promise(res=>canvas.toBlob(res,'image/png'));
   } finally {
     hideEls.forEach((b,i)=>{ b.style.visibility=prevVis[i]; });
+    if(host) host.remove();
   }
 }
 async function copyNodeAsImage(node,btn,fallbackNode){
@@ -1385,7 +1449,7 @@ function render(){
   ({dash:renderDash, sales:renderSales, item:renderItem, trx:renderTrx, kpi:renderKpi,
     pdca:renderPdca, upload:renderUpload, set:renderSet, h2h:renderH2H, mkt:renderMkt,
     brand:renderBrand, top:renderTop, pica:renderPica, breakdown:renderBreakdown,
-    datatrack:renderDataTrack, sssg:renderSSSG}[S.page]||renderDash)();
+    datatrack:renderDataTrack, sssg:renderSSSG, program:renderProgram}[S.page]||renderDash)();
 }
 function connCard(){
   const c=el('div',{class:'card'});
@@ -3193,7 +3257,12 @@ function renderSetReal(){
   mp.append(dropZone('map'));
   /* round 10 item 8: KETERANGAN/SEGMEN/BRAND sekarang punya dropdown edit + Simpan per baris (sebelumnya
      hanya teks tampilan, cuma bisa diubah lewat kartu "belum termapping" saat pertama kali dibuat atau
-     lewat re-upload). CHANNEL juga ditambah opsi MARKETPLACE (round 10 item 1/2 — override MAMU TSM dsb). */
+     lewat re-upload). round 17: opsi channel "MARKETPLACE (lainnya)" (round 10) DIHAPUS — user minta
+     channel Marketplace yang generik itu digabung jadi data Shopee (channel-nya bukan nama channel
+     sungguhan, cuma bucket "lainnya" yang membingungkan). Cukup Shopee & TikTok sebagai bawaan, dan
+     Tokopedia/Lazada tetap tersedia untuk channel yang genuinely berbeda — bisa ditambah lagi nanti kalau
+     ada channel baru sungguhan (lihat `CHANNEL_OPTS` di bawah, satu-satunya tempat daftar ini didefinisikan). */
+  const CHANNEL_OPTS=[['','—'],['SHOPEE','Shopee'],['TIKTOK','TikTok'],['TOKOPEDIA','Tokopedia'],['LAZADA','Lazada']];
   const tb3=el('tbody');
   S.map.slice(0,400).forEach(m=>{
     const kSel=el('select',{},['KOMERSIAL','USER'].map(v=>el('option',{value:v,selected:m.keterangan===v?'':null},v)));
@@ -3206,8 +3275,8 @@ function renderSetReal(){
     tb3.append(el('tr',{},
       el('td',{class:'sticky1'},m.sales_type),
       el('td',{},kSel), el('td',{},gSel), el('td',{},bIn),
-      el('td',{},(()=>{ const sel=el('select',{},[['','—'],['SHOPEE','Shopee'],['TIKTOK','TikTok'],['TOKOPEDIA','Tokopedia'],['LAZADA','Lazada'],['MARKETPLACE','Marketplace (lainnya)']]
-          .map(([v,t])=>el('option',{value:v,selected:(m.channel||'')===v?'':null},t)));
+      el('td',{},(()=>{ const curCh=(m.channel||'').toUpperCase()==='MARKETPLACE'?'SHOPEE':(m.channel||'');
+        const sel=el('select',{},CHANNEL_OPTS.map(([v,t])=>el('option',{value:v,selected:curCh===v?'':null},t)));
         sel.onchange=async()=>{ if(guard()) return; try{ await DB.patch('sales_type_map','id=eq.'+m.id,{channel:sel.value||null}); toast('Channel disimpan.'); await loadAll(); }catch(e){ toast('Gagal: '+e.message); } };
         return sel; })()),
       el('td',{},el('span',{style:'display:flex;gap:5px'},saveRow,
@@ -3218,8 +3287,40 @@ function renderSetReal(){
   });
   mp.append(el('datalist',{id:'sc-brand-opts'},['TIGALAPAN','MAMU','MYNO'].map(b=>el('option',{value:b}))));
   if(S.map.length) mp.append(el('div',{class:'tw',style:'margin-top:13px;max-height:420px;overflow:auto'},
-    el('table',{},el('thead',{},el('tr',{},['SALES TYPE','KETERANGAN','SEGMEN','BRAND','CHANNEL MARKETPLACE','']
+    el('table',{},el('thead',{},el('tr',{},['SALES TYPE','KETERANGAN','SEGMEN','BRAND','CHANNEL','']
       .map((h,i)=>el('th',{class:i===0?'sticky1':''},h)))),tb3)));
+
+  /* round 17 item: input manual aturan Sales Type baru langsung di Pengaturan — sebelumnya baris baru
+     di sales_type_map HANYA bisa lahir lewat upload file (otomatis masuk kartu "Sales type belum
+     termapping" di atas) atau re-upload. Sekarang bisa ditambah tangan tanpa upload apa pun — berguna
+     utk menyiapkan aturan sebelum data pertama masuk, atau utk tipe yang namanya diketik manual. Memakai
+     DB.write(...,'sales_type') — UPSERT dgn kunci sales_type, jadi kalau kode yang sama sudah ada,
+     menimpa/memperbarui baris itu (bukan membuat duplikat), konsisten dgn pola upload yang sudah benar. */
+  const addCode=el('input',{type:'text',placeholder:'mis. SHOPEE TIKTOK SPESIAL',style:'min-width:220px'});
+  const addK=el('select',{},['KOMERSIAL','USER'].map(v=>el('option',{value:v},v)));
+  const addG=el('select',{},SEGMENS.map(v=>el('option',{value:v,selected:v==='USER TIGALAPAN'?'':null},v)));
+  const addB=el('input',{type:'text',placeholder:'TIGALAPAN/MAMU/MYNO',list:'sc-brand-opts',style:'min-width:140px'});
+  const addCh=el('select',{},CHANNEL_OPTS.map(([v,t])=>el('option',{value:v},t)));
+  mp.append(el('div',{class:'rowline',style:'margin-top:14px;align-items:flex-end;flex-wrap:wrap;border-top:1px solid var(--ring);padding-top:14px'},
+    el('div',{class:'fld'},el('label',{},'Sales type (kode persis seperti di file)'),addCode),
+    el('div',{class:'fld'},el('label',{},'Keterangan'),addK),
+    el('div',{class:'fld'},el('label',{},'Segmen'),addG),
+    el('div',{class:'fld'},el('label',{},'Brand'),addB),
+    el('div',{class:'fld'},el('label',{},'Channel'),addCh),
+    el('button',{class:'btn pri',onclick:async()=>{
+      if(guard()) return;
+      const code=addCode.value.trim();
+      if(!code){ toast('Isi kode sales type-nya dulu.'); return; }
+      try{
+        await DB.write('sales_type_map',[{sales_type:code,keterangan:addK.value,segmen:addG.value,
+          brand:addB.value.trim()||null,channel:addCh.value||null}],'sales_type');
+        await DB.rpc('rebuild_sales_actual',{});
+        addCode.value=''; addB.value='';
+        toast('Sales type "'+code+'" ditambahkan/diperbarui.'); await loadAll();
+      }catch(e){ toast('Gagal: '+e.message); } }},'Tambah aturan')));
+  mp.append(el('p',{class:'note',style:'margin-top:10px'},
+    'Kode sales type harus sama persis dengan yang tertulis di file (termasuk spasi/huruf besar-kecil) '+
+    'supaya cocok saat data diupload. Kode yang sudah ada akan ditimpa/diperbarui, bukan diduplikasi.'));
   p.append(mp);
 
   /* sinkronisasi */
@@ -4312,6 +4413,205 @@ function renderSSSG(){
 }
 
 /* =====================================================================
+   PROGRAM SALES — round 17: kelompokkan beberapa kategori item jadi satu
+   "program" (mis. Program Lebaran, Promo Akhir Tahun) dengan TARGET
+   sendiri per bulan. Realisasi sales program TIDAK ditarik dari tabel
+   baru — murni dijumlah dari sales item yang sudah ada (rollup kategori,
+   fungsi yang sama dipakai H2H/SSSG/Item Sales), difilter ke kategori
+   yang dipilih program itu. Halaman dilengkapi kartu & analisa H2H-style:
+   tahun berjalan (h2hCurrentYear()) dibandingkan hingga 2 tahun sebelumnya,
+   per bulan terpilih — pola & fungsi pembanding PERSIS sama dengan H2H
+   (growthPill/gapTxt/mkTable dgn footer TOTAL), bukan logika baru.
+
+   CATATAN PENTING (dicatat jujur, bukan disembunyikan): definisi program
+   & targetnya idealnya disimpan di tabel khusus (mis. `sales_programs` +
+   `sales_program_targets`, dengan unique(program_id,year,month) seperti
+   pola channel_targets/kpi_weekly). Sesi yang mengerjakan round ini TIDAK
+   kebagian akses tool database langsung (Supabase MCP menolak dgn
+   "FGA Authentication Error. Unauthorized"), sehingga tabel baru itu
+   TIDAK bisa dibuat. Sebagai solusi yang tetap berfungsi penuh hari ini,
+   seluruh data program (nama, kategori, target per bulan) disimpan
+   sebagai SATU blob JSON di `app_settings` (key 'sales_programs_json') —
+   baca/tulisnya diisolasi lewat programsLoad()/programsSave() di bawah
+   supaya kalau nanti akses tool database tersedia lagi, migrasi ke tabel
+   sungguhan tinggal mengganti isi 2 fungsi ini saja, UI tidak perlu
+   disentuh. Ini bukan batasan permanen, melainkan keterbatasan sesi ini. */
+function programsLoad(){
+  try{ const raw=S.settings&&S.settings.sales_programs_json; const arr=raw?JSON.parse(raw):[];
+    return Array.isArray(arr)?arr.map(pr=>({id:pr.id,name:pr.name,categories:Array.isArray(pr.categories)?pr.categories:[],targets:pr.targets||{}})):[]; }
+  catch(e){ return []; }
+}
+async function programsSave(arr){ await DB.write('app_settings',[{key:'sales_programs_json',value:JSON.stringify(arr)}],'key'); S.settings.sales_programs_json=JSON.stringify(arr); }
+async function programCategorySales(categories,year,m1,m2){
+  const months=[]; for(let m=m1;m<=m2;m++) months.push(m);
+  const perMonth=await Promise.all(months.map(m=>rollup('category',year,m,m,{})));
+  return perMonth.map(rows=>rows.filter(r=>categories.includes(r.k)).reduce((s,r)=>s+r.sales,0));
+}
+function renderProgram(){
+  parkFilters();
+  const p=$('#p-program'); p.innerHTML='';
+  const programs=programsLoad();
+  const y3=h2hCurrentYear(), y2=y3-1, y1=y3-2, years=[y1,y2,y3];
+  if(!S.programSel||!programs.find(pr=>pr.id===S.programSel)) S.programSel=programs.length?programs[0].id:null;
+  if(!S.programM1) S.programM1=1;
+  if(!S.programM2) S.programM2=lastMonthWithData(y3);
+
+  p.append(el('div',{class:'phead'},el('div',{},el('h1',{},'Program Sales'),
+    el('p',{},`Kelompokkan kategori produk jadi program bertarget sendiri — realisasi ditarik dari sales item yang sudah ada by kategori. Dibandingkan thd tahun berjalan ${y3} vs hingga 2 tahun sebelumnya (${y1}/${y2}), persis seperti H2H.`))));
+  const pf_prog=pageFilterBar('program'); if(pf_prog) p.append(pf_prog);
+  if(S.demo) p.append(demoBanner());
+
+  /* ---------- kelola program: buat baru ---------- */
+  const mgCard=el('div',{class:'card'});
+  mgCard.append(el('header',{},el('h2',{},'Buat Program Baru'),el('span',{class:'sub'},programs.length+' program terdaftar')));
+  const nameIn=el('input',{type:'text',placeholder:'mis. Program Lebaran 2026',style:'min-width:240px'});
+  const catsHost=el('div',{style:'margin-top:10px'},el('div',{class:'sub'},'Memuat daftar kategori…'));
+  const catState=new Set();
+  (async()=>{
+    const cats=await itemCategoryList();
+    catsHost.innerHTML='';
+    if(!cats.length){ catsHost.append(el('span',{class:'sub'},'Belum ada kategori item pada data.')); return; }
+    const row=el('div',{class:'rowline',style:'flex-wrap:wrap;gap:6px'});
+    cats.forEach(c=>{
+      const chip=el('button',{type:'button',class:'btn sm',onclick:()=>{
+        if(catState.has(c)){ catState.delete(c); chip.className='btn sm'; } else { catState.add(c); chip.className='btn sm pri'; } }},c);
+      row.append(chip);
+    });
+    catsHost.append(row);
+  })();
+  mgCard.append(el('div',{class:'rowline',style:'flex-wrap:wrap;align-items:flex-end'},
+    el('div',{class:'fld'},el('label',{},'Nama program'),nameIn),
+    el('button',{class:'btn pri',onclick:async()=>{
+      if(guard()) return;
+      if(!nameIn.value.trim()){ toast('Isi nama programnya dulu.'); return; }
+      if(!catState.size){ toast('Pilih minimal 1 kategori di bawah.'); return; }
+      const arr=programsLoad();
+      arr.push({id:'pr'+Date.now(),name:nameIn.value.trim(),categories:[...catState],targets:{}});
+      try{ await programsSave(arr); S.programSel=arr[arr.length-1].id; toast('Program "'+nameIn.value.trim()+'" dibuat.'); render(); }
+      catch(e){ toast('Gagal: '+e.message); } }},'Buat program')));
+  mgCard.append(el('p',{class:'note',style:'margin-top:10px'},
+    'Pilih satu atau beberapa kategori (klik utk menandai) lalu beri nama & buat program. Realisasi sales program = jumlah NET SALES seluruh item pada kategori yang dipilih, pada cakupan toko/brand/SPV filter di atas.'));
+  mgCard.append(catsHost);
+  p.append(mgCard);
+
+  if(!programs.length){ p.append(el('div',{class:'empty'},el('b',{},'Belum ada program.'),'Buat program pertama Anda di kartu di atas.')); return; }
+
+  /* ---------- pilih program aktif + rentang bulan ---------- */
+  const prog=programs.find(pr=>pr.id===S.programSel);
+  const progSel=el('select',{},programs.map(pr=>el('option',{value:pr.id,selected:pr.id===S.programSel?'':null},pr.name)));
+  progSel.onchange=()=>{ S.programSel=progSel.value; renderProgram(); };
+  const mSel=(k,id)=>el('select',{id,onchange:e=>{ S[k]=Number(e.target.value); if(S.programM1>S.programM2){ if(k==='programM1')S.programM2=S.programM1; else S.programM1=S.programM2; } renderProgram(); }},
+    MONTHS.map((m,i)=>el('option',{value:String(i+1),selected:S[k]===i+1?'':null},m)));
+  const selCard=el('div',{class:'card'});
+  selCard.append(el('header',{},el('h2',{},'Program aktif'),el('span',{class:'sub'},'Kategori: '+prog.categories.join(', '))));
+  selCard.append(el('div',{class:'rowline',style:'flex-wrap:wrap;align-items:flex-end'},
+    el('div',{class:'fld',style:'min-width:220px'},el('label',{},'Program'),progSel),
+    el('div',{class:'fld'},el('label',{for:'prg-m1'},'Dari bulan'),mSel('programM1','prg-m1')),
+    el('div',{class:'fld'},el('label',{for:'prg-m2'},'Sampai bulan'),mSel('programM2','prg-m2')),
+    el('button',{class:'btn sm',onclick:async()=>{
+      if(guard()) return;
+      if(!confirm('Hapus program "'+prog.name+'" beserta semua targetnya?')) return;
+      const arr=programsLoad().filter(pr=>pr.id!==S.programSel);
+      try{ await programsSave(arr); S.programSel=null; toast('Program dihapus.'); render(); }catch(e){ toast('Gagal: '+e.message); } }},'Hapus program')));
+  p.append(selCard);
+
+  const m1=S.programM1, m2=S.programM2;
+  const host=el('div',{style:'display:flex;flex-direction:column;gap:18px'});
+  p.append(host);
+  host.append(el('div',{class:'empty'},'Memuat realisasi sales program…'));
+  (async()=>{
+    try{
+      const monthsArr=[]; for(let m=m1;m<=m2;m++) monthsArr.push(m);
+      const byYear={};
+      await Promise.all(years.map(async y=>{ byYear[y]=await programCategorySales(prog.categories,y,m1,m2); }));
+      const totY=y=>byYear[y].reduce((s,v)=>s+v,0);
+      const tgtOf=(y,m)=>N(prog.targets[y+'-'+m]);
+      const tgtY=y=>monthsArr.reduce((s,m)=>s+tgtOf(y,m),0);
+      /* total sales perusahaan pada periode+scope yang sama, utk tile "Porsi thd total sales" */
+      const companyTot=y=>S.dashAll.filter(r=>r.year===y&&r.month>=m1&&r.month<=m2&&storeOk(r.store_id)).reduce((s,r)=>s+N(r.total_sales),0);
+      host.innerHTML='';
+
+      /* ---------- tiles — pola H2H persis: Total sales y1/y2/y3 + Growth y3vsy2, lalu Growth y3vsy1 +
+         Target y3 + Pencapaian thd target + Porsi thd total sales toko ---------- */
+      const tl=el('div',{class:'grid g4'});
+      years.forEach((y,i)=>tl.append(tile(`Sales program ${y}`,compact(totY(y)),ymLabel(y,m1,m2)+(i===2?` · target ${compact(tgtY(y))}`:''),null)));
+      const s3=totY(y3), s2=totY(y2), s1=totY(y1);
+      const g32=s2>0?(s3-s2)/s2:null;
+      tl.append(tile(`Growth ${y3} vs ${y2}`,pct(g32),`GAP ${s2>0?compact(s3-s2):'—'}`,null,
+        g32==null?el('span',{class:'pill neu'},'—'):el('span',{class:'pill '+(g32>=0?'ok':'bad')},g32>=0?'Tumbuh':'Turun')));
+      host.append(tl);
+      const tl2=el('div',{class:'grid g4'});
+      const g31=s1>0?(s3-s1)/s1:null;
+      tl2.append(tile(`Growth ${y3} vs ${y1}`,pct(g31),`GAP ${s1>0?compact(s3-s1):'—'}`,null,
+        g31==null?el('span',{class:'pill neu'},'—'):el('span',{class:'pill '+(g31>=0?'ok':'bad')},g31>=0?'Tumbuh':'Turun')));
+      const t3=tgtY(y3);
+      tl2.append(tile(`Target ${y3}`,compact(t3),'dijumlah dari target per bulan yang diisi di bawah',null));
+      tl2.append(tile(`Pencapaian thd target ${y3}`,pct(t3>0?s3/t3:null),t3>0?'sales program vs target program':'target belum diisi',null));
+      const cp=companyTot(y3);
+      tl2.append(tile(`Porsi thd total sales toko ${y3}`,pct(cp>0?s3/cp:null),compact(s3)+' dari '+compact(cp)+' total sales toko pada cakupan filter',null));
+      host.append(tl2);
+
+      /* ---------- chart per bulan, 3 tahun ---------- */
+      const cols=['var(--s7)','var(--s2)','var(--s1)'];
+      const ser=years.map((y,i)=>({name:String(y),color:cols[i],vals:byYear[y]}));
+      host.append(chartCard('Sales program per bulan, tiga tahun',ymLabel(y1,m1,m2)+' · '+ymLabel(y2,m1,m2)+' · '+ymLabel(y3,m1,m2),
+        el('div',{},legend(ser),groupedBars(MON3.slice(m1-1,m2),ser,{h:300}))));
+
+      /* ---------- tabel bulan demi bulan — H2H style persis (growth y3vsy2 & y3vsy1 langsung, +GAP, +TOTAL footer) ---------- */
+      {
+        const heads=[H('BULAN',{s:1}),...years.map(y=>H('SALES '+y,{r:1})),H(`Δ ${y3} VS ${y2}`,{r:1}),H(`GAP ${y3}-${y2}`,{r:1}),H(`Δ ${y3} VS ${y1}`,{r:1}),H(`GAP ${y3}-${y1}`,{r:1}),H(`TARGET ${y3}`,{r:1}),H(`ACHIEV ${y3}`,{r:1})];
+        const rows=monthsArr.map((m,i)=>{ const a=byYear[y1][i],b=byYear[y2][i],c=byYear[y3][i],t=tgtOf(y3,m);
+          if(!a&&!b&&!c&&!t) return null;
+          return [MONTHS[m-1],compact(a),compact(b),compact(c),growthPill(c,b),gapTxt(c,b),growthPill(c,a),gapTxt(c,a),compact(t),pillCell(t>0?c/t:null)]; }).filter(Boolean);
+        host.append(card('Bulan demi bulan',ymLabel(y1,m1,m2)+' · '+ymLabel(y2,m1,m2)+' · '+ymLabel(y3,m1,m2),
+          mkTable(heads,rows,['TOTAL',...years.map(y=>compact(totY(y))),growthPill(s3,s2),gapTxt(s3,s2),growthPill(s3,s1),gapTxt(s3,s1),compact(t3),pillCell(t3>0?s3/t3:null)])));
+      }
+
+      /* ---------- per kategori (kalau program punya >1 kategori) ---------- */
+      if(prog.categories.length>1){
+        const perCatYear={};
+        await Promise.all(years.map(async y=>{
+          const rows=await rollup('category',y,m1,m2,{});
+          perCatYear[y]=new Map(rows.map(r=>[r.k,r.sales]));
+        }));
+        const heads=[H('KATEGORI',{s:1}),...years.map(y=>H(String(y),{r:1})),H(`Δ ${y3} VS ${y2}`,{r:1}),H(`GAP ${y3}-${y2}`,{r:1}),H(`Δ ${y3} VS ${y1}`,{r:1}),H(`GAP ${y3}-${y1}`,{r:1}),H('PORSI '+y3,{r:1})];
+        const catRows=prog.categories.map(c=>{ const v=years.map(y=>N(perCatYear[y].get(c))); return [c,...v.map(x=>compact(x)),growthPill(v[2],v[1]),gapTxt(v[2],v[1]),growthPill(v[2],v[0]),gapTxt(v[2],v[0]),pct(s3?v[2]/s3:null)]; })
+          .sort((ra,rb)=>N(rb[3].props?.['data-v'])-N(ra[3].props?.['data-v']));
+        host.append(card('Per kategori',`Rincian sales program per kategori (${years.join('/')})`,
+          mkTable(heads,catRows,
+            ['TOTAL',...years.map(y=>compact(totY(y))),growthPill(s3,s2),gapTxt(s3,s2),growthPill(s3,s1),gapTxt(s3,s1),pct(1)])));
+      }
+
+      /* ---------- target per bulan — editable, 3 tahun sekaligus (y1/y2/y3), disimpan ke blob JSON program ---------- */
+      {
+        const tgtBody=el('tbody');
+        const inputs={};
+        monthsArr.forEach(m=>{
+          const cells=[el('td',{},MONTHS[m-1])];
+          years.forEach(y=>{
+            const key=y+'-'+m;
+            const inp=el('input',{type:'number',min:'0',value:prog.targets[key]||'',style:'width:120px'});
+            inputs[key]=inp; cells.push(el('td',{},inp));
+          });
+          tgtBody.append(el('tr',{},...cells));
+        });
+        const tgtTable=el('div',{class:'tw'},el('table',{},
+          el('thead',{},el('tr',{},['BULAN',...years.map(y=>'TARGET '+y)].map((h,i)=>el('th',{class:i===0?'sticky1':''},h)))),tgtBody));
+        host.append(card('Target per bulan','Isi target program per bulan per tahun, lalu Simpan — dipakai utk kolom ACHIEV di tabel di atas (tahun berjalan '+y3+').',
+          tgtTable,
+          el('div',{class:'rowline',style:'margin-top:13px'},
+            el('button',{class:'btn pri',onclick:async()=>{
+              if(guard()) return;
+              const arr=programsLoad(); const target=arr.find(pr=>pr.id===prog.id); if(!target) return;
+              target.targets=target.targets||{};
+              Object.keys(inputs).forEach(key=>{ const v=inputs[key].value; if(v==='') delete target.targets[key]; else target.targets[key]=N(v); });
+              try{ await programsSave(arr); toast('Target disimpan.'); renderProgram(); }catch(e){ toast('Gagal: '+e.message); } }},'Simpan target'))));
+      }
+    }catch(e){ host.innerHTML=''; host.append(el('div',{class:'note warn'},'Gagal memuat realisasi sales program: '+e.message)); }
+  })();
+}
+
+/* =====================================================================
    MARKETPLACE — Shopee & TikTok dari Sales Type
    ===================================================================== */
 function mktChannels(){
@@ -4330,8 +4630,10 @@ function chanTarget(ch,year,m1,m2){
   const overall=all.filter(t=>t.store_id==null).reduce((s,t)=>s+N(t.target),0);
   return overall||all.reduce((s,t)=>s+N(t.target),0);
 }
-/* round 10 item 1: MARKETPLACE = override channel baru (store_marketplace_override, mis. MAMU TSM
-   mulai Mei 2026) — warna sendiri yang jelas (--s6) supaya tidak jatuh ke default abu-abu diam-diam. */
+/* round 17: channel 'MARKETPLACE' (bucket generik round 10) sudah dinormalisasi jadi SHOPEE di loadAll()
+   (lihat normCh di sana) sehingga tidak akan pernah muncul sebagai channel tersendiri lagi di sini — entri
+   MARKETPLACE di peta warna ini dipertahankan hanya sebagai jaga-jaga (fallback warna, tidak pernah
+   dipakai dalam alur normal) dan BUKAN lagi channel yang dipilih user; opsi dropdown-nya sudah dihapus. */
 const CH_COLOR={SHOPEE:'var(--s2)',TIKTOK:'var(--s5)',TOKOPEDIA:'var(--s3)',LAZADA:'var(--s7)',MARKETPLACE:'var(--s6)'};
 function renderMkt(){
   parkFilters();
