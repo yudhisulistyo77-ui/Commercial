@@ -3125,6 +3125,19 @@ function renderUpload(){
   g.append(upCard('Database Sales Type','Tab SALES TYPE: SALES TYPE · KETERANGAN · SEGMEN · BRAND. Melengkapi aturan mapping agar semua sales masuk kolom yang benar.','map'));
   p.append(g);
 
+  /* round 22: user melaporkan Top Color kosong (0 warna) utk semua kategori MAMU. Akar masalah: kolom
+     warna di item master (product_master) kosong utk item2 itu — item_rollup dimensi warna
+     mengelompokkan berdasar kolom ini, jadi item tanpa warna disaring dari tabel Top Color. Tombol ini
+     memindai SEMUA item master yang warna-nya masih kosong lalu menebaknya dari Item Name pakai kosakata
+     warna yang sama dengan yang dipakai chip warna (colorHex) — tanpa perlu upload ulang file. */
+  const repairCard=el('div',{class:'card'},
+    el('header',{},el('h2',{},'Perbaiki Warna Kosong'),el('span',{class:'sub'},'Isi otomatis dari nama item')),
+    el('p',{style:'margin:0 0 12px;color:var(--ink-2);font-size:12.5px'},
+      'Kalau Top Color menampilkan 0 warna untuk brand/kategori tertentu (misalnya MAMU), penyebabnya kolom WARNA di data Master Produk masih kosong untuk item-item itu. '+
+      'Klik tombol di bawah untuk memindai semua item master yang warna-nya kosong di database dan mengisinya otomatis dari kata warna yang ada di Item Name — tanpa perlu upload ulang file apa pun.'),
+    el('button',{class:'btn pri',id:'repair-warna-btn',onclick:repairWarna},'Pindai & perbaiki warna kosong'));
+  p.append(repairCard);
+
   p.append(el('div',{class:'card'},el('header',{},el('h2',{},'Hasil pemrosesan')),
     el('div',{class:'log',id:'uplog'},'Belum ada proses.')));
 
@@ -3479,18 +3492,59 @@ async function ingestMaster(file,rows){
   const kI=col(r0,'Item Name','itemname'), kB=col(r0,'Brand Name','brand'), kC=col(r0,'Category Name','category'),
         kN=colx(r0,'Name','Nama'), kW=col(r0,'WARNA','warna','color'), kS=col(r0,'Master SKU','sku');
   if(!kI) throw new Error('kolom Item Name tidak ditemukan');
-  const m=new Map();
+  const m=new Map(); let autoW=0;
   for(const r of rows){
     const it=String(r[kI]??'').trim(); if(!it) continue;
+    const warnaFile=kW?String(r[kW]??'').trim().toUpperCase():'';
+    /* round 22: kalau file master tidak punya kolom WARNA atau barisnya kosong, coba tebak dari Item
+       Name pakai daftar kosakata warna yang sama dengan colorHex() — daripada dibiarkan NULL (yang bikin
+       item hilang total dari Top Color karena item_rollup mengelompokkan berdasar kolom ini). */
+    const warna = warnaFile || deriveWarna(it) || null;
+    if(!warnaFile && warna) autoW++;
     m.set(it,{item_name:it,brand:kB?String(r[kB]??'').trim().toUpperCase()||null:null,
       category:kC?String(r[kC]??'').trim()||null:null, name:kN?String(r[kN]??'').trim()||null:null,
-      warna:kW?String(r[kW]??'').trim().toUpperCase()||null:null, sku:kS?String(r[kS]??'').trim()||null:null});
+      warna, sku:kS?String(r[kS]??'').trim()||null:null});
   }
   const arr=[...m.values()];
   if(!arr.length) throw new Error('tidak ada baris master yang valid');
   await DB.write('product_master',arr,'item_name');
   await DB.write('ingest_log',[{kind:'MAPPING',file_name:file.name+' (master produk)',rows_total:arr.length,rows_mapped:arr.length,rows_unmapped:0,status:'OK'}]);
-  logLine(`  ✓ ${file.name} · ${int(arr.length)} item master (brand, kategori, warna)`);
+  logLine(`  ✓ ${file.name} · ${int(arr.length)} item master (brand, kategori, warna)${autoW?` · ${int(autoW)} warna ditebak otomatis dari nama item`:''}`);
+}
+
+/* round 22: tombol "Perbaiki Warna Kosong" di Upload Data — membaca SEMUA baris product_master yang
+   sudah ada di database (bukan dari file upload), lalu mengisi kolom warna yang masih kosong dengan hasil
+   deriveWarna(item_name). Dipicu oleh laporan user: Top Color 0 warna utk semua kategori MAMU, karena
+   warna item2 MAMU memang belum pernah terisi di database sejak awal (bukan soal upload file sekarang). */
+async function repairWarna(){
+  if(guard()) return;
+  const btn=$('#repair-warna-btn'); if(btn){ btn.disabled=true; btn.textContent='Memindai…'; }
+  logLine('  … memindai item master dengan warna kosong…');
+  try{
+    const rows=await DB.selAll('product_master?select=item_name,brand,warna');
+    const empty=rows.filter(r=>!r.warna);
+    if(!empty.length){
+      logLine(`  ✓ ${int(rows.length)} item master, semuanya sudah ada warnanya. Tidak ada yang perlu diperbaiki.`);
+      toast('Semua item master sudah ada warnanya.');
+      return;
+    }
+    const fixes=[]; const stillEmptyByBrand={};
+    empty.forEach(r=>{
+      const w=deriveWarna(r.item_name);
+      if(w) fixes.push({item_name:r.item_name,warna:w});
+      else { const b=r.brand||'(tanpa brand)'; stillEmptyByBrand[b]=(stillEmptyByBrand[b]||0)+1; }
+    });
+    if(fixes.length) await DB.write('product_master',fixes,'item_name');
+    await DB.write('ingest_log',[{kind:'MAPPING',file_name:'Perbaiki Warna Kosong (otomatis)',
+      rows_total:empty.length,rows_mapped:fixes.length,rows_unmapped:empty.length-fixes.length,status:'OK'}]);
+    const sisa=Object.entries(stillEmptyByBrand).sort((a,b)=>b[1]-a[1]).map(([b,n])=>`${b}: ${int(n)}`).join(', ');
+    logLine(`  ✓ Selesai. ${int(rows.length)} item master, ${int(empty.length)} warna kosong ditemukan, `+
+      `${int(fixes.length)} berhasil diisi otomatis dari nama item.`+
+      (sisa?` ${int(empty.length-fixes.length)} masih kosong karena nama itemnya tidak mengandung kata warna yang dikenali (${sisa}) — perlu diisi manual lewat kolom WARNA di file Master Produk, lalu upload ulang.`:''));
+    toast(fixes.length?`${fixes.length} warna item berhasil diperbaiki otomatis.`:'Tidak ada warna yang bisa ditebak otomatis dari nama item.');
+    await loadAll();
+  }catch(e){ logLine('  ✗ Gagal memperbaiki data warna: '+e.message); toast('Gagal: '+e.message); }
+  finally{ if(btn){ btn.disabled=false; btn.textContent='Pindai & perbaiki warna kosong'; } }
 }
 
 async function ingestMap(file,rows){
@@ -3929,6 +3983,23 @@ function colorChip(name){
   if(!name||name==='(Tanpa warna)') return el('span',{style:'color:var(--muted)'},name||'—');
   const hex=colorHex(name);
   return el('span',{class:'cchip',style:`background:${hex};color:${lum(hex)>.42?'#111':'#fff'}`},String(name));
+}
+/* round 22: derive LABEL warna (bukan hex) dari Item Name, pakai algoritma pencocokan token yang sama
+   persis dengan colorHex() (compound dulu, baru token tunggal) supaya konsisten dengan warna chip yang
+   tampil di Top Color. Dipakai saat (a) file Master Produk tidak menyertakan kolom WARNA sama sekali
+   atau baris tsb kosong, dan (b) tombol "Perbaiki Warna Kosong" yang mengisi ulang item master yang
+   sudah ada di database tapi warna-nya masih kosong — akar masalah "Top Color" kosong utk brand MAMU:
+   item_rollup dimensi warna mengelompokkan berdasar product_master.warna, jadi kalau kolom itu NULL di
+   database, item tsb jatuh ke "(Tanpa warna)" dan disaring dari tabel Top Color. Mengembalikan null kalau
+   tidak ada token warna yang dikenali di nama item (bukan hash) — supaya tidak menulis warna karangan. */
+function deriveWarna(name){
+  const key=String(name||'').toUpperCase().trim(); if(!key) return null;
+  const clean=key.replace(/[^A-Z ]/g,' ').replace(/\s+/g,' ').trim();
+  const padded=' '+clean+' ';
+  for(const c in COLOR_COMPOUND) if(padded.includes(' '+c+' ')) return c;
+  const toks=clean.split(' ');
+  for(const t of toks) if(COLOR_BASE[t]) return t;
+  return null;
 }
 const BRAND_COLOR={TIGALAPAN:'var(--s1)',MAMU:'var(--s2)',MYNO:'var(--s3)',DEFECT:'var(--s8)',LAINNYA:'var(--muted)'};
 function brandChip(b){ const c=BRAND_COLOR[String(b).toUpperCase()]||'var(--s7)';
