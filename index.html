@@ -496,6 +496,25 @@ function joinPdcaLink(body,link){
   if(!link) return b;
   return (b?b+'\n':'')+'Link: '+link.trim();
 }
+/* round 24: kelompok/program PDCA — user ingin bisa punya BEBERAPA layout PDCA terpisah (mis. "Program
+   Diskon Oktober" vs "Evaluasi Komplain"), bukan satu papan Plan/Do/Check/Action tunggal yang semua
+   butir ditumpuk jadi satu. Tabel `pdca` tidak punya kolom khusus utk ini (sesi ini tidak punya akses
+   migrasi skema), jadi nama kelompok disimpan sebagai baris "Kelompok: <nama>" di `content`, pola yang
+   sama persis dengan cara Link (round 18) disimpan tanpa kolom baru. */
+function splitPdcaGroup(content){
+  const lines=(content||'').split('\n');
+  const gi=lines.findIndex(l=>/^Kelompok:\s*/i.test(l.trim()));
+  if(gi<0) return {body:content||'', group:''};
+  const group=lines[gi].trim().replace(/^Kelompok:\s*/i,'').trim();
+  lines.splice(gi,1);
+  return {body:lines.join('\n').replace(/^\n+|\n+$/g,''), group};
+}
+function joinPdcaGroup(body,group){
+  const b=(body||'').trim(); const g=(group||'').trim();
+  if(!g) return b;
+  return 'Kelompok: '+g+(b?'\n'+b:'');
+}
+function pdcaGroupOf(x){ return splitPdcaGroup(x.content).group||''; }
 function toast(m){ const t=$('#toast'); t.textContent=m; t.classList.add('on'); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove('on'),2600); }
 
 /* round 8 item 5: indikator loading reusable, dipakai bungkus tombol async (reload, simpan/edit,
@@ -2964,43 +2983,61 @@ function renderPdca(){
       el('p',{},'Kerangka laporan ke manajemen. '+periodLabel())),
     el('span',{class:'spacer'}),
     el('button',{class:'btn',onclick:()=>buildCheck()},'Susun temuan dari data'),
-    el('button',{class:'btn pri',onclick:()=>pdcaForm()},'Tambah butir')));
+    el('button',{class:'btn pri',onclick:()=>pdcaForm({newGroup:true})},'+ Kelompok PDCA Baru')));
   const pf_pdca=pageFilterBar('pdca'); if(pf_pdca) p.append(pf_pdca);
   if(S.demo) p.append(demoBanner());
 
-  const cols=el('div',{class:'pdca'});
-  for(const ph of PHASES){
-    const psl=storeList();
-    const items=S.pdca.filter(x=>x.phase===ph.k && (!S.month||x.month===S.month) &&
-      (!psl.length||psl.includes(String(x.store_id))||x.store_id==null));
-    const body=el('div',{class:'body'});
-    if(!items.length) body.append(el('div',{style:'color:var(--muted);font-size:12.5px;padding:7px 2px'},ph.d));
-    items.forEach(x=>{
-      const st=S.stores.find(s=>s.id===x.store_id);
-      body.append(el('div',{class:'item'},
-        el('div',{class:'t'},x.title||'(tanpa judul)'),
-        x.content?el('div',{class:'c'},linkify(x.content)):null,
-        el('div',{class:'f'},
-          el('span',{class:'pill '+(x.status==='DONE'?'ok':x.status==='ON_PROGRESS'?'mid':x.status==='DROPPED'?'neu':'neu')},
-            {OPEN:'Belum jalan',ON_PROGRESS:'Berjalan',DONE:'Selesai',DROPPED:'Dibatalkan'}[x.status]||x.status),
-          st?el('span',{},st.name):null,
-          x.owner?el('span',{},'· '+x.owner):null,
-          x.due_date?el('span',{},'· '+x.due_date):null,
-          el('span',{class:'spacer'}),
-          el('button',{class:'btn sm',onclick:()=>pdcaForm(x)},'Ubah'),
-          el('button',{class:'btn sm',onclick:async()=>{
-            if(guard()) return;
-            try{ await DB.del('pdca','id=eq.'+x.id); toast('Dihapus.'); await loadAll(); }
-            catch(e){ toast('Gagal: '+e.message); } }},'Hapus'))));
-    });
-    cols.append(el('div',{class:'col'},
-      el('h3',{},el('span',{class:'dot',style:`background:${ph.c}`}),ph.t,
-        el('span',{class:'spacer'}),el('span',{style:'color:var(--muted);font-weight:500'},String(items.length))),
-      body,
-      el('div',{style:'padding:0 11px 11px'},
-        el('button',{class:'btn sm',style:'width:100%',onclick:()=>pdcaForm({phase:ph.k})},'+ Tambah'))));
-  }
-  p.append(cols);
+  /* round 24: butir PDCA dikelompokkan jadi beberapa papan terpisah (misal "Program Diskon Oktober",
+     "Evaluasi Komplain"), masing2 dengan 4 kolom Plan/Do/Check/Action sendiri. Nama kelompok disimpan
+     di dalam content lewat baris "Kelompok: <nama>" (lihat splitPdcaGroup/joinPdcaGroup) karena tidak
+     ada kolom tabel baru yang bisa dipakai. Butir lama tanpa kelompok tetap tampil di papan "Umum". */
+  const psl=storeList();
+  const inScope=x=>(!S.month||x.month===S.month)&&(!psl.length||psl.includes(String(x.store_id))||x.store_id==null);
+  const groupNames=[...new Set(S.pdca.filter(inScope).map(pdcaGroupOf).filter(Boolean))].sort();
+  const boards=[...groupNames.map(g=>({name:g,label:g})),{name:'',label:'Umum'}];
+  const anyItems=S.pdca.some(inScope);
+
+  boards.forEach(bd=>{
+    const boardItems=S.pdca.filter(x=>inScope(x)&&pdcaGroupOf(x)===bd.name);
+    /* papan kosong disembunyikan, KECUALI papan Umum ketika belum ada butir sama sekali
+       (supaya 4 kolom Plan/Do/Check/Action tetap terlihat dengan placeholder saat halaman masih kosong) */
+    if(!boardItems.length && !(bd.name==='' && !anyItems)) return;
+    p.append(el('div',{style:'display:flex;align-items:center;gap:8px;margin:18px 0 8px'},
+      el('h3',{style:'font-size:14px;margin:0'},bd.label),
+      el('span',{style:'color:var(--muted);font-size:12px'},bd.name?'Kelompok PDCA':'Butir tanpa kelompok')));
+    const cols=el('div',{class:'pdca'});
+    for(const ph of PHASES){
+      const items=boardItems.filter(x=>x.phase===ph.k);
+      const body=el('div',{class:'body'});
+      if(!items.length) body.append(el('div',{style:'color:var(--muted);font-size:12.5px;padding:7px 2px'},ph.d));
+      items.forEach(x=>{
+        const st=S.stores.find(s=>s.id===x.store_id);
+        const {body:bodyOnly}=splitPdcaLink(splitPdcaGroup(x.content).body);
+        body.append(el('div',{class:'item'},
+          el('div',{class:'t'},x.title||'(tanpa judul)'),
+          bodyOnly?el('div',{class:'c'},linkify(bodyOnly)):null,
+          el('div',{class:'f'},
+            el('span',{class:'pill '+(x.status==='DONE'?'ok':x.status==='ON_PROGRESS'?'mid':x.status==='DROPPED'?'neu':'neu')},
+              {OPEN:'Belum jalan',ON_PROGRESS:'Berjalan',DONE:'Selesai',DROPPED:'Dibatalkan'}[x.status]||x.status),
+            st?el('span',{},st.name):null,
+            x.owner?el('span',{},'· '+x.owner):null,
+            x.due_date?el('span',{},'· '+x.due_date):null,
+            el('span',{class:'spacer'}),
+            el('button',{class:'btn sm',onclick:()=>pdcaForm(x)},'Ubah'),
+            el('button',{class:'btn sm',onclick:async()=>{
+              if(guard()) return;
+              try{ await DB.del('pdca','id=eq.'+x.id); toast('Dihapus.'); await loadAll(); }
+              catch(e){ toast('Gagal: '+e.message); } }},'Hapus'))));
+      });
+      cols.append(el('div',{class:'col'},
+        el('h3',{},el('span',{class:'dot',style:`background:${ph.c}`}),ph.t,
+          el('span',{class:'spacer'}),el('span',{style:'color:var(--muted);font-weight:500'},String(items.length))),
+        body,
+        el('div',{style:'padding:0 11px 11px'},
+          el('button',{class:'btn sm',style:'width:100%',onclick:()=>pdcaForm({phase:ph.k,group:bd.name})},'+ Tambah'))));
+    }
+    p.append(cols);
+  });
 }
 /* Temuan otomatis dari data */
 function analyze(){
@@ -3063,8 +3100,19 @@ async function buildCheck(){
   }catch(e){ toast('Gagal: '+e.message); }
 }
 function pdcaForm(x={}){
-  const {body:bodyOnly,link:existingLink}=splitPdcaLink(x.content);
+  const fromContent=splitPdcaGroup(x.content);
+  const {body:bodyOnly,link:existingLink}=splitPdcaLink(fromContent.body);
+  /* round 24: nama kelompok — kalau pemanggil sudah menentukan (tombol "+ Tambah" di dalam satu papan
+     kelompok, atau saat Ubah butir yang sudah punya kelompok), field dikunci (readonly) supaya butir
+     tetap masuk ke papan yang sama. Kalau dibuka dari tombol "+ Kelompok PDCA Baru" di kanan atas
+     (x.newGroup), field kosong & WAJIB diisi — itu yang membuat papan baru. */
+  const groupVal = x.group!=null ? x.group : fromContent.group;
+  const groupLocked = !x.newGroup && !!groupVal;
   const bx=el('div',{class:'box'});
+  const groupNames=[...new Set(S.pdca.map(pdcaGroupOf).filter(Boolean))].sort();
+  const group=el('input',{type:'text',id:'pd-group',value:groupVal,list:'pd-group-opts',
+    placeholder:'mis. Program Diskon Oktober, Evaluasi Komplain',
+    style:'width:100%',readonly:groupLocked?'':null});
   const phase=el('select',{id:'pd-phase'},PHASES.map(p=>el('option',{value:p.k,selected:x.phase===p.k?'':null},p.t)));
   const title=el('input',{type:'text',id:'pd-title',value:x.title||'',placeholder:'Ringkas dan jelas',style:'width:100%'});
   const content=el('textarea',{id:'pd-content',rows:'4',placeholder:'Detail, angka, atau langkah',style:'width:100%'});
@@ -3079,7 +3127,12 @@ function pdcaForm(x={}){
   const status=el('select',{id:'pd-status'},
     [['OPEN','Belum jalan'],['ON_PROGRESS','Berjalan'],['DONE','Selesai'],['DROPPED','Dibatalkan']]
       .map(([v,t])=>el('option',{value:v,selected:(x.status||'OPEN')===v?'':null},t)));
-  bx.append(el('h2',{style:'font-size:16px'},x.id?'Ubah butir':'Tambah butir'),
+  bx.append(el('h2',{style:'font-size:16px'},x.id?'Ubah butir':(x.newGroup?'Kelompok PDCA baru':'Tambah butir')),
+    el('div',{class:'fld'},el('label',{for:'pd-group'},'Kelompok/Program PDCA'),group,
+      el('datalist',{id:'pd-group-opts'},groupNames.map(g=>el('option',{value:g}))),
+      el('div',{style:'font-size:11.5px;color:var(--muted);margin-top:3px'},
+        groupLocked?'Butir ini masuk ke papan "'+groupVal+'".':
+          'Beri nama supaya butir Plan/Do/Check/Action ini terkumpul dalam satu papan tersendiri.')),
     el('div',{class:'grid g2'},
       el('div',{class:'fld'},el('label',{for:'pd-phase'},'Fase'),phase),
       el('div',{class:'fld'},el('label',{for:'pd-month'},'Bulan'),month)),
@@ -3096,10 +3149,12 @@ function pdcaForm(x={}){
   bx.append(el('div',{class:'rowline',style:'justify-content:flex-end'},
     el('button',{class:'btn',onclick:()=>modal.remove()},'Batal'),
     el('button',{class:'btn pri',onclick:async()=>{
-      const body={store_id:store.value?Number(store.value):null,year:S.year,month:Number(month.value),
-        phase:phase.value,title:title.value.trim(),content:joinPdcaLink(content.value,link.value.trim()),
-        owner:owner.value.trim()||null,due_date:due.value||null,status:status.value};
       if(guard()) return;
+      if(x.newGroup && !group.value.trim()){ toast('Nama kelompok PDCA belum diisi.'); return; }
+      const body={store_id:store.value?Number(store.value):null,year:S.year,month:Number(month.value),
+        phase:phase.value,title:title.value.trim(),
+        content:joinPdcaGroup(joinPdcaLink(content.value,link.value.trim()),group.value.trim()),
+        owner:owner.value.trim()||null,due_date:due.value||null,status:status.value};
       if(!body.title){ toast('Judul belum diisi.'); return; }
       try{
         if(x.id) await DB.patch('pdca','id=eq.'+x.id,body);
@@ -3773,25 +3828,36 @@ function renderSetReal(){
       if(!cats.length){
         cbCard.append(el('div',{class:'empty'},'Belum ada kategori item pada data yang terunggah.'));
       } else {
+        /* round 24: user melaporkan perubahan di sini TIDAK TERSIMPAN (balik ke nilai semula). Tombol
+           "Simpan" per baris (round 23) memakai upsert `on_conflict=category`, yang hanya berhasil kalau
+           tabel category_brand punya unique constraint pada kolom category — tanpa akses Supabase MCP di
+           sesi ini, constraint itu tidak bisa dipastikan ada. Supaya tidak bergantung pada constraint
+           tersebut, diganti jadi HAPUS lalu TULIS ULANG (DB.del + DB.write TANPA on_conflict) — pola yang
+           sama dipakai untuk simpan target di halaman lain — dan dijadikan SATU tombol "Simpan Semua
+           Perubahan" di bawah tabel supaya jelas, bukan satu per baris yang mudah terlewat. */
         const brandOpts=[['','(otomatis)'],['TIGALAPAN','TIGALAPAN'],['MAMU','MAMU'],['MYNO','MYNO'],['DEFECT','DEFECT'],['LAINNYA','LAINNYA']];
-        const tb=el('tbody');
+        const tb=el('tbody'); const sels=[];
         cats.forEach(c=>{
           const cur=cb.get(c)||'';
           const sel=el('select',{},brandOpts.map(([v,t])=>el('option',{value:v,selected:cur===v?'':null},t)));
-          tb.append(el('tr',{},
-            el('td',{class:'sticky1'},c),
-            el('td',{},sel),
-            el('td',{},el('button',{class:'btn sm',onclick:async()=>{
-              if(guard()) return;
-              try{
-                if(sel.value) await DB.write('category_brand',[{category:c,brand:sel.value}],'category');
-                else await DB.del('category_brand','category=eq.'+encodeURIComponent(c));
-                S.catBrand=null; toast('Tersimpan. Brand kategori "'+c+'" → '+(sel.value||'otomatis')+'.');
-              }catch(e){ toast('Gagal: '+e.message); }
-            }},'Simpan'))));
+          sels.push({cat:c,orig:cur,sel});
+          tb.append(el('tr',{},el('td',{class:'sticky1'},c),el('td',{},sel)));
         });
         cbCard.append(el('div',{class:'tw',style:'max-height:420px;overflow:auto'},
-          el('table',{},el('thead',{},el('tr',{},['KATEGORI','BRAND',''].map((h,i)=>el('th',{class:i===0?'sticky1':''},h)))),tb)));
+          el('table',{},el('thead',{},el('tr',{},['KATEGORI','BRAND'].map((h,i)=>el('th',{class:i===0?'sticky1':''},h)))),tb)));
+        cbCard.append(el('div',{class:'rowline',style:'margin-top:12px'},el('button',{class:'btn pri',onclick:async()=>{
+          if(guard()) return;
+          const changed=sels.filter(x=>x.sel.value!==x.orig);
+          if(!changed.length){ toast('Tidak ada perubahan.'); return; }
+          try{
+            for(const x of changed){
+              await DB.del('category_brand','category=eq.'+encodeURIComponent(x.cat));
+              if(x.sel.value) await DB.write('category_brand',[{category:x.cat,brand:x.sel.value}]);
+            }
+            S.catBrand=null;
+            toast(changed.length+' mapping kategori → brand tersimpan.'); await loadAll();
+          }catch(e){ toast('Gagal: '+e.message); }
+        }},'Simpan Semua Perubahan')));
       }
     }catch(e){ cbCard.innerHTML=''; cbCard.append(el('div',{class:'note warn'},'Gagal memuat daftar kategori: '+e.message)); }
   })();
@@ -5508,41 +5574,20 @@ function renderMkt(){
     p.append(card('Marketplace per bulan',String(S.year),mkTable(heads,rows)));
   }
 
-  /* editor target */
-  const ed=el('div',{class:'card'});
-  ed.append(el('header',{},el('h2',{},'Target marketplace '+S.year),el('span',{class:'sub'},'target keseluruhan per channel per bulan (Rp); kosongkan bila tidak ada')));
-  const inputs={};
-  const tb=el('tbody');
-  chs.forEach(ch=>{
-    const tr=el('tr',{},el('td',{class:'sticky1',style:'font-weight:700'},ch));
-    MONTHS.forEach((_,i)=>{ const cur=S.chanTargets.find(t=>String(t.channel).toUpperCase()===ch&&t.year===S.year&&t.month===i+1&&t.store_id==null);
-      const inp=el('input',{type:'number',min:'0',step:'1000',value:cur?String(Math.round(N(cur.target))):'',style:'width:104px'}); inputs[ch+'|'+(i+1)]=inp; tr.append(el('td',{},inp)); });
-    tb.append(tr); });
-  ed.append(el('div',{class:'tw'},el('table',{},el('thead',{},el('tr',{},[H('CHANNEL'),...MON3.map(m=>H(m))].map((h,i)=>el('th',{class:i===0?'sticky1':''},h.t)))),tb)));
-  ed.append(el('div',{class:'rowline',style:'margin-top:12px'},el('button',{class:'btn pri',onclick:async()=>{
-    if(guard()) return;
-    try{
-      for(const ch of chs) for(let m=1;m<=12;m++){ const v=inputs[ch+'|'+m].value;
-        await DB.del('channel_targets',`channel=eq.${encodeURIComponent(ch)}&year=eq.${S.year}&month=eq.${m}&store_id=is.null`);
-        if(v!==''&&N(v)>0) await DB.write('channel_targets',[{channel:ch,store_id:null,year:S.year,month:m,target:N(v)}]); }
-      toast('Target marketplace tersimpan.'); await loadAll();
-    }catch(e){ toast('Gagal: '+e.message); } }},'Simpan target')));
-  p.append(ed);
-
-  /* round 22: target marketplace PER TOKO OFFLINE. Penjualan marketplace (Shopee/TikTok dkk) sudah
-     SELALU terikat ke satu toko offline sejak awal — kolom NAMA TOKO wajib diisi saat upload Sales Type
-     per toko (lihat "Marketplace per toko" & "Pencapaian per channel" di atas, keduanya sudah dipecah per
-     toko) — jadi "toko offline yang membawahi" itu memang sudah wajib ada di data penjualannya. Yang
-     SEBELUMNYA belum ada hanyalah cara mengisi TARGET per toko: editor di atas hanya menyimpan satu target
-     gabungan per channel (`store_id` selalu NULL). `chanTarget()` sendiri SUDAH bisa membaca target per
-     toko kalau ada (dipakai otomatis saat halaman difilter ke satu/sebagian toko) — jadi perbaikan ini
-     murni menambah UI utk mengisi `channel_targets.store_id` per toko, tanpa perlu migrasi skema. */
+  /* round 24: user melaporkan "Target marketplace jadinya ada 2" (editor gabungan + editor per toko dari
+     round 22/23) dan minta DIJADIKAN SATU — transaksi marketplace memang selalu terjadi lewat satu toko
+     offline, jadi target-nya pun seharusnya hanya diisi per toko, tanpa editor "gabungan" terpisah.
+     Editor gabungan (store_id selalu NULL) DIHAPUS di sini. `chanTarget()` tidak perlu diubah: logika
+     fallback-nya (`overall||all.reduce(...)`) sudah otomatis MENJUMLAHKAN semua target per toko kalau
+     tidak ada baris gabungan — jadi total/tile/tabel yang belum difilter ke toko tertentu tetap benar
+     selama tiap toko offline diisi targetnya di bawah ini. */
   const edS=el('div',{class:'card'});
   edS.append(el('header',{},el('h2',{},'Target marketplace per Toko Offline '+S.year),
-    el('span',{class:'sub'},'target Shopee/TikTok dkk berbeda per toko, walau channel-nya sama')));
+    el('span',{class:'sub'},'target Shopee/TikTok dkk diisi per toko offline tempat transaksinya terjadi')));
   edS.append(el('p',{style:'margin:0 0 12px;color:var(--ink-2);font-size:12.5px'},
-    'Pilih toko offline tempat transaksi marketplace itu terjadi, lalu isi target per channel per bulan khusus utk toko itu. '+
-    'Kalau toko tertentu tidak diisi di sini, dashboard tetap memakai target gabungan di atas sebagai cadangan saat halaman difilter ke toko itu.'));
+    'Pilih toko offline tempat transaksi marketplace itu terjadi, lalu isi target per channel per bulan khusus utk toko itu — '+
+    'meskipun channel-nya sama (Shopee/TikTok), target tiap toko bisa berbeda. Total & achievement yang belum difilter ke toko tertentu '+
+    'otomatis menjumlahkan target semua toko di bawah ini.'));
   const stoSel=el('select',{},S.stores.map(s=>el('option',{value:String(s.id),selected:S.mktTgtStore===s.id?'':null},s.name)));
   if(!S.mktTgtStore&&S.stores[0]) S.mktTgtStore=S.stores[0].id;
   const tbS=el('tbody'); const inputsS={};
