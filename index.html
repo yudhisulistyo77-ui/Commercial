@@ -618,7 +618,7 @@ function buildDemo(){
     {id:5,code:'AOV',name:'Rata-rata Nilai Transaksi',unit:'IDR',direction:'higher',weight:10,category:'KUALITAS',perspektif:'Customer',periode:'Monthly',status:'Running',sort_order:5},
     {id:6,code:'TRX',name:'Jumlah Transaksi',unit:'trx',direction:'higher',weight:5,category:'KUALITAS',perspektif:'Customer',periode:'Monthly',status:'Running',sort_order:6},
     {id:7,code:'REFUND_RATE',name:'Rasio Item Refund',unit:'%',direction:'lower',weight:5,category:'KUALITAS',perspektif:'Internal Business Process',periode:'Monthly',status:'Running',sort_order:7}];
-  S.entries=[]; S.pdca=[]; S.logs=[];
+  S.entries=[]; S.pdca=[]; S.logs=[]; S.kpiWeekly=[]; S.dashAll=S.dash;
   S.settings={total_sales_formula:'KOM_PLUS_USER',base_year:'2026',
     drive_folder_sales:'1SHg_Ae6Q5bLI_94bL46NKu0f2Jd_FHV6',
     drive_folder_item:'1aByfk8XRBZkFfTHSOT3akd4H8laKk_j3',
@@ -1069,6 +1069,13 @@ function scope(rows){
     return storeOk(r.store_id);
   });
 }
+/* Round 21: S.dash HANYA berisi baris tahun filter aktif (S.year) di mode nyata (lihat loadAll —
+   `dash=dashAll.filter(r=>r.year===S.year)`), sedangkan S.dashAll berisi SEMUA tahun. Form yang
+   punya dropdown Tahun sendiri (mis. "Tambah/Update Target Manual") butuh baris dari tahun MANAPUN,
+   bukan cuma tahun filter aktif, jadi harus pakai dashAllRows() bukan S.dash langsung. Di mode demo
+   S.dashAll tidak diisi (lihat loadDemo) sehingga fallback ke S.dash yang di demo memang sudah berisi
+   semua tahun demo yang di-generate. */
+function dashAllRows(){ return (S.dashAll&&S.dashAll.length)?S.dashAll:S.dash; }
 const SUMK = ['sales_komersial','sales_user','sales_komersial_tigalapan','sales_user_tigalapan','sales_user_mamu',
               'target_komersial','target_user','target_total','total_sales','gap_sales'];
 function agg(rows){
@@ -1910,14 +1917,34 @@ function renderSales(){
   const addMonth=el('select',{},MONTHS.map((m,i)=>el('option',{value:String(i+1),selected:(S.month||new Date().getMonth()+1)===i+1?'':null},m)));
   const addTk=el('input',{type:'text',inputmode:'numeric',placeholder:'0',style:'width:130px;text-align:right'});
   const addTu=el('input',{type:'text',inputmode:'numeric',placeholder:'0',style:'width:130px;text-align:right'});
+  const addTotPreview=el('span',{style:'font-weight:700'},'Rp 0');
+  /* Round 21: user melaporkan Target Komersial+User "tidak sesuai" saat akumulasi ke Target Total toko.
+     Root cause: form ini SELALU mulai dari field kosong (0/0) walau toko+bulan yg dipilih sudah punya
+     target tersimpan — kalau user cuma mau menambah/mengoreksi salah satu angka (mis. Target User saja)
+     dan membiarkan Target Komersial kosong, submit lama menimpanya jadi 0 sehingga Target Total ikut
+     turun drastis (bukan terakumulasi dgn benar). Perbaikan: begitu Toko/Tahun/Bulan dipilih, prefill
+     kedua input dengan nilai target TERSIMPAN saat ini (dari S.dash) supaya yang diketik ulang betul2
+     cuma angka yg mau diubah, dan total yg tersimpan selalu = komersial+user yg user lihat di layar
+     (ditampilkan live di "Total" supaya langsung kelihatan sebelum Simpan). */
+  function addPrefill(){
+    const sid=Number(addStore.value), y=Number(addYear.value), m=Number(addMonth.value);
+    const row=dashAllRows().find(r=>r.store_id===sid&&r.year===y&&r.month===m);
+    addTk.value=row&&N(row.target_komersial)?String(Math.round(N(row.target_komersial))):'';
+    addTu.value=row&&N(row.target_user)?String(Math.round(N(row.target_user))):'';
+    addUpdatePreview();
+  }
+  function addUpdatePreview(){ addTotPreview.textContent=String(compact((num(addTk.value)||0)+(num(addTu.value)||0))); }
+  addStore.onchange=addPrefill; addYear.onchange=addPrefill; addMonth.onchange=addPrefill;
+  addTk.oninput=addUpdatePreview; addTu.oninput=addUpdatePreview;
   p.append(card('Tambah / Update Target Manual',
-    'Isi Toko, Tahun, Bulan, lalu target Komersial/User, lalu Simpan — kombinasi yang sudah ada akan diperbarui (bukan diduplikasi). Berguna untuk toko/bulan yang belum punya baris sama sekali di tabel di bawah.',
+    'Isi Toko, Tahun, Bulan — field Target Komersial/User otomatis terisi nilai yang sudah tersimpan (kalau ada), supaya mengubah salah satu angka saja tidak menghapus angka lainnya. Target Total toko SELALU = Target Komersial + Target User (lihat pratinjau). Simpan untuk menimpa (upsert) kombinasi toko+tahun+bulan tsb; berguna juga untuk toko/bulan yang belum punya baris sama sekali di tabel di bawah.',
     el('div',{class:'rowline',style:'flex-wrap:wrap;align-items:flex-end'},
       el('div',{class:'fld'},el('label',{},'Toko'),addStore),
       el('div',{class:'fld'},el('label',{},'Tahun'),addYear),
       el('div',{class:'fld'},el('label',{},'Bulan'),addMonth),
       el('div',{class:'fld'},el('label',{},'Target Komersial'),addTk),
       el('div',{class:'fld'},el('label',{},'Target User'),addTu),
+      el('div',{class:'fld'},el('label',{},'Target Total (otomatis)'),addTotPreview),
       el('button',{class:'btn pri',onclick:async()=>{
         if(guard()) return;
         const sid=Number(addStore.value), y=Number(addYear.value), m=Number(addMonth.value);
@@ -1925,8 +1952,9 @@ function renderSales(){
         const tk=num(addTk.value)||0, tu=num(addTu.value)||0;
         try{
           await DB.write('targets',[{store_id:sid,year:y,month:m,target_komersial:tk,target_user:tu,target_total:tk+tu}],'store_id,year,month');
-          toast('Target disimpan.'); addTk.value=''; addTu.value=''; S.rollCache.clear(); await loadAll(); renderSales();
+          toast('Target disimpan. Total = '+String(compact(tk+tu))+'.'); S.rollCache.clear(); await loadAll(); renderSales();
         }catch(e){ toast('Gagal menyimpan target: '+e.message); } }},'Simpan target manual'))));
+  addPrefill();
 
   const rows=scope(S.dash).filter(r=>r.target_total>0||r.total_sales>0)
     .sort((a,b)=>a.month-b.month||a.store_name.localeCompare(b.store_name));
@@ -2297,15 +2325,21 @@ function kpiMonthCalc(mt,year,month){
   const wk=kpiMonthFromWeekly(mt,year,month);
   let target=null,realisasi=null,source='none';
   if(wk){ target=wk.target; realisasi=wk.realisasi; source='weekly'; }
-  const reportMonth = S.month || lastMonthWithData(year);
-  if(target==null && realisasi==null && month===reportMonth){
-    // fallback lama (hanya dipakai utk bulan laporan aktif, & hanya bila KPI ini sama sekali tidak punya data Weekly di bulan manapun)
-    const hasAnyWeekly=S.kpiWeekly.some(w=>w.kpi_id===mt.id);
-    if(!hasAnyWeekly){
-      const auto=autoKpi(mt.code);
-      target = mt.target_override!=null?N(mt.target_override):(auto?auto.target:null);
-      realisasi = mt.actual_override!=null?N(mt.actual_override):(auto?auto.actual:null);
-      source='legacy';
+  if(isAutoRevenueCode(mt.code)){
+    /* Realisasi KPI bertipe Revenue SELALU ditimpa dari data Sales & Target live (bukan Weekly) —
+       target tetap dari Weekly (diisi manual per bulan), hanya realisasi yang otomatis. */
+    realisasi=autoRevenueForMonth(mt.code,year,month); source='auto_revenue';
+  } else {
+    const reportMonth = S.month || lastMonthWithData(year);
+    if(target==null && realisasi==null && month===reportMonth){
+      // fallback lama (hanya dipakai utk bulan laporan aktif, & hanya bila KPI ini sama sekali tidak punya data Weekly di bulan manapun)
+      const hasAnyWeekly=S.kpiWeekly.some(w=>w.kpi_id===mt.id);
+      if(!hasAnyWeekly){
+        const auto=autoKpi(mt.code);
+        target = mt.target_override!=null?N(mt.target_override):(auto?auto.target:null);
+        realisasi = mt.actual_override!=null?N(mt.actual_override):(auto?auto.actual:null);
+        source='legacy';
+      }
     }
   }
   let capaian=null;
@@ -2359,12 +2393,14 @@ function kpiTotal(rows){ // rows: hasil kpiMonthCalc/kpiYtdCalc untuk semua metr
 function kpiRowCalc(mt){ // dipakai tab Input KPI, memakai bulan filter aktif (atau bulan terakhir berdata)
   const month = S.month || lastMonthWithData(S.year);
   const ytd = kpiYtdCalc(mt,S.year,month);
+  const autoRevenue=isAutoRevenueCode(mt.code);
   return {mt,target:ytd.targetYtd,actual:ytd.realisasiYtd,capaian:ytd.capaian,adj:ytd.adj,skor:ytd.skor,
-    indikator:ytd.indikator,running:ytd.running,grade:ytd.grade,auto:(ytd.months.some(m=>m.source==='weekly')===false)};
+    indikator:ytd.indikator,running:ytd.running,grade:ytd.grade,autoRevenue,
+    auto:autoRevenue||(ytd.months.some(m=>m.source==='weekly')===false)};
 }
 
 function kpiTabs(active){
-  const tabs=[['input','Input KPI'],['weekly','Weekly'],['dashboard','Dashboard']];
+  const tabs=[['input','Input KPI'],['weekly','Weekly'],['dashboard','Dashboard'],['settings','Pengaturan']];
   return el('div',{class:'tbar',style:'margin-bottom:4px'},tabs.map(([k,t])=>
     el('button',{class:'btn sm'+(active===k?' pri':''),onclick:()=>{ S.kpiTab=k; renderKpi(); }},t)));
 }
@@ -2372,26 +2408,30 @@ function renderKpi(){
   parkFilters();
   const p=$('#p-kpi'); p.innerHTML='';
   p.append(el('div',{class:'phead'},el('div',{},el('h1',{},'KPI Scorecard'),
-    el('p',{},'Replikasi template Scorecard KPI Commercial — Input KPI, Weekly, dan Dashboard saling terhubung. '+periodLabel()))));
+    el('p',{},'Replikasi template Scorecard KPI Commercial — Input KPI, Weekly, Dashboard dan Pengaturan saling terhubung. '+periodLabel()))));
   const pf_kpi=pageFilterBar('kpi'); if(pf_kpi) p.append(pf_kpi);
   if(S.demo) p.append(demoBanner());
   p.append(kpiTabs(S.kpiTab));
-  if(!S.metrics.length){
-    p.append(el('div',{class:'empty'},el('b',{},'Belum ada metrik KPI'),'Impor template KPI Anda di bawah, atau tambah baris manual pada tab Input KPI.'));
+  if(!S.metrics.length && S.kpiTab!=='settings'){
+    p.append(el('div',{class:'empty'},el('b',{},'Belum ada metrik KPI'),
+      'Pakai tombol "Muat template Scorecard Commercial" di tab Pengaturan untuk mulai dari contoh template, impor file di bawah, atau tambah baris manual pada tab Input KPI.'));
   }
   if(S.kpiTab==='weekly') renderKpiWeekly(p);
   else if(S.kpiTab==='dashboard') renderKpiDashboard(p);
+  else if(S.kpiTab==='settings') renderKpiSettings(p);
   else renderKpiInput(p);
 
-  /* import template (selalu tampil di bawah, semua tab) */
-  const c=el('div',{class:'card'});
-  c.append(el('header',{},el('h2',{},'Impor template KPI')));
-  c.append(el('p',{style:'margin:0 0 12px;color:var(--ink-2);font-size:13px'},
-    'Unggah file CSV/Excel dengan kolom seperti template Scorecard KPI Commercial: '+
-    'No, KPI, Perspektif, UOM, Periode, Bobot, Polaritas, Status, Target YTD, Realisasi YTD, Catatan. '+
-    'Kolom Capaian/Skor/Indikator pada file diabaikan karena dihitung ulang otomatis di sini.'));
-  c.append(dropZone('kpi'));
-  p.append(c);
+  /* import template (selalu tampil di bawah tab Input/Weekly/Dashboard, bukan di Pengaturan) */
+  if(S.kpiTab!=='settings'){
+    const c=el('div',{class:'card'});
+    c.append(el('header',{},el('h2',{},'Impor template KPI')));
+    c.append(el('p',{style:'margin:0 0 12px;color:var(--ink-2);font-size:13px'},
+      'Unggah file CSV/Excel dengan kolom seperti template Scorecard KPI Commercial: '+
+      'No, KPI, Perspektif, UOM, Periode, Bobot, Polaritas, Status, Target YTD, Realisasi YTD, Catatan. '+
+      'Kolom Capaian/Skor/Indikator pada file diabaikan karena dihitung ulang otomatis di sini.'));
+    c.append(dropZone('kpi'));
+    p.append(c);
+  }
 }
 
 /* ===== Tab: Input KPI (metadata + ringkasan auto, click-to-edit per baris) ===== */
@@ -2420,10 +2460,17 @@ function renderKpiInput(p){
     let cells;
     if(editing){
       const d={name:mt.name,perspektif:mt.perspektif||persp[0],unit:mt.unit,periode:mt.periode||'Monthly',weight:mt.weight,
-        direction:mt.direction||'higher',status:mt.status||'Running',catatan:mt.catatan,metode_ytd:mt.metode_ytd||'Akumulasi'};
+        direction:mt.direction||'higher',status:mt.status||'Running',catatan:mt.catatan,metode_ytd:mt.metode_ytd||'Akumulasi',code:mt.code||''};
       const txt=(f,w)=>{ const inp=el('input',{value:d[f]||'',style:`width:${w}px`}); inp.oninput=()=>d[f]=inp.value; return inp; };
       const num_=(f,w)=>{ const inp=el('input',{type:'text',value:d[f]!=null?String(d[f]):'',style:`width:${w}px;text-align:right`}); inp.oninput=()=>d[f]=num(inp.value); return inp; };
       const sel_=(f,opts,w)=>{ const s=el('select',{style:`width:${w}px`},opts.map(o=>el('option',{value:o,selected:d[f]===o?'':null},o))); s.onchange=()=>d[f]=s.value; return s; };
+      /* Round 21: "Sumber Realisasi" — kalau dipilih salah satu opsi Otomatis, kolom Realisasi di tab
+         ini & Weekly tidak lagi diisi manual, melainkan selalu ditarik live dari Sales & Target
+         (lihat isAutoRevenueCode()/autoRevenueForMonth()). Target tetap manual seperti biasa. */
+      const codeOpts=[['','Manual (isi di tab Weekly)'],['REVENUE_RP','Otomatis — Total Sales (Rp)'],
+        ['REVENUE_KOM_RP','Otomatis — Sales Komersial (Rp)'],['REVENUE_USER_RP','Otomatis — Sales User (Rp)']];
+      const selCode=el('select',{style:'width:220px'},codeOpts.map(([v,l])=>el('option',{value:v,selected:d.code===v?'':null},l)));
+      selCode.onchange=()=>d.code=selCode.value;
       cells=[String(i+1),
         el('span',{},txt('name',150)),
         sel_('perspektif',persp,130),
@@ -2434,6 +2481,7 @@ function renderKpiInput(p){
         sel_('status',['Running','Freeze','Take Out'],95),
         sel_('metode_ytd',['Akumulasi','Rata-rata'],95),
         txt('catatan',130),
+        selCode,
         el('span',{style:'display:flex;gap:5px'},
           el('button',{class:'btn sm pri',onclick:async()=>{
             try{ await DB.patch('kpi_metrics','id=eq.'+mt.id,d); Object.assign(mt,d); window.S_kpiEditing.delete(mt.id); S.rollCache.clear(); await loadAll(); renderKpi(); }
@@ -2441,8 +2489,9 @@ function renderKpiInput(p){
           }},'Simpan'),
           el('button',{class:'btn sm',onclick:()=>{ window.S_kpiEditing.delete(mt.id); renderKpi(); }},'Batal'))];
     } else {
+      const codeLabel={REVENUE_RP:'Otomatis · Total Sales',REVENUE_KOM_RP:'Otomatis · Sales Komersial',REVENUE_USER_RP:'Otomatis · Sales User'}[mt.code]||'Manual';
       cells=[String(i+1), mt.name||'', mt.perspektif||'', mt.unit||'', mt.periode||'Monthly', int(mt.weight), mt.direction||'higher', mt.status||'Running',
-        mt.metode_ytd||'Akumulasi', mt.catatan||'',
+        mt.metode_ytd||'Akumulasi', mt.catatan||'', codeLabel,
         el('span',{style:'display:flex;gap:5px'},
           el('button',{class:'btn sm',onclick:()=>{ window.S_kpiEditing.add(mt.id); renderKpi(); }},'Edit'),
           el('button',{class:'btn sm',onclick:async()=>{
@@ -2453,25 +2502,26 @@ function renderKpiInput(p){
     }
     tb.append(el('tr',{},
       el('td',{class:'r'},cells[0]),
-      el('td',{class:'sticky1'},cells[1], r.auto?el('span',{class:'pill neu',style:'margin-left:5px'},'auto'):null),
+      el('td',{class:'sticky1'},cells[1], r.autoRevenue?el('span',{class:'pill ok',style:'margin-left:5px'},'otomatis · Sales'):(r.auto?el('span',{class:'pill neu',style:'margin-left:5px'},'auto'):null)),
       el('td',{},cells[2]), el('td',{},cells[3]), el('td',{},cells[4]),
       el('td',{class:'r'},cells[5]), el('td',{},cells[6]), el('td',{},cells[7]), el('td',{},cells[8]),
       el('td',{class:'r'},r.target==null?'—':fmtKpi(r.target,mt.unit)),
       el('td',{class:'r'},r.actual==null?'—':fmtKpi(r.actual,mt.unit)),
       el('td',{},cells[9]),
+      el('td',{},cells[10]),
       el('td',{class:'r'},r.capaian==null?'—':pct(r.capaian)),
       el('td',{class:'r'},r.adj==null?'—':pct(r.adj)),
       el('td',{class:'r'},pct(r.skor)),
       el('td',{},r.indikator==='Belum ada data'||r.indikator==='—'?el('span',{class:'pill neu'},r.indikator):el('span',{class:'pill '+(r.indikator==='Tercapai'?'ok':r.indikator==='Kritis'?'bad':'mid')},r.indikator)),
-      el('td',{},cells[10])));
+      el('td',{},cells[11])));
   });
-  const totRow=['TOTAL / CEK BOBOT','','','','',int(tot.wsum),'','','','','','',' ',' ',pct(tot.score),'',''];
-  tb.append(el('tr',{class:'tot'},totRow.map((v,i)=>el('td',{class:(i===5||i===14?'r':'')},String(v)))));
+  const totRow=['TOTAL / CEK BOBOT','','','','',int(tot.wsum),'','','','','','','',' ',' ',pct(tot.score),'',''];
+  tb.append(el('tr',{class:'tot'},totRow.map((v,i)=>el('td',{class:(i===5||i===15?'r':'')},String(v)))));
   p.append(el('div',{class:'card'},
     el('header',{},el('h2',{},'Input KPI'),el('span',{class:'sub'},'klik Edit untuk mengubah metadata; Target/Realisasi YTD otomatis dari tab Weekly bila terisi')),
     el('div',{class:'tw'},el('table',{},el('thead',{},el('tr',{},
-      ['NO','KPI','PERSPEKTIF','UOM','PERIODE','BOBOT','POLARITAS','STATUS','METODE YTD','TARGET YTD','REALISASI YTD','CATATAN','CAPAIAN AKTUAL','CAPAIAN (ADJ)','SKOR KPI','INDIKATOR','AKSI']
-        .map((h,i)=>el('th',{class:(i===5||i>=9&&i<=10||i>=12&&i<=14?'r':'')+(i===1?' sticky1':'')},h)))),tb))),
+      ['NO','KPI','PERSPEKTIF','UOM','PERIODE','BOBOT','POLARITAS','STATUS','METODE YTD','TARGET YTD','REALISASI YTD','CATATAN','SUMBER REALISASI','CAPAIAN AKTUAL','CAPAIAN (ADJ)','SKOR KPI','INDIKATOR','AKSI']
+        .map((h,i)=>el('th',{class:(i===5||i>=9&&i<=10||i>=13&&i<=15?'r':'')+(i===1?' sticky1':'')},h)))),tb))),
     el('div',{class:'rowline',style:'margin-top:11px'},
       el('button',{class:'btn sm',onclick:async()=>{
         const n=S.metrics.length+1; const code='KPI_'+Date.now();
@@ -2500,13 +2550,27 @@ function renderKpiWeekly(p){
     const w=kpiWeeklyRow(mt.id,S.year,month)||{};
     const key=mt.id, editing=window.S_kpiWeekEditing.has(key);
     const calc=kpiMonthCalc(mt,S.year,month);
+    const autoRev=isAutoRevenueCode(mt.code);
     let cells;
     if(editing){
       const d={target:w.target,w1:w.w1,w2:w.w2,w3:w.w3,w4:w.w4,w5:w.w5,bulanan_override:w.bulanan_override,metode_mtd:w.metode_mtd||'Akumulasi'};
       const num_=(f)=>{ const inp=el('input',{type:'text',value:d[f]!=null?String(d[f]):'',style:'width:88px;text-align:right'}); inp.oninput=()=>d[f]=inp.value===''?null:num(inp.value); return inp; };
       const selm=el('select',{style:'width:95px'},['Akumulasi','Rata-rata'].map(o=>el('option',{value:o,selected:d.metode_mtd===o?'':null},o)));
       selm.onchange=()=>d.metode_mtd=selm.value;
-      cells=[num_('target'),num_('w1'),num_('w2'),num_('w3'),num_('w4'),num_('w5'),num_('bulanan_override'),selm,
+      /* Round 21: KPI dengan Sumber Realisasi "Otomatis" (lihat tab Input KPI) sudah dapat realisasinya
+         live dari Sales & Target — kolom W1-W5/Bulanan/Metode MTD jadi tidak relevan dan disembunyikan
+         supaya tidak membingungkan (user tidak perlu isi dua kali), hanya Target yang tetap bisa diedit. */
+      cells=autoRev
+        ? [num_('target'),el('span',{class:'sub'},'otomatis'),el('span',{class:'sub'},'otomatis'),el('span',{class:'sub'},'otomatis'),el('span',{class:'sub'},'otomatis'),el('span',{class:'sub'},'otomatis'),el('span',{class:'sub'},'otomatis'),el('span',{class:'sub'},'—'),
+            el('span',{style:'display:flex;gap:5px'},
+              el('button',{class:'btn sm pri',onclick:async()=>{
+                try{
+                  await DB.write('kpi_weekly',[{kpi_id:mt.id,year:S.year,month,target:d.target,w1:null,w2:null,w3:null,w4:null,w5:null,bulanan_override:null,metode_mtd:d.metode_mtd}],'kpi_id,year,month');
+                  toast('Target disimpan.'); window.S_kpiWeekEditing.delete(key); await loadAll(); renderKpi();
+                }catch(e){ toast('Gagal menyimpan: '+e.message); }
+              }},'Simpan'),
+              el('button',{class:'btn sm',onclick:()=>{ window.S_kpiWeekEditing.delete(key); renderKpi(); }},'Batal'))]
+        : [num_('target'),num_('w1'),num_('w2'),num_('w3'),num_('w4'),num_('w5'),num_('bulanan_override'),selm,
         el('span',{style:'display:flex;gap:5px'},
           el('button',{class:'btn sm pri',onclick:async()=>{
             try{
@@ -2518,7 +2582,12 @@ function renderKpiWeekly(p){
     } else {
       const f=v=>v==null?'—':fmtKpi(v,mt.unit);
       const hasEntry=[w.target,w.w1,w.w2,w.w3,w.w4,w.w5,w.bulanan_override].some(v=>v!=null);
-      cells=[f(w.target),f(w.w1),f(w.w2),f(w.w3),f(w.w4),f(w.w5),f(w.bulanan_override),w.metode_mtd||'Akumulasi',
+      const autoTag=el('span',{class:'pill ok'},'otomatis · Sales');
+      cells=autoRev
+        ? [f(w.target),autoTag,'','','','','','',
+            el('span',{style:'display:flex;gap:5px'},
+              el('button',{class:'btn sm',onclick:()=>{ window.S_kpiWeekEditing.add(key); renderKpi(); }},'Edit'))]
+        : [f(w.target),f(w.w1),f(w.w2),f(w.w3),f(w.w4),f(w.w5),f(w.bulanan_override),w.metode_mtd||'Akumulasi',
         el('span',{style:'display:flex;gap:5px'},
           el('button',{class:'btn sm',onclick:()=>{ window.S_kpiWeekEditing.add(key); renderKpi(); }},'Edit'),
           hasEntry?el('button',{class:'btn sm',onclick:async()=>{
@@ -2546,6 +2615,13 @@ function renderKpiWeekly(p){
 /* ===== Tab: Dashboard (presentasi, read-only, terhitung dari Weekly+Input KPI) ===== */
 function renderKpiDashboard(p){
   if(!S.metrics.length) return;
+  /* Round 21: kartu identitas (Perusahaan/Departemen/Nama/NIK/Jabatan/Atasan) sesuai sheet "Pengaturan"
+     template — diisi lewat tab Pengaturan baru, ditampilkan di sini kalau terisi. */
+  const idFields=[['Perusahaan',kpiSet('kpi_id_perusahaan','')],['Departemen',kpiSet('kpi_id_departemen','')],
+    ['Nama',kpiSet('kpi_id_nama','')],['NIK',kpiSet('kpi_id_nik','')],['Jabatan',kpiSet('kpi_id_jabatan','')],
+    ['Atasan Langsung',kpiSet('kpi_id_atasan1','')],['Atasan Tidak Langsung',kpiSet('kpi_id_atasan2','')]].filter(([,v])=>v);
+  if(idFields.length) p.append(el('div',{class:'card'},el('div',{class:'grid g4'},
+    idFields.map(([l,v])=>el('div',{},el('div',{class:'sub'},l),el('div',{style:'font-weight:600'},v))))));
   const month=S.month||lastMonthWithData(S.year);
   const metrics=S.metrics.slice().sort((a,b)=>(a.sort_order||0)-(b.sort_order||0));
   const monthRows=metrics.map(mt=>kpiMonthCalc(mt,S.year,month));
@@ -2655,11 +2731,138 @@ function renderKpiDashboard(p){
 function green2(){ return kpiGreenYellow()[0]; }
 function yellow2(){ return kpiGreenYellow()[1]; }
 
+/* ===== Tab: Pengaturan (identitas + parameter penilaian + skala grade + perspektif) =====
+   Round 21: sebelumnya SEMUA parameter ini (ambang hijau/kuning, batas maks capaian, normalisasi bobot,
+   skala grade A-E, daftar perspektif) sudah DIBACA oleh mesin hitung (kpiSet()/kpiSetN() dengan fallback
+   default), tapi TIDAK ADA form di UI manapun untuk mengubahnya — hanya bisa diubah lewat SQL langsung ke
+   app_settings. User minta "pengaturan ... lengkap dan pastikan mudah di edit" → tab ini melengkapi itu. */
+function kpiSettingsField(label,input,hint){
+  return el('div',{class:'fld'},el('label',{},label),input,hint?el('span',{class:'sub',style:'margin-top:2px'},hint):null);
+}
+function renderKpiSettings(p){
+  const d={
+    perusahaan:kpiSet('kpi_id_perusahaan','TIGALAPAN INDONESIA'), departemen:kpiSet('kpi_id_departemen','Commercial Department'),
+    nama:kpiSet('kpi_id_nama',''), nik:kpiSet('kpi_id_nik',''), jabatan:kpiSet('kpi_id_jabatan',''),
+    atasan1:kpiSet('kpi_id_atasan1',''), atasan2:kpiSet('kpi_id_atasan2',''),
+    capMax:kpiCapMax(), normalize:kpiNormalize()?'Ya':'Tidak', green:kpiGreenYellow()[0], yellow:kpiGreenYellow()[1],
+    ga:kpiSetN('kpi_grade_a',1.0), gb:kpiSetN('kpi_grade_b',.95), gc:kpiSetN('kpi_grade_c',.90), gd:kpiSetN('kpi_grade_d',.80), ge:kpiSetN('kpi_grade_e',.70),
+    persp:[...kpiPerspektifList(),'','','',''].slice(0,4)
+  };
+  const txt=(f,w,ph)=>{ const inp=el('input',{value:d[f]||'',placeholder:ph||'',style:`width:${w}px`}); inp.oninput=()=>d[f]=inp.value; return inp; };
+  const pctInp=(f,w)=>{ const inp=el('input',{type:'text',value:String(Math.round(d[f]*1000)/10),style:`width:${w}px;text-align:right`}); inp.oninput=()=>d[f]=num(inp.value)/100; return inp; };
+  const yn=el('select',{style:'width:100px'},['Ya','Tidak'].map(o=>el('option',{value:o,selected:d.normalize===o?'':null},o))); yn.onchange=()=>d.normalize=yn.value;
+
+  p.append(el('div',{class:'card'},
+    el('header',{},el('h2',{},'Identitas'),el('span',{class:'sub'},'tampil di Dashboard KPI, boleh dikosongkan')),
+    el('div',{class:'grid g4'},
+      kpiSettingsField('Perusahaan',txt('perusahaan',220)), kpiSettingsField('Departemen / Unit Kerja',txt('departemen',220)),
+      kpiSettingsField('Nama Karyawan',txt('nama',220)), kpiSettingsField('NIK',txt('nik',220)),
+      kpiSettingsField('Jabatan',txt('jabatan',220)), kpiSettingsField('Atasan Langsung',txt('atasan1',220)),
+      kpiSettingsField('Atasan Tidak Langsung',txt('atasan2',220)))));
+
+  p.append(el('div',{class:'card'},
+    el('header',{},el('h2',{},'Parameter Penilaian')),
+    el('div',{class:'grid g4'},
+      kpiSettingsField('Batas maksimum capaian (%)',pctInp('capMax',110),'capaian di atas batas ini dipotong'),
+      kpiSettingsField('Normalisasi bobot KPI aktif',yn,'Ya = skor dibagi total bobot KPI Running'),
+      kpiSettingsField('Ambang HIJAU — Tercapai ≥ (%)',pctInp('green',110)),
+      kpiSettingsField('Ambang KUNING — Waspada ≥ (%)',pctInp('yellow',110),'di bawah ini = MERAH / Kritis'))));
+
+  p.append(el('div',{class:'card'},
+    el('header',{},el('h2',{},'Skala Nilai (Grade)'),el('span',{class:'sub'},'batas atas skor (≤) utk tiap grade')),
+    el('div',{class:'grid g4'},
+      kpiSettingsField('A — Sangat Baik (≤%)',pctInp('ga',110)), kpiSettingsField('B — Baik (≤%)',pctInp('gb',110)),
+      kpiSettingsField('C — Cukup (≤%)',pctInp('gc',110)), kpiSettingsField('D — Kurang (≤%)',pctInp('gd',110)),
+      kpiSettingsField('E — Sangat Kurang (≤%)',pctInp('ge',110)))));
+
+  const perspInps=d.persp.map((v,i)=>{ const inp=el('input',{value:v||'',placeholder:'(kosongkan bila tidak dipakai)',style:'width:220px'}); inp.oninput=()=>d.persp[i]=inp.value; return inp; });
+  p.append(el('div',{class:'card'},
+    el('header',{},el('h2',{},'Nama Perspektif KPI'),el('span',{class:'sub'},'maks. 4, boleh dikosongkan')),
+    el('div',{class:'grid g4'},perspInps.map((inp,i)=>kpiSettingsField('Perspektif '+(i+1),inp)))));
+
+  p.append(el('div',{class:'rowline',style:'margin-bottom:16px'},
+    el('button',{class:'btn pri',onclick:async()=>{
+      if(guard()) return;
+      try{
+        const rows=[
+          ['kpi_id_perusahaan',d.perusahaan],['kpi_id_departemen',d.departemen],['kpi_id_nama',d.nama],['kpi_id_nik',d.nik],
+          ['kpi_id_jabatan',d.jabatan],['kpi_id_atasan1',d.atasan1],['kpi_id_atasan2',d.atasan2],
+          ['kpi_cap_max',String(d.capMax)],['kpi_normalize_weight',d.normalize],['kpi_threshold_green',String(d.green)],['kpi_threshold_yellow',String(d.yellow)],
+          ['kpi_grade_a',String(d.ga)],['kpi_grade_b',String(d.gb)],['kpi_grade_c',String(d.gc)],['kpi_grade_d',String(d.gd)],['kpi_grade_e',String(d.ge)],
+          ['kpi_perspektif_list',d.persp.filter(Boolean).join(',')]
+        ].map(([key,value])=>({key,value}));
+        await DB.write('app_settings',rows,'key');
+        rows.forEach(r=>S.settings[r.key]=r.value);
+        toast('Pengaturan KPI disimpan.'); S.rollCache.clear(); await loadAll(); renderKpi();
+      }catch(e){ toast('Gagal menyimpan: '+e.message); }
+    }},'Simpan Pengaturan')));
+
+  p.append(kpiTemplateSeedCard());
+}
+
+/* "Muat template Scorecard Commercial" — mengisi 3 KPI contoh (Revenue/Customer Satisfaction/Akurasi
+   Stock Store) persis seperti file Scorecard_KPI_COMMERCIAL_Sep2026.xlsx yang dilampirkan user: bobot,
+   perspektif, polaritas, status & TARGET bulanan Jan-Des ("sudah di input langsung target"). Revenue
+   diset Sumber Realisasi = Otomatis (Total Sales) sesuai permintaan ("untuk revenue ambil dari data
+   pencapaian") — realisasinya TIDAK ditulis statis, akan selalu dihitung live dari Sales & Target.
+   Customer Satisfaction & Akurasi Stock Store diisi target + realisasi historis Jan-Sep PERSIS seperti
+   file (data riil yang sudah user input sendiri di Excel-nya), Okt-Des sengaja dibiarkan kosong (belum
+   ada data di file aslinya juga) — bulan-bulan berikutnya tinggal diisi manual lewat tab Weekly.
+   Upsert memakai `code` sbg kunci (REVENUE_RP/CSAT_SCORE/STOCK_ACC_PCT) sehingga tombol ini AMAN diklik
+   ulang (memperbarui, bukan menduplikasi baris). */
+const KPI_TEMPLATE_REVENUE_TARGET=[8173459200,8293979875,9123645408,8834668012,10906900000,11179000000,14126000000,21534000000,12549000000,13519000000,19755000000,18670000000];
+const KPI_TEMPLATE_CSAT=[[4,null],[4,4.65],[4,4.52],[4,4.71],[4,4.77],[4,4.64],[4,5],[4,5],[4,4.83],[4,null],[4,null],[4,null]];
+const KPI_TEMPLATE_STOCK=[[.95,.9624],[.95,.9749],[.95,.9763],[.95,.9533],[.95,.9561],[.95,.9644],[.95,.9508],[.95,.9089],[.95,.923],[.95,null],[.95,null],[.95,null]];
+function kpiTemplateSeedCard(){
+  return el('div',{class:'card'},
+    el('header',{},el('h2',{},'Muat Template Scorecard Commercial'),el('span',{class:'sub'},'dari Scorecard_KPI_COMMERCIAL_Sep2026.xlsx')),
+    el('p',{style:'margin:0 0 12px;color:var(--ink-2);font-size:13px'},
+      '3 KPI contoh (Revenue, Customer Satisfaction, Akurasi Stock Store) akan dibuat/diperbarui dengan bobot, perspektif, '+
+      'polaritas & TARGET bulanan Jan–Des '+new Date().getFullYear()+' persis seperti file yang dilampirkan. Revenue otomatis tersambung ke data Sales & Target '+
+      '(realisasinya live, tidak ditulis statis). Customer Satisfaction & Akurasi Stock Store diisi target+realisasi Jan–Sep sesuai file (Okt–Des dikosongkan, tinggal diisi manual tiap bulan di tab Weekly). '+
+      'Aman diklik berkali-kali — menimpa (bukan menduplikasi) baris yang sama.'),
+    el('button',{class:'btn sm',onclick:async()=>{
+      if(guard()) return;
+      if(!confirm('Muat/perbarui 3 KPI contoh dari template Scorecard Commercial? Baris dengan kode KPI yang sama akan ditimpa.')) return;
+      try{
+        const y=S.year||new Date().getFullYear();
+        await DB.write('kpi_metrics',[
+          /* weight disimpan skala 0-100 (bukan 0-1 seperti di file Excel aslinya) — konvensi yang
+             sudah dipakai S.metrics/kpiTotal() di seluruh app (lihat cek bobot "wsum vs 100"), jadi
+             50/30/20 di sini = 50%/30%/20% persis seperti bobot 0.5/0.3/0.2 pada file Excel. */
+          {code:'REVENUE_RP',name:'Revenue',perspektif:'Financial',unit:'Rp',periode:'Monthly',weight:50,direction:'higher',status:'Running',metode_ytd:'Akumulasi',sort_order:1},
+          {code:'CSAT_SCORE',name:'Customer Satisfaction',perspektif:'Customer',unit:'Score',periode:'Monthly',weight:30,direction:'higher',status:'Running',metode_ytd:'Rata-rata',sort_order:2},
+          {code:'STOCK_ACC_PCT',name:'Akurasi Stock Store',perspektif:'Internal Business Process',unit:'%',periode:'Monthly',weight:20,direction:'higher',status:'Running',metode_ytd:'Rata-rata',sort_order:3}
+        ],'code');
+        await DB.write('app_settings',[{key:'kpi_perspektif_list',value:'Financial,Customer,Internal Business Process'}],'key');
+        S.rollCache.clear(); await loadAll();
+        const kpiByCode=code=>S.metrics.find(m=>m.code===code);
+        const rev=kpiByCode('REVENUE_RP'), csat=kpiByCode('CSAT_SCORE'), stock=kpiByCode('STOCK_ACC_PCT');
+        const weekly=[];
+        for(let m=1;m<=12;m++){
+          if(rev) weekly.push({kpi_id:rev.id,year:y,month:m,target:KPI_TEMPLATE_REVENUE_TARGET[m-1],w1:null,w2:null,w3:null,w4:null,w5:null,bulanan_override:null,metode_mtd:'Akumulasi'});
+          if(csat) weekly.push({kpi_id:csat.id,year:y,month:m,target:KPI_TEMPLATE_CSAT[m-1][0],w1:null,w2:null,w3:null,w4:null,w5:null,bulanan_override:KPI_TEMPLATE_CSAT[m-1][1],metode_mtd:'Rata-rata'});
+          if(stock) weekly.push({kpi_id:stock.id,year:y,month:m,target:KPI_TEMPLATE_STOCK[m-1][0],w1:null,w2:null,w3:null,w4:null,w5:null,bulanan_override:KPI_TEMPLATE_STOCK[m-1][1],metode_mtd:'Rata-rata'});
+        }
+        await DB.write('kpi_weekly',weekly,'kpi_id,year,month');
+        toast('Template Scorecard Commercial dimuat untuk tahun '+y+'.'); S.rollCache.clear(); await loadAll(); renderKpi();
+      }catch(e){ toast('Gagal memuat template: '+e.message); }
+    }},'Muat template Scorecard Commercial'));
+}
+
+/* Round 21: dua definisi fmtKpi()/autoKpi() identik yang kebetulan ada di file (sisa gabungan sesi
+   sebelumnya, harmless karena deklarasi kedua cuma menimpa yang pertama — tapi membingungkan untuk
+   dibaca/dirawat) dirapikan jadi SATU di sini, sekalian diperluas: fmtKpi() sekarang mengenali lebih
+   banyak variasi penulisan satuan (Rp/Rp./IDR, Score/Rating dengan 2 desimal) supaya KPI "Revenue" dan
+   KPI jenis skor (mis. Customer Satisfaction) tampil wajar tanpa harus mengetik satuan persis 'IDR'. */
 function fmtKpi(v,unit){ if(v==null)return '—';
-  if(unit==='%') return pct(v>2?v/100:v);
-  if(unit==='IDR') return compact(v);
+  const u=String(unit||'').toLowerCase();
+  if(u==='%'||u.includes('persen')) return pct(v>2?v/100:v);
+  if(u==='idr'||u.includes('rp')) return compact(v);
+  if(u.includes('score')||u.includes('rating')||u.includes('skor')) return (Math.round(N(v)*100)/100).toLocaleString('id-ID',{minimumFractionDigits:2,maximumFractionDigits:2});
   return int(v); }
-/* KPI yang bisa dihitung langsung dari data sales (jalur lama, dipakai bila KPI belum punya data Weekly) */
+/* KPI yang bisa dihitung langsung dari data sales (jalur lama, dipakai bila KPI belum punya data Weekly
+   sama sekali DAN bulan itu adalah bulan laporan aktif — lihat kpiMonthCalc). */
 function autoKpi(code){
   const rows=scope(S.dash), a=agg(rows), t=trxScope();
   const tc=t.reduce((s,r)=>s+N(r.jumlah_transaksi),0), tv=t.reduce((s,r)=>s+N(r.nilai_transaksi),0);
@@ -2675,26 +2878,18 @@ function autoKpi(code){
     default: return null;
   }
 }
-
-function fmtKpi(v,unit){ if(v==null)return '—';
-  if(unit==='%') return pct(v>2?v/100:v);
-  if(unit==='IDR') return compact(v);
-  return int(v); }
-/* KPI yang bisa dihitung langsung dari data sales */
-function autoKpi(code){
-  const rows=scope(S.dash), a=agg(rows), t=trxScope();
-  const tc=t.reduce((s,r)=>s+N(r.jumlah_transaksi),0), tv=t.reduce((s,r)=>s+N(r.nilai_transaksi),0);
-  const g=growthScope().filter(r=>r.growth_vs_y1!=null);
-  const gc=g.reduce((s,r)=>s+N(r.sales_cy),0), gp=g.reduce((s,r)=>s+N(r.sales_y1),0);
-  switch(code){
-    case 'ACH_TOTAL': return a.target_total>0?{target:1,actual:a.total_sales/a.target_total}:null;
-    case 'ACH_KOM':   return a.target_komersial>0?{target:1,actual:a.sales_komersial/a.target_komersial}:null;
-    case 'ACH_USER':  return a.target_user>0?{target:1,actual:a.sales_user/a.target_user}:null;
-    case 'GROWTH_YOY':return gp>0?{target:null,actual:(gc-gp)/gp}:null;
-    case 'AOV':       return tc>0?{target:null,actual:tv/tc}:null;
-    case 'TRX':       return tc>0?{target:null,actual:tc}:null;
-    default: return null;
-  }
+/* Round 21: kode KPI yang REALISASI-nya SELALU ditarik langsung dari data Sales & Target (bukan
+   menunggu KPI itu kosong dari Weekly dulu seperti jalur legacy autoKpi() di atas) — ini yang
+   dipakai KPI "Revenue" sesuai permintaan user ("untuk revenue ambil dari data pencapaian"). Target
+   TETAP diisi manual lewat tab Weekly/Input KPI (sesuai template: hanya Realisasi yang otomatis),
+   dan nilainya LIVE per bulan dari v_sales_dashboard — bukan dari tabel Weekly sama sekali — supaya
+   selalu sinkron begitu ada input sales baru, untuk tahun/bulan MANAPUN (pakai dashAllRows(), bukan
+   S.dash yang di mode nyata cuma berisi tahun filter aktif). */
+const AUTO_REVENUE_CODES={REVENUE_RP:r=>N(r.total_sales), REVENUE_KOM_RP:r=>N(r.sales_komersial), REVENUE_USER_RP:r=>N(r.sales_user)};
+function isAutoRevenueCode(code){ return !!AUTO_REVENUE_CODES[code]; }
+function autoRevenueForMonth(code,year,month){
+  const f=AUTO_REVENUE_CODES[code]; if(!f) return null;
+  return dashAllRows().filter(r=>r.year===year&&r.month===month).reduce((s,r)=>s+f(r),0);
 }
 
 /* ---------- PDCA ---------- */
@@ -3618,7 +3813,14 @@ const COLOR_BASE={HITAM:'#161616',BLACK:'#161616',PUTIH:'#f7f7f5',WHITE:'#f7f7f5
   ORG:'#f07a1a',BRN:'#6b4a3a',COGNAC:'#8a4a28',CHESTNUT:'#6e3b23',WALNUT:'#5a3a26',MAHOGANY:'#4e2a1e',
   OXBLOOD:'#5c1f23',TAUPE:'#8a7968',ECRU:'#e3d9bf',BONE:'#e8e2d4',ALABASTER:'#eeece4',GADING:'#f3ecd8',
   TULANG:'#e8e2d4',ZAITUN:'#6b7a2f',KOPI:'#5a4032',SUSU:'#f7f7f0',DEBU:'#b9b5a8',NATURAL:'#d8c7a0',
-  NATURE:'#d8c7a0'};
+  NATURE:'#d8c7a0',
+  /* Round 21: ditarik langsung dari file "Data warna yang belum masuk ke aplikasi" yang dilampirkan user
+     (5.481 nama item dicek satu per satu lewat simulasi logika colorHex() yang sama persis dengan yang
+     dipakai aplikasi) — token di bawah ini adalah kata warna NYATA yang muncul di nama item tapi belum
+     dikenali sebelumnya (typo umum seperti KHAKY/TOFFE, atau nama warna bertema seperti SYCAMORE/DIJON
+     yang dipakai brand MAMU untuk varian biowash/crewneck/hoodie). */
+  KHAKY:'#b7a56a',COKLATTUA:'#4e362a',TOFFE:'#8a5a34',WOODROSE:'#9c6b70',
+  DIJON:'#c9972e',SYCAMORE:'#a89080',CROCODILE:'#5c6b2c',ERMINE:'#d9d4c8'};
 const COLOR_COMPOUND={'HIJAU TNI':'#4a5a2a','ABU MISTY':'#a3a9b3','ABU MUDA':'#bcc0c7','ABU TUA':'#4b4f56','ABU SEDANG':'#81868e',
   'ABU ABU':'#8b9099','HIJAU BOTOL':'#0f5a3a','HIJAU LUMUT':'#5c6b2c','BIRU DONGKER':'#1d2b5e','BIRU LANGIT':'#79b8ea',
   'BIRU MUDA':'#8fb6ee','BIRU TUA':'#16347a','MERAH MAROON':'#7b1e2e','OFF WHITE':'#efeadf','BLUE BENHUR':'#2b4aa0',
@@ -3627,7 +3829,11 @@ const COLOR_COMPOUND={'HIJAU TNI':'#4a5a2a','ABU MISTY':'#a3a9b3','ABU MUDA':'#b
   'DEEP BLUE':'#163a7a','CACTUS GREEN':'#6b8e4e','CACTUS GRN':'#6b8e4e','ELECTRIC LM':'#c6e21e','LIGHT BROWN':'#9c6b4a',
   'OLIVE GREEN':'#6b7a2f','SAGE GREEN':'#9db08a','MINERAL BLUE':'#5a8aa0','MINERAL GREEN':'#6a9a7a','SALMON RED':'#e0604a',
   'BLUSH RED':'#d9636a','ALMOND BROWN':'#9c7a52','TWILIGHT MAUVE':'#8a6b7a','KUNING BSK':'#f0c419','KUNING KNR':'#e8b400',
-  'ORANGE BATA':'#c0552e','SKY BLUE':'#79b8ea','STEEL BLUE':'#4c6b8a'};
+  'ORANGE BATA':'#c0552e','SKY BLUE':'#79b8ea','STEEL BLUE':'#4c6b8a',
+  /* Round 21: nama warna bertema (2-3 kata) dari file "Data warna yang belum masuk ke aplikasi" lampiran
+     user — dipakai brand MAMU untuk varian biowash/crewneck/hoodie/dress. */
+  'BERING SEA':'#4a6670','POPY SEED':'#2a2a30','POPPY SEED':'#2a2a30','SENECA ROCK':'#8a8275',
+  'SUGAR SWIZZLE':'#f0dde0'};
 function hexRgb(h){ h=h.replace('#',''); return [0,2,4].map(i=>parseInt(h.slice(i,i+2),16)); }
 function rgbHex(a){ return '#'+a.map(v=>Math.max(0,Math.min(255,Math.round(v))).toString(16).padStart(2,'0')).join(''); }
 function mixHex(h,to,t){ const a=hexRgb(h), b=to==='w'?[255,255,255]:[0,0,0]; return rgbHex(a.map((v,i)=>v+(b[i]-v)*t)); }
