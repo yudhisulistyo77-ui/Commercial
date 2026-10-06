@@ -12,6 +12,7 @@
   --muted:#858c99; --grid:#e4e7ee; --line:#cbd0db; --ring:rgba(13,15,20,.09);
   --accent:#2a78d6; --accent-soft:#e7f0fc; --accent2:#9333ea; --grad:linear-gradient(135deg,#7c3aed,#d6336c);
   --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#eda100; --s5:#e87ba4; --s6:#008300; --s7:#4a3aa7; --s8:#e34948;
+  --target-bar:#8d94a3;
   --good:#0ca30c; --warn:#fab219; --serious:#ec835a; --crit:#d03b3b; --good-ink:#006300;
   --font-ui:"Plus Jakarta Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
   --font-num:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,monospace;
@@ -22,6 +23,7 @@
   --muted:#8a9099; --grid:#252a31; --line:#383e47; --ring:rgba(255,255,255,.10);
   --accent:#3987e5; --accent-soft:#17283c; --accent2:#a855f7; --grad:linear-gradient(135deg,#8b5cf6,#ec4899);
   --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --s5:#d55181; --s6:#008300; --s7:#9085e9; --s8:#e66767;
+  --target-bar:#6b7280;
   --good-ink:#0ca30c; color-scheme:dark; --shadow:0 1px 2px rgba(0,0,0,.35),0 1px 1px rgba(0,0,0,.25);
 }}
 :root[data-theme="dark"]{
@@ -29,6 +31,7 @@
   --muted:#8a9099; --grid:#252a31; --line:#383e47; --ring:rgba(255,255,255,.10);
   --accent:#3987e5; --accent-soft:#17283c; --accent2:#a855f7; --grad:linear-gradient(135deg,#8b5cf6,#ec4899);
   --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --s5:#d55181; --s6:#008300; --s7:#9085e9; --s8:#e66767;
+  --target-bar:#6b7280;
   --good-ink:#0ca30c; color-scheme:dark; --shadow:0 1px 2px rgba(0,0,0,.35),0 1px 1px rgba(0,0,0,.25);
 }
 *{box-sizing:border-box}
@@ -438,9 +441,14 @@ function rp(v,dec=0){ if(v==null||isNaN(v))return T('—');
    desimal selalu tampil (minimumFractionDigits:2) — toLocaleString tidak lagi sempat membulatkan karena
    angkanya sudah tepat 2 desimal saat masuk ke situ. */
 function trunc2(x){ return Math.floor(x*100+1e-9)/100; }
+/* Round 22: user minta 2 desimal HANYA tampil kalau memang ada nilai desimalnya — angka bulat (mis.
+   690jt tepat) tidak perlu lagi dipaksa tampil ",00" di belakangnya. `maximumFractionDigits:2` tanpa
+   `minimumFractionDigits` membuat `toLocaleString` otomatis memotong trailing zero (default minimum
+   adalah 0) — "1" tetap "1", "1.23" tetap "1,23", tapi "1.20" jadi "1,2" (bukan "1,20"). trunc2() tetap
+   dipakai duluan supaya tetap truncate, bukan dibulatkan. */
 function compact(v){ if(v==null||isNaN(v))return T('—');
   const a=Math.abs(v), s=v<0?'-':'';
-  const f2=x=>trunc2(x).toLocaleString('id-ID',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const f2=x=>trunc2(x).toLocaleString('id-ID',{maximumFractionDigits:2});
   let t;
   if(a>=1e12) t=s+'Rp '+f2(a/1e12)+' T';
   else if(a>=1e9)  t=s+'Rp '+f2(a/1e9 )+' M';
@@ -3745,6 +3753,49 @@ function renderSetReal(){
         naIn.value=''; toast('Alias ditambahkan.'); await loadAll(); }catch(e){ toast('Gagal: '+e.message); } }},'Tambah')));
   p.append(al);
 
+  /* round 22: mapping KATEGORI PRODUK → BRAND — tabel `category_brand` sudah dibaca sejak lama
+     (loadCatBrand(), dipakai fallback brand di tabel kategori Brand Performance saat item tidak match ke
+     Master Produk/DATABASE STOCK), tapi SEBELUMNYA tidak ada satu pun UI untuk mengubahnya (hanya bisa
+     lewat SQL langsung). User minta bisa menyesuaikan sendiri brand dari kategori sales yang ada. */
+  const cbCard=el('div',{class:'card'});
+  cbCard.append(el('header',{},el('h2',{},'Mapping Kategori Produk → Brand')),
+    el('div',{class:'empty'},'Memuat daftar kategori…'));
+  p.append(cbCard);
+  (async()=>{
+    try{
+      const [cats,cb]=await Promise.all([itemCategoryList(),loadCatBrand()]);
+      cbCard.innerHTML='';
+      cbCard.append(el('header',{},el('h2',{},'Mapping Kategori Produk → Brand'),el('span',{class:'sub'},`${cats.length} kategori`)));
+      cbCard.append(el('p',{style:'margin:0 0 12px;color:var(--ink-2);font-size:12.5px'},
+        'Tiap kategori item (dari Item Sales) dipetakan ke salah satu brand di sini. Dipakai sebagai cadangan saat sebuah '+
+        'item tidak ditemukan di Master Produk (DATABASE STOCK) — mis. kolom BRAND di tabel kategori halaman Brand Performance. '+
+        'Pilih "(otomatis)" untuk memakai dugaan dari nama kategori (mengandung kata MAMU/MYNO → brand itu, selain itu TIGALAPAN).'));
+      if(!cats.length){
+        cbCard.append(el('div',{class:'empty'},'Belum ada kategori item pada data yang terunggah.'));
+      } else {
+        const brandOpts=[['','(otomatis)'],['TIGALAPAN','TIGALAPAN'],['MAMU','MAMU'],['MYNO','MYNO'],['DEFECT','DEFECT'],['LAINNYA','LAINNYA']];
+        const tb=el('tbody');
+        cats.forEach(c=>{
+          const cur=cb.get(c)||'';
+          const sel=el('select',{},brandOpts.map(([v,t])=>el('option',{value:v,selected:cur===v?'':null},t)));
+          tb.append(el('tr',{},
+            el('td',{class:'sticky1'},c),
+            el('td',{},sel),
+            el('td',{},el('button',{class:'btn sm',onclick:async()=>{
+              if(guard()) return;
+              try{
+                if(sel.value) await DB.write('category_brand',[{category:c,brand:sel.value}],'category');
+                else await DB.del('category_brand','category=eq.'+encodeURIComponent(c));
+                S.catBrand=null; toast('Tersimpan. Brand kategori "'+c+'" → '+(sel.value||'otomatis')+'.');
+              }catch(e){ toast('Gagal: '+e.message); }
+            }},'Simpan'))));
+        });
+        cbCard.append(el('div',{class:'tw',style:'max-height:420px;overflow:auto'},
+          el('table',{},el('thead',{},el('tr',{},['KATEGORI','BRAND',''].map((h,i)=>el('th',{class:i===0?'sticky1':''},h)))),tb)));
+      }
+    }catch(e){ cbCard.innerHTML=''; cbCard.append(el('div',{class:'note warn'},'Gagal memuat daftar kategori: '+e.message)); }
+  })();
+
   /* database sales type */
   const mp=el('div',{class:'card'});
   mp.append(el('header',{},el('h2',{},'Database Sales Type'),
@@ -4326,17 +4377,44 @@ function mergeRoll(perYear){
 }
 
 /* ---------- blok Top Product / Top Color / Top Size (dipakai Dashboard & menu Top Product) ---------- */
+/* round 22: Top Color dibangun murni dari nama item (via deriveWarna(), kosakata yang sama dengan chip
+   warna), BUKAN lagi dari RPC server `item_rollup(p_dim:'color')` yang mengelompokkan berdasar kolom
+   `product_master.warna`. Root cause kenapa "0 warna" tetap terjadi utk MAMU walau tombol "Perbaiki Warna
+   Kosong" sudah dijalankan: Top Product (dim 'product') mengelompokkan LANGSUNG dari `item_sales.item_name`
+   — tidak butuh join ke `product_master` sama sekali — sedangkan Top Color WAJIB join ke
+   `product_master.warna` karena `item_sales` tidak punya kolom warna. Kalau baris `product_master` utk
+   item itu TIDAK ADA SAMA SEKALI (bukan cuma warna-nya kosong — barisnya memang belum pernah ter-upload),
+   tombol "Perbaiki Warna Kosong" (yang hanya mengisi baris yang SUDAH ADA) tidak bisa menolongnya. Dengan
+   menurunkan Top Color langsung dari daftar produk (yang sudah pasti lengkap, sama seperti Top Product),
+   fitur ini tidak lagi bergantung sama sekali pada kelengkapan tabel `product_master`. */
+function colorRowsFromProducts(rows){
+  const m=new Map();
+  rows.forEach(r=>{
+    const w=deriveWarna(r.k); if(!w) return;
+    const o=m.get(w)||{k:w,qty:0,refunded:0,sales:0,n:0};
+    o.qty+=r.qty; o.refunded+=r.refunded; o.sales+=r.sales; o.n+=(r.n||1);
+    m.set(w,o);
+  });
+  return [...m.values()];
+}
 async function topBlock(host,o={}){
   const lim=o.limit||S.topN||20, m1=o.m1||(S.month||1), m2=o.m2||(S.month||12);
   host.innerHTML=''; host.append(el('div',{class:'empty'},'Memuat peringkat produk…'));
-  let prod,color,size,cat;
-  try{ [prod,color,size,cat]=await Promise.all(['product','color','size','category'].map(d=>rollup(d,S.year,m1,m2,{brand:o.brand,category:o.category,limit:o.full?300:60}))); }
+  let prod,size,cat,prodAll;
+  try{
+    [prod,size,cat,prodAll]=await Promise.all([
+      rollup('product',S.year,m1,m2,{brand:o.brand,category:o.category,limit:o.full?300:60}),
+      rollup('size',S.year,m1,m2,{brand:o.brand,category:o.category,limit:o.full?300:60}),
+      rollup('category',S.year,m1,m2,{brand:o.brand,category:o.category,limit:o.full?300:60}),
+      rollup('product',S.year,m1,m2,{brand:o.brand,category:o.category,limit:2000})
+    ]);
+  }
   catch(e){ host.innerHTML=''; host.append(el('div',{class:'note warn'},'Gagal memuat peringkat produk: '+e.message+
     ' — pastikan migrasi database terbaru sudah dijalankan.')); return; }
   host.innerHTML='';
   if(!prod.length){ host.append(el('div',{class:'empty'},el('b',{},'Belum ada data item sales pada filter ini'),
     'Item Sales dimuat dari folder Drive atau Upload Data.')); return; }
-  const colorRows=color.filter(r=>r.k!=='(Tanpa warna)'), sizeRows=size.filter(r=>r.k!=='(Tanpa size)');
+  const colorRows=colorRowsFromProducts(prodAll), sizeRows=size.filter(r=>r.k!=='(Tanpa size)');
   const totQty=prod.reduce((s,r)=>s+r.qty,0), totSales=prod.reduce((s,r)=>s+r.sales,0);
   const tops=(rows,n)=>rows.slice().sort((a,b)=>b.qty-a.qty).slice(0,n);
   /* item 8: kolom warna dihapus dari Top Product — sudah ada bagian Top Color tersendiri */
@@ -4527,6 +4605,23 @@ function renderH2H(){
   p.append(chartCard('Sales per bulan, tiga tahun','semua bulan; rentang terpilih ada di tabel',
     el('div',{},legend(ser),groupedBars(MON3,ser,{h:320}))));
 
+  /* round 22: chart Sales vs Target & Achievement per bulan utk tahun berjalan (y3) — tile "Pencapaian
+     thd target" di atas sudah ada, tapi sebelumnya tidak ada chart tren bulanannya (hanya chart 3-tahun
+     tanpa target di atas). Memakai comboBarsLine() yang sama dipakai Dashboard/Marketplace/Program Sales,
+     supaya setiap grafik yang punya target juga punya trendline achievement. */
+  {
+    const tgtMon=y=>MONTHS.map((_,i)=>S.dashAll.filter(r=>r.year===y&&r.month===i+1&&storeOk(r.store_id)).reduce((s,r)=>s+N(r.target_total),0));
+    const salesY3=mon(y3), tgtY3=tgtMon(y3);
+    const achY3=MONTHS.map((_,i)=>tgtY3[i]>0&&salesY3[i]>0?salesY3[i]/tgtY3[i]:null);
+    const ser2=[{name:'Sales '+y3,color:'var(--s1)',vals:salesY3},{name:'Target '+y3,color:'var(--target-bar)',vals:tgtY3}];
+    p.append(chartCard(`Sales vs Target & Achievement per bulan (${y3})`,ymLabel(y3,m1,m2),
+      el('div',{},
+        el('div',{style:'display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-bottom:6px'},
+          legend(ser2), el('span',{class:'sub'},'— ● Achievement (garis, sumbu kanan %)')),
+        comboBarsLine(MON3,ser2,achY3,{h:300,lineRef:1,lineColor:'var(--s7)',lineName:'Achievement'}),
+        el('div',{class:'sub',style:'margin-top:4px'},'Sumbu kiri: Rp (batang Sales/Target) · Sumbu kanan: % (garis Achievement, titik putus = bulan tanpa sales/target)'))));
+  }
+
   /* tabel bulan demi bulan — round 8 item 3: tambah kolom banding LANGSUNG y3 vs y1 (Δ & GAP),
      bukan cuma rantai y2-vs-y1 dan y3-vs-y2. Kolom y2-vs-y1 chained dibuang biar tabel tidak terlalu lebar. */
   {
@@ -4623,8 +4718,12 @@ function renderH2H(){
   host.append(el('div',{class:'empty'},'Memuat item sales tiga tahun…'));
   (async()=>{
     try{
-      const dims=['store','product','color','size','category'];
+      /* round 22: dim 'color' TIDAK LAGI diambil dari RPC server (lihat colorRowsFromProducts) — dihitung
+         client-side dari hasil dim 'product' per tahun, supaya tidak lagi bergantung pada kelengkapan
+         kolom product_master.warna (akar masalah "Top Color 0" utk MAMU). */
+      const dims=['store','product','size','category'];
       const res={}; await Promise.all(dims.map(async d=>{ res[d]=await Promise.all(st.y.map(y=>rollup(d,y,m1,m2,{limit:d==='product'?400:200}))); }));
+      res.color=res.product.map(yearRows=>colorRowsFromProducts(yearRows));
       host.innerHTML='';
       const mk=(dim,title,keyCell,limit)=>{
         const mg=mergeRoll(res[dim]);
@@ -4959,8 +5058,10 @@ function renderSSSG(){
   host.append(el('div',{class:'empty'},'Memuat item sales same-window…'));
   (async()=>{
     try{
-      const dims=['store','category','product','color','size'];
+      /* round 22: dim 'color' dihitung client-side dari dim 'product' — lihat colorRowsFromProducts. */
+      const dims=['store','category','product','size'];
       const res={}; await Promise.all(dims.map(async d=>{ res[d]=await Promise.all([y1,y2,y3].map(y=>rollup(d,y,1,cutoffM,{limit:d==='product'?400:d==='store'?60:40,stores:idsFull}))); }));
+      res.color=res.product.map(yearRows=>colorRowsFromProducts(yearRows));
       host.innerHTML='';
       const mk=(dim,title,keyCell,limit)=>{
         const mg=mergeRoll(res[dim]);
@@ -5158,7 +5259,7 @@ function renderProgram(){
       {
         const salesY3=byYear[y3], tgtArr=monthsArr.map(m=>tgtOf(y3,m));
         const achArr=monthsArr.map((m,i)=>tgtArr[i]>0&&salesY3[i]>0?salesY3[i]/tgtArr[i]:null);
-        const ser2=[{name:'Sales '+y3,color:'var(--s1)',vals:salesY3},{name:'Target '+y3,color:'var(--grid)',vals:tgtArr}];
+        const ser2=[{name:'Sales '+y3,color:'var(--s1)',vals:salesY3},{name:'Target '+y3,color:'var(--target-bar)',vals:tgtArr}];
         host.append(chartCard(`Sales vs Target & Achievement per bulan (${y3})`,ymLabel(y3,m1,m2),
           el('div',{},
             el('div',{style:'display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-bottom:6px'},
@@ -5273,6 +5374,13 @@ function mktChannels(){
 function mktRows(year,m1,m2,ch){
   return S.mkt.filter(r=>r.year===year&&r.month>=m1&&r.month<=m2&&(!ch||r.channel===ch)&&storeOk(r.store_id));
 }
+/* round 22: target channel KHUSUS SATU toko offline (dipakai tabel "Marketplace per toko") — null kalau
+   toko itu belum diisi target per-tokonya sendiri di kartu "Target marketplace per Toko Offline". */
+function chanTargetStore(ch,sid,year,m1,m2){
+  const t=S.chanTargets.filter(t=>String(t.channel).toUpperCase()===ch&&t.year===year&&t.month>=m1&&t.month<=m2&&t.store_id===sid)
+    .reduce((s,t)=>s+N(t.target),0);
+  return t||null;
+}
 function chanTarget(ch,year,m1,m2){
   const ids=scopeStoreIds();
   const all=S.chanTargets.filter(t=>String(t.channel).toUpperCase()===ch&&t.year===year&&t.month>=m1&&t.month<=m2);
@@ -5343,7 +5451,7 @@ function renderMkt(){
   chsSorted.filter(ch=>chSales(ch)>0||mktRows(S.year-1,m1,m2,ch).reduce((a,r)=>a+N(r.amount),0)>0).forEach(ch=>{
     const sales=MONTHS.map((_,i)=>mktRows(S.year,i+1,i+1,ch).reduce((a,r)=>a+N(r.amount),0));
     const tg=MONTHS.map((_,i)=>chanTarget(ch,S.year,i+1,i+1));
-    const ser=[{name:'Sales',color:CH_COLOR[ch]||'var(--s1)',vals:sales},{name:'Target',color:'var(--grid)',vals:tg}];
+    const ser=[{name:'Sales',color:CH_COLOR[ch]||'var(--s1)',vals:sales},{name:'Target',color:'var(--target-bar)',vals:tg}];
     const ach=MONTHS.map((_,i)=>tg[i]>0&&sales[i]>0?sales[i]/tg[i]:null);
     const wrap=el('div',{},
       el('div',{style:'display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-bottom:6px'},
@@ -5372,19 +5480,24 @@ function renderMkt(){
   });
   if(notes.length) p.append(card('Analisis marketplace','dihitung otomatis dari data pada filter aktif',el('div',{style:'display:flex;flex-direction:column;gap:9px'},...notes)));
 
-  /* per toko x channel */
+  /* per toko x channel — round 22: tambah kolom TARGET & ACHIEV per channel per toko (dari target yang
+     diisi di kartu "Target marketplace per Toko Offline" di bawah), supaya kelihatan toko mana yang
+     tercapai/tidak, bukan cuma angka sales-nya. */
   {
-    const stores=[...new Set(mktRows(S.year,m1,m2).map(r=>r.store_name))]
-      .sort((a,b)=>mktRows(S.year,m1,m2).filter(r=>r.store_name===b).reduce((s,r)=>s+N(r.amount),0)-mktRows(S.year,m1,m2).filter(r=>r.store_name===a).reduce((s,r)=>s+N(r.amount),0));  // item 8: diurutkan total marketplace terbesar→terkecil
-    const heads=[H('TOKO',{s:1}),...chs.flatMap(ch=>[H(ch+' SALES',{r:1}),H(ch+' TRX',{r:1})]),H('TOTAL MARKETPLACE',{r:1}),H('PORSI THD SALES TOKO',{r:1})];
-    const totals=stores.map(n=>mktRows(S.year,m1,m2).filter(r=>r.store_name===n).reduce((a,r)=>a+N(r.amount),0));
+    const storeIds=[...new Set(mktRows(S.year,m1,m2).map(r=>r.store_id))];
+    const nameOf=sid=>(S.stores.find(s=>s.id===sid)||{}).name||'—';
+    const storesSorted=storeIds.sort((a,b)=>mktRows(S.year,m1,m2).filter(r=>r.store_id===b).reduce((s,r)=>s+N(r.amount),0)-mktRows(S.year,m1,m2).filter(r=>r.store_id===a).reduce((s,r)=>s+N(r.amount),0));
+    const heads=[H('TOKO',{s:1}),...chs.flatMap(ch=>[H(ch+' SALES',{r:1}),H(ch+' TARGET',{r:1}),H(ch+' ACHIEV',{r:1})]),H('TOTAL MARKETPLACE',{r:1}),H('PORSI THD SALES TOKO',{r:1})];
+    const totals=storesSorted.map(sid=>mktRows(S.year,m1,m2).filter(r=>r.store_id===sid).reduce((a,r)=>a+N(r.amount),0));
     const maxStoreMkt=Math.max(0,...totals);
-    const rows=stores.map((n,i)=>{ const cells=chs.flatMap(ch=>{ const rr=mktRows(S.year,m1,m2,ch).filter(r=>r.store_name===n);
-        return [compact(rr.reduce((a,r)=>a+N(r.amount),0)),int(rr.reduce((a,r)=>a+N(r.trx),0))]; });
-      const tt=totals[i];
+    const rows=storesSorted.map((sid,i)=>{ const cells=chs.flatMap(ch=>{ const rr=mktRows(S.year,m1,m2,ch).filter(r=>r.store_id===sid);
+        const s=rr.reduce((a,r)=>a+N(r.amount),0), t=chanTargetStore(ch,sid,S.year,m1,m2);
+        return [compact(s),t?compact(t):'—',t?pillCell(s/t):''];
+      });
+      const n=nameOf(sid), tt=totals[i];
       const ss=S.dash.filter(r=>r.store_name===n&&r.month>=m1&&r.month<=m2).reduce((a,r)=>a+N(r.total_sales),0);
       return [n,...cells,magCell(tt,maxStoreMkt,compact(tt)),pct(ss?tt/ss:null)]; });
-    p.append(card('Marketplace per toko',ymLabel(S.year,m1,m2)+' · diurutkan total marketplace terbesar→terkecil',mkTable(heads,rows)));
+    p.append(card('Marketplace per toko',ymLabel(S.year,m1,m2)+' · diurutkan total marketplace terbesar→terkecil · TARGET dari "Target marketplace per Toko Offline" di bawah',mkTable(heads,rows)));
   }
   /* per bulan */
   {
@@ -5415,6 +5528,49 @@ function renderMkt(){
       toast('Target marketplace tersimpan.'); await loadAll();
     }catch(e){ toast('Gagal: '+e.message); } }},'Simpan target')));
   p.append(ed);
+
+  /* round 22: target marketplace PER TOKO OFFLINE. Penjualan marketplace (Shopee/TikTok dkk) sudah
+     SELALU terikat ke satu toko offline sejak awal — kolom NAMA TOKO wajib diisi saat upload Sales Type
+     per toko (lihat "Marketplace per toko" & "Pencapaian per channel" di atas, keduanya sudah dipecah per
+     toko) — jadi "toko offline yang membawahi" itu memang sudah wajib ada di data penjualannya. Yang
+     SEBELUMNYA belum ada hanyalah cara mengisi TARGET per toko: editor di atas hanya menyimpan satu target
+     gabungan per channel (`store_id` selalu NULL). `chanTarget()` sendiri SUDAH bisa membaca target per
+     toko kalau ada (dipakai otomatis saat halaman difilter ke satu/sebagian toko) — jadi perbaikan ini
+     murni menambah UI utk mengisi `channel_targets.store_id` per toko, tanpa perlu migrasi skema. */
+  const edS=el('div',{class:'card'});
+  edS.append(el('header',{},el('h2',{},'Target marketplace per Toko Offline '+S.year),
+    el('span',{class:'sub'},'target Shopee/TikTok dkk berbeda per toko, walau channel-nya sama')));
+  edS.append(el('p',{style:'margin:0 0 12px;color:var(--ink-2);font-size:12.5px'},
+    'Pilih toko offline tempat transaksi marketplace itu terjadi, lalu isi target per channel per bulan khusus utk toko itu. '+
+    'Kalau toko tertentu tidak diisi di sini, dashboard tetap memakai target gabungan di atas sebagai cadangan saat halaman difilter ke toko itu.'));
+  const stoSel=el('select',{},S.stores.map(s=>el('option',{value:String(s.id),selected:S.mktTgtStore===s.id?'':null},s.name)));
+  if(!S.mktTgtStore&&S.stores[0]) S.mktTgtStore=S.stores[0].id;
+  const tbS=el('tbody'); const inputsS={};
+  const fillStoreRows=()=>{
+    tbS.innerHTML=''; const sid=Number(stoSel.value);
+    chs.forEach(ch=>{
+      const tr=el('tr',{},el('td',{class:'sticky1',style:'font-weight:700'},ch));
+      MONTHS.forEach((_,i)=>{ const cur=S.chanTargets.find(t=>String(t.channel).toUpperCase()===ch&&t.year===S.year&&t.month===i+1&&t.store_id===sid);
+        const inp=el('input',{type:'number',min:'0',step:'1000',value:cur?String(Math.round(N(cur.target))):'',style:'width:104px'});
+        inputsS[ch+'|'+(i+1)]=inp; tr.append(el('td',{},inp)); });
+      tbS.append(tr); });
+  };
+  fillStoreRows();
+  stoSel.onchange=fillStoreRows;
+  edS.append(el('div',{class:'fld',style:'max-width:320px;margin-bottom:12px'},el('label',{},'Toko offline'),stoSel));
+  edS.append(el('div',{class:'tw'},el('table',{},el('thead',{},el('tr',{},[H('CHANNEL'),...MON3.map(m=>H(m))].map((h,i)=>el('th',{class:i===0?'sticky1':''},h.t)))),tbS)));
+  edS.append(el('div',{class:'rowline',style:'margin-top:12px'},el('button',{class:'btn pri',onclick:async()=>{
+    if(guard()) return;
+    const sid=Number(stoSel.value);
+    try{
+      for(const ch of chs) for(let m=1;m<=12;m++){ const v=inputsS[ch+'|'+m].value;
+        await DB.del('channel_targets',`channel=eq.${encodeURIComponent(ch)}&year=eq.${S.year}&month=eq.${m}&store_id=eq.${sid}`);
+        if(v!==''&&N(v)>0) await DB.write('channel_targets',[{channel:ch,store_id:sid,year:S.year,month:m,target:N(v)}]); }
+      S.mktTgtStore=sid;
+      toast('Target marketplace toko '+(S.stores.find(s=>s.id===sid)||{}).name+' tersimpan.'); await loadAll();
+    }catch(e){ toast('Gagal: '+e.message); } }},'Simpan target toko ini')));
+  p.append(edS);
+
   p.append(el('div',{class:'note'},el('b',{},'Catatan. '),'Penjualan marketplace tetap ikut dalam total sales toko (Sales Type Shopee/Tiktok terpetakan ke segmen User). '+
     'Halaman ini hanya memisahkannya untuk dianalisis. Channel tiap Sales Type diatur di Pengaturan → Database Sales Type.'));
 }
@@ -5888,13 +6044,15 @@ function renderBreakdown(){
   host.append(el('div',{class:'empty'},'Memuat rincian produk, brand, warna & ukuran…'));
   (async()=>{
     try{
-      const dims=['product','brand','color','size'];
+      /* round 22: dim 'color' dihitung client-side dari dim 'product' — lihat colorRowsFromProducts. */
+      const dims=['product','brand','size'];
       const res={}; await Promise.all(dims.map(async d=>{
         res[d]=await Promise.all([y2,y3].map(y=>rollup(d,y,m1,m2,{limit:400,stores:bdLocalIds(),category:f.category||null})));
       }));
+      res.color=res.product.map(yearRows=>colorRowsFromProducts(yearRows));
       host.innerHTML='';
       const titles={product:'3. Produk turun signifikan',brand:'4. Brand turun signifikan',color:'5. Warna turun signifikan',size:'6. Ukuran turun signifikan'};
-      dims.forEach(d=>{
+      ['product','brand','color','size'].forEach(d=>{
         const [py,cy]=res[d];
         const pm=new Map(py.map(r=>[r.k,N(r.sales)])), cm=new Map(cy.map(r=>[r.k,N(r.sales)]));
         const items=[...pm.keys()].filter(k=>k&&!/^\(Tanpa/.test(k)).map(k=>({label:k,v:(cm.get(k)||0)-pm.get(k),cy:cm.get(k)||0,py:pm.get(k)}));
