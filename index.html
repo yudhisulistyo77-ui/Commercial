@@ -3,6 +3,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
 <style>
 /* Layout: rail navigasi kiri + area kerja berisi bar filter sticky lalu kartu-kartu data. */
@@ -1300,56 +1301,60 @@ function bakeSvgPaint(orig,clone){
   };
   walk(orig,clone);
 }
-/* item 9 (ronde ini): tiap grafik bisa disalin langsung sebagai gambar (PNG) ke clipboard, supaya
-   bisa ditempel (Ctrl+V) langsung ke slide presentasi tanpa screenshot manual. SVG di-render ke
-   <canvas> dengan latar diisi solid (SVG transparan akan terlihat aneh di slide putih), dirender
-   2x lipat ukuran tampilan supaya tetap tajam saat diperbesar di slide. Fallback kalau Clipboard
-   API gambar tidak didukung (browser lama/Safari versi lama): unduh sebagai file .png saja.
-   round 13: warna di-bake lewat bakeSvgPaint() SEBELUM diserialisasi — sebelumnya atribut fill/stroke
-   masih literal "var(--s1)" dkk yang tidak bisa diselesaikan browser di konteks <img> data-URL berdiri
-   sendiri, sehingga grafik yang disalin tampil hitam/putih polos alih-alih warna asli seperti di app. */
-async function copyChartAsImage(host,btn){
-  const svg=host&&host.querySelector('svg');
-  if(!svg){ toast('Tidak ada grafik untuk disalin di kartu ini.'); return; }
+/* round 16: "Salin ke slide" dirombak total supaya hasilnya BENAR-BENAR gambar (PNG) yang sama persis
+   dengan tampilan di dashboard — sebelumnya ada 2 jalur terpisah yang tidak memuaskan: copyChartAsImage()
+   (round 9-13) hanya merender elemen <svg> grafik menjadi PNG (judul kartu, legenda teks, dan tabel di
+   luar <svg> tidak ikut), sementara copyNodeRich()/buildCopyHtml() (round 12-13) untuk kartu tabel/tile
+   SELALU menghasilkan markup <table> HTML — begitu ditempel ke PowerPoint/Word, aplikasi tujuan merender
+   ulang tabel itu memakai gaya defaultnya sendiri (font, border, padding beda), bukan gambar piksel yang
+   identik dengan tampilan di layar. capturePngOfNode() di bawah memakai html2canvas (CDN, lihat <head>)
+   untuk merasterkan SELURUH node (kartu lengkap: header + tabel/tile/chart) jadi satu <canvas>/PNG, jadi
+   hasil salin selalu identik piksel-demi-piksel dengan yang terlihat di layar, untuk SEMUA jenis kartu
+   (chart, tabel, grid tile) lewat satu fungsi yang sama. Tombol "Salin ke slide" disembunyikan sesaat
+   sebelum capture supaya tidak ikut kefoto. Kalau html2canvas gagal dimuat (mis. CDN diblokir) atau
+   melempar error, fallback ke copyNodeRich() (tabel HTML) supaya pengguna tetap dapat sesuatu yang bisa
+   ditempel, bukan error polos. */
+async function capturePngOfNode(node){
+  if(typeof html2canvas!=='function') throw new Error('html2canvas tidak tersedia (CDN mungkin diblokir)');
+  const hideEls=[...node.querySelectorAll('button')];
+  const prevVis=hideEls.map(b=>b.style.visibility);
+  hideEls.forEach(b=>{ b.style.visibility='hidden'; });
+  try{
+    const bgHost=node.closest('.card')||node;
+    const bg=getComputedStyle(bgHost).backgroundColor;
+    const canvas=await html2canvas(node,{
+      backgroundColor:(!bg||bg==='rgba(0, 0, 0, 0)')?'#ffffff':bg,
+      scale:2, useCORS:true, logging:false
+    });
+    return await new Promise(res=>canvas.toBlob(res,'image/png'));
+  } finally {
+    hideEls.forEach((b,i)=>{ b.style.visibility=prevVis[i]; });
+  }
+}
+async function copyNodeAsImage(node,btn,fallbackNode){
   const old=btn.textContent;
   try{
     btn.disabled=true; btn.textContent='Menyiapkan…';
-    const rect=svg.getBoundingClientRect();
-    const scale=2, w=Math.max(1,Math.round(rect.width*scale)), h=Math.max(1,Math.round(rect.height*scale));
-    const clone=svg.cloneNode(true);
-    bakeSvgPaint(svg,clone);
-    clone.setAttribute('width',String(rect.width)); clone.setAttribute('height',String(rect.height));
-    clone.setAttribute('xmlns','http://www.w3.org/2000/svg');
-    const xml=new XMLSerializer().serializeToString(clone);
-    const svgUrl='data:image/svg+xml;charset=utf-8;base64,'+btoa(unescape(encodeURIComponent(xml)));
-    const img=new Image();
-    await new Promise((res,rej)=>{ img.onload=res; img.onerror=()=>rej(new Error('gagal memuat SVG')); img.src=svgUrl; });
-    const canvas=document.createElement('canvas'); canvas.width=w; canvas.height=h;
-    const ctx=canvas.getContext('2d');
-    /* round 13: latar diambil dari kartu (.card) yang membungkus grafik ini, bukan body — kartu punya
-       warna surface sendiri (var(--surface)) yang bisa beda dari latar halaman (var(--bg)); mengambil dari
-       body membuat latar hasil salinan tidak cocok dengan latar kartu yang terlihat di app. */
-    const bgHost=host.closest('.card')||document.body;
-    const bg=(getComputedStyle(bgHost).backgroundColor)||'#ffffff';
-    ctx.fillStyle=bg; ctx.fillRect(0,0,w,h);
-    ctx.drawImage(img,0,0,w,h);
-    const blob=await new Promise(res=>canvas.toBlob(res,'image/png'));
+    const blob=await capturePngOfNode(node);
     if(!blob) throw new Error('gagal membuat gambar');
     try{
       await navigator.clipboard.write([new ClipboardItem({'image/png':blob})]);
-      toast('Grafik disalin — tempel (Ctrl+V) langsung ke slide presentasi.');
+      toast('Disalin sebagai gambar (PNG) — tempel (Ctrl+V) langsung ke slide, tampilannya sama persis dengan dashboard.');
     }catch(e2){
-      const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='grafik.png'; a.click();
-      toast('Browser ini tidak mendukung salin gambar — grafik diunduh sebagai PNG.');
+      const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='salinan.png'; a.click();
+      toast('Browser ini tidak mendukung salin gambar ke clipboard — diunduh sebagai PNG.');
     }
-  }catch(e){ toast('Gagal menyalin grafik: '+e.message); }
+  }catch(e){
+    try{ await copyNodeRich(fallbackNode||node,btn); toast('Disalin sebagai tabel (gagal membuat PNG: '+e.message+').'); }
+    catch(e2){ toast('Gagal menyalin: '+e.message); }
+  }
   btn.disabled=false; btn.textContent=old;
 }
 function chartCard(title, sub, node, extra){
   const c=el('div',{class:'card'});
   const chartWrap=el('div',{class:'chart'},node);
-  const copyBtn=el('button',{class:'btn sm',type:'button',title:'Salin grafik ini sebagai gambar — tempel langsung ke slide presentasi (Ctrl+V)',
-    onclick:e=>copyChartAsImage(chartWrap,e.currentTarget)},'⧉ Salin ke slide');
+  const copyBtn=el('button',{class:'btn sm',type:'button',title:'Salin kartu ini sebagai gambar (PNG) — tempel langsung ke slide presentasi, tampilannya sama persis',
+    onclick:e=>copyNodeAsImage(c,e.currentTarget,chartWrap)},'⧉ Salin ke slide');
   c.append(el('header',{},el('h2',{},title), sub?el('span',{class:'sub'},sub):null, el('span',{class:'spacer'}), extra||null, copyBtn));
   c.append(chartWrap);
   return c;
@@ -3414,8 +3419,8 @@ function enhanceTable(tbl){
   const title=wrap.closest('.card')?.querySelector('header h2')?.textContent
     || document.querySelector('.page.on .phead h1')?.textContent || 'data';
   bar.append(q,cnt,el('span',{class:'spacer'}));
-  if(!inCard) bar.append(el('button',{class:'btn sm',type:'button',title:'Salin tabel ini — tempel langsung ke slide presentasi, kolom ikut terbawa',
-    onclick:e=>copyNodeRich(wrap,e.currentTarget)},'⧉ Salin ke slide'));
+  if(!inCard) bar.append(el('button',{class:'btn sm',type:'button',title:'Salin tabel ini sebagai gambar (PNG) — tempel langsung ke slide presentasi, tampilannya sama persis',
+    onclick:e=>copyNodeAsImage(wrap,e.currentTarget,wrap)},'⧉ Salin ke slide'));
   bar.append(el('button',{class:'btn sm',type:'button',onclick:()=>exportTable(tbl,title)},'⭳ Unduh Excel'));
   wrap.before(bar);
 }
@@ -3529,8 +3534,8 @@ function enhanceGrids(){
     g.dataset.cenh='1';
     if(!g.querySelector('.tile')) return;
     const bar=el('div',{style:'display:flex;justify-content:flex-end;margin:-2px 0 6px'});
-    bar.append(el('button',{class:'btn sm',type:'button',title:'Salin ringkasan ini — tempel langsung ke slide presentasi',
-      onclick:e=>copyNodeRich(g,e.currentTarget)},'⧉ Salin ke slide'));
+    bar.append(el('button',{class:'btn sm',type:'button',title:'Salin ringkasan ini sebagai gambar (PNG) — tempel langsung ke slide presentasi, tampilannya sama persis',
+      onclick:e=>copyNodeAsImage(g,e.currentTarget,g)},'⧉ Salin ke slide'));
     g.before(bar);
   });
 }
@@ -3550,8 +3555,8 @@ function mkTable(heads,rows,foot){
 }
 function card(title,sub,...kids){ const c=el('div',{class:'card'});
   const body=el('div',{});
-  const copyBtn=el('button',{class:'btn sm',type:'button',title:'Salin kartu ini — tempel langsung ke slide presentasi, kolom ikut terbawa',
-    onclick:e=>copyNodeRich(body,e.currentTarget)},'⧉ Salin ke slide');
+  const copyBtn=el('button',{class:'btn sm',type:'button',title:'Salin kartu ini sebagai gambar (PNG) — tempel langsung ke slide presentasi, tampilannya sama persis',
+    onclick:e=>copyNodeAsImage(c,e.currentTarget,body)},'⧉ Salin ke slide');
   c.append(el('header',{},el('h2',{},title),sub?el('span',{class:'sub'},sub):null,el('span',{class:'spacer'}),copyBtn));
   kids.forEach(k=>k&&body.append(k)); c.append(body); return c; }
 /* round 10 item 9: satu helper warna tren untuk SEMUA indikator naik/turun di seluruh app — hijau=naik/baik,
@@ -3914,19 +3919,26 @@ function renderH2H(){
       mkRow('KOMERSIAL',y=>T(y,'kom')),
       mkRow('USER',y=>T(y,'usr')),
     ];
-    p.append(card('Segmen Komersial & User','total per segmen (tanpa rincian brand)',mkTable(heads,rows1)));
+    const totV1=st.y.map(y=>T(y,'kom')+T(y,'usr'));
+    p.append(card('Segmen Komersial & User','total per segmen (tanpa rincian brand)',
+      mkTable(heads,rows1,['TOTAL',...totV1.map(x=>compact(x)),growthPill(totV1[2],totV1[1]),gapTxt(totV1[2],totV1[1]),growthPill(totV1[2],totV1[0]),gapTxt(totV1[2],totV1[0]),pct(tot?totV1[2]/tot:null)])));
     const rows2=[
       mkRow('KOMERSIAL TIGALAPAN',y=>T(y,'kt')),
       mkRow('USER TIGALAPAN',y=>T(y,'ut')),
       mkRow('USER MAMU',y=>T(y,'um')),
     ];
-    p.append(card('Rincian Brand per Segmen','Komersial Tigalapan, User Tigalapan, dan User Mamu',mkTable(heads,rows2)));
+    const totV2=st.y.map(y=>T(y,'kt')+T(y,'ut')+T(y,'um'));
+    p.append(card('Rincian Brand per Segmen','Komersial Tigalapan, User Tigalapan, dan User Mamu',
+      mkTable(heads,rows2,['TOTAL',...totV2.map(x=>compact(x)),growthPill(totV2[2],totV2[1]),gapTxt(totV2[2],totV2[1]),growthPill(totV2[2],totV2[0]),gapTxt(totV2[2],totV2[0]),pct(tot?totV2[2]/tot:null)])));
     /* round 7 item 2: tambah kolom GAP (gapTxt). round 8 item 3: tambah Δ/GAP y3 vs y1 langsung juga. */
     const h2=[H('TOKO',{s:1}),...st.y.map(y=>H('KOMERSIAL '+y,{r:1})),H(`Δ KOM ${y3}/${y2}`,{r:1}),H(`GAP KOM ${y3}-${y2}`,{r:1}),H(`Δ KOM ${y3}/${y1}`,{r:1}),H(`GAP KOM ${y3}-${y1}`,{r:1}),
       ...st.y.map(y=>H('USER '+y,{r:1})),H(`Δ USER ${y3}/${y2}`,{r:1}),H(`GAP USER ${y3}-${y2}`,{r:1}),H(`Δ USER ${y3}/${y1}`,{r:1}),H(`GAP USER ${y3}-${y1}`,{r:1})];
     const r2=liveIds.map(id=>[names.get(id),...st.y.map(y=>compact(G(y,id,'kom'))),growthPill(G(y3,id,'kom'),G(y2,id,'kom')),gapTxt(G(y3,id,'kom'),G(y2,id,'kom')),growthPill(G(y3,id,'kom'),G(y1,id,'kom')),gapTxt(G(y3,id,'kom'),G(y1,id,'kom')),
       ...st.y.map(y=>compact(G(y,id,'usr'))),growthPill(G(y3,id,'usr'),G(y2,id,'usr')),gapTxt(G(y3,id,'usr'),G(y2,id,'usr')),growthPill(G(y3,id,'usr'),G(y1,id,'usr')),gapTxt(G(y3,id,'usr'),G(y1,id,'usr'))]);
-    p.append(card('Segmen per toko',ymLabel(y3,m1,m2),mkTable(h2,r2)));
+    const footKom2=st.y.map(y=>T(y,'kom')), footUsr2=st.y.map(y=>T(y,'usr'));
+    p.append(card('Segmen per toko',ymLabel(y3,m1,m2),
+      mkTable(h2,r2,['TOTAL',...footKom2.map(x=>compact(x)),growthPill(footKom2[2],footKom2[1]),gapTxt(footKom2[2],footKom2[1]),growthPill(footKom2[2],footKom2[0]),gapTxt(footKom2[2],footKom2[0]),
+        ...footUsr2.map(x=>compact(x)),growthPill(footUsr2[2],footUsr2[1]),gapTxt(footUsr2[2],footUsr2[1]),growthPill(footUsr2[2],footUsr2[0]),gapTxt(footUsr2[2],footUsr2[0])])));
   }
 
   /* item sales (dimuat dari database) */
@@ -4029,13 +4041,14 @@ function sssgWindowAnchor(store,cutoffM,cutoffDay){
 function sssgStoreWindowData(store,year,anchor,cutoffM,cutoffDay){
   if(!anchor || year<anchor.year) return null;
   const m1=anchor.m, d1=anchor.day, m2=cutoffM, d2=cutoffDay;
-  const out={sales:0,kom:0,usr:0,kt:0,ut:0,um:0,tgt:0,trx:0,val:0};
+  const out={sales:0,kom:0,usr:0,kt:0,ut:0,um:0,tgt:0,trx:0,val:0,days:0};
   for(let m=m1;m<=m2;m++){
     const dim=daysInMonth(year,m);
     let frac=1;
     if(m===m1 && m===m2) frac=Math.max(0,d2-d1+1)/dim;
     else if(m===m1) frac=(dim-d1+1)/dim;
     else if(m===m2) frac=d2/dim;
+    out.days+=dim*frac;   // item 2/5: jumlah hari NYATA dlm jendela (mengikuti tgl buka toko), utk rata2 sales harian
     const row=S.dashAll.find(r=>r.year===year&&r.month===m&&r.store_id===store.id);
     const trxRow=S.trxAll.find(r=>r.year===year&&r.month===m&&r.store_id===store.id);
     if(row){ out.sales+=N(row.total_sales)*frac; out.kom+=N(row.sales_komersial)*frac; out.usr+=N(row.sales_user)*frac;
@@ -4117,6 +4130,23 @@ function renderSSSG(){
     dnCnt?el('span',{class:'pill '+(dnCnt>upCnt?'bad':'neu')},dnCnt+' turun'):null));
   p.append(tl2);
 
+  /* ---------- item 2/5: rata-rata sales HARIAN = total sales jendela ÷ jumlah hari dalam jendela
+     (hari mengikuti tanggal buka toko / ulang tahun buka di tiap tahun — field 'days' dari sssgStoreWindowData),
+     INI basis sesungguhnya dari "same store sales growth" yang diminta, bukan cuma total sales jendela. ---------- */
+  const avgDaily=(y,set)=>{ const d=T(y,'days',set); return d>0?T(y,'sales',set)/d:null; };
+  const tl3=el('div',{class:'grid g4'});
+  const ad3_2=avgDaily(y3,idsY2), ad2_2=avgDaily(y2,idsY2);
+  const gA32=ad2_2>0?(ad3_2-ad2_2)/ad2_2:null;
+  const ad3_1=avgDaily(y3,idsFull), ad1_1=avgDaily(y1,idsFull);
+  const gA31=ad1_1>0?(ad3_1-ad1_1)/ad1_1:null;
+  tl3.append(tile(`Rata² sales harian ${y3} vs ${y2}`,pct(gA32),`${rp(ad3_2)} vs ${rp(ad2_2)} /hari · total sales ÷ jumlah hari jendela`,null,
+    gA32==null?el('span',{class:'pill neu'},'—'):el('span',{class:'pill '+(gA32>=0?'ok':'bad')},gA32>=0?'Naik':'Turun')));
+  tl3.append(tile(`Rata² sales harian ${y3}`,rp(ad3_2),`${idsY2.length} toko same-window · dasar perhitungan SSSG`,null));
+  tl3.append(tile(`Rata² sales harian ${y3} vs ${y1}`,pct(gA31),`${rp(ad3_1)} vs ${rp(ad1_1)} /hari · 3 tahun`,null,
+    gA31==null?el('span',{class:'pill neu'},'—'):el('span',{class:'pill '+(gA31>=0?'ok':'bad')},gA31>=0?'Naik':'Turun')));
+  tl3.append(tile('Hari dihitung ('+y3+')',int(T(y3,'days',idsY2)),'total hari dlm jendela seluruh toko same-window, mengikuti tgl buka masing-masing toko',null));
+  p.append(tl3);
+
   /* ---------- chart per bulan same-window (idsY2) — pendekatan: pakai sales bulanan apa adanya (tanpa
      pecahan hari) utk visual tren, karena jendela awal tiap toko berbeda-beda sehingga sumbu bulan Jan–Des
      tidak lagi "jendela" yang sama literal; grafik ini jadi gambaran kasar, angka presisi ada di tabel. ---------- */
@@ -4187,8 +4217,29 @@ function renderSSSG(){
       return [names.get(id), rec.opening_date||'—', a==null?dash():compact(a), b==null?dash():compact(b), c==null?dash():magCell(c,maxSales,compact(c)),
         e2?growthPill(c,b):dash(), e2?gapTxt(c,b):'', e1?growthPill(c,a):dash(), e1?gapTxt(c,a):'',
         compact(t), pillCell(t>0&&c!=null?c/t:null)]; });
+    const sumY=y=>idsAll.reduce((s,id)=>hasY(y,id)?s+G(y,id,'sales'):s,0);
+    const tTotAll=T(y3,'tgt',idsAll), cTotAll=sumY(y3);
     p.append(card('Sales per toko (jendela per toko)','Diurutkan sales '+y3+' terbesar→terkecil (gradasi warna). Δ/GAP tampil untuk setiap toko yang punya ≥2 tahun dengan window valid pada cut-off ini; "—" hanya untuk tahun yang benar-benar belum ada (toko belum berdiri, atau window tak valid pada cut-off ini — lihat catatan metodologi di atas)',
-      mkTable(heads,rows)));
+      mkTable(heads,rows,['TOTAL','',compact(sumY(y1)),compact(sumY(y2)),compact(cTotAll),
+        growthPill(T(y3,'sales',idsY2),T(y2,'sales',idsY2)),gapTxt(T(y3,'sales',idsY2),T(y2,'sales',idsY2)),
+        growthPill(T(y3,'sales',idsFull),T(y1,'sales',idsFull)),gapTxt(T(y3,'sales',idsFull),T(y1,'sales',idsFull)),
+        compact(tTotAll),pillCell(tTotAll>0?cTotAll/tTotAll:null)])));
+  }
+
+  /* ---------- item 2/5: tabel rata-rata sales HARIAN per toko — basis sesungguhnya dari "same store
+     sales growth": total sales jendela ÷ jumlah hari dalam jendela, jendela dimulai dari tgl buka toko. ---------- */
+  {
+    const avgPS=(y,id)=>{ if(!hasY(y,id)) return null; const d=G(y,id,'days'); return d>0?G(y,id,'sales')/d:null; };
+    const heads=[H('TOKO',{s:1}),H('BUKA SEJAK',{r:1}),...[y1,y2,y3].map(y=>H('RATA² SALES/HARI '+y,{r:1})),H(`Δ ${y3} VS ${y2}`,{r:1}),H(`Δ ${y3} VS ${y1}`,{r:1}),H(`HARI ${y3}`,{r:1})];
+    const rowsAvg=idsAll.slice().sort((a,b)=>(avgPS(y3,b)||0)-(avgPS(y3,a)||0)).map(id=>{
+      const rec=D.get(id), a=avgPS(y1,id), b=avgPS(y2,id), c=avgPS(y3,id);
+      return [names.get(id), rec.opening_date||'—', a==null?'—':rp(a), b==null?'—':rp(b), c==null?'—':rp(c),
+        (b!=null&&c!=null)?growthPill(c,b):'—', (a!=null&&c!=null)?growthPill(c,a):'—', int(G(y3,id,'days'))];
+    });
+    const avgTotFn=(y,set)=>{ const d=T(y,'days',set); return d>0?T(y,'sales',set)/d:null; };
+    p.append(card('Rata-rata Sales Harian per Toko (jendela per toko)','Rata² = total sales jendela ÷ jumlah hari dalam jendela, jendela dimulai dari tanggal buka toko masing-masing → inilah angka "same store sales growth" yang sesungguhnya (bebas dari pengaruh jumlah hari berbeda antar bulan/toko)',
+      mkTable(heads,rowsAvg,['TOTAL (gabungan)','',rp(avgTotFn(y1,idsFull)),rp(avgTotFn(y2,idsY2)),rp(avgTotFn(y3,idsY2)),
+        growthPill(avgTotFn(y3,idsY2)||0,avgTotFn(y2,idsY2)||0),growthPill(avgTotFn(y3,idsFull)||0,avgTotFn(y1,idsFull)||0),int(T(y3,'days',idsY2))])));
   }
 
   /* ---------- segmen komersial & user (same-window idsY2) — round 12: tambah Δ/GAP y3 vs y1 (2024 vs 2026) langsung ---------- */
@@ -4196,8 +4247,10 @@ function renderSSSG(){
     const heads=[H('SEGMEN',{s:1}),...[y1,y2,y3].map(y=>H(String(y),{r:1})),H(`Δ ${y3} VS ${y2}`,{r:1}),H(`GAP ${y3}-${y2}`,{r:1}),H(`Δ ${y3} VS ${y1}`,{r:1}),H(`GAP ${y3}-${y1}`,{r:1}),H('PORSI '+y3,{r:1})];
     const tot=T(y3,'kom',idsY2)+T(y3,'usr',idsY2);
     const mkRow=(n,vfn)=>{ const v=[y1,y2,y3].map(y=>vfn(y)); return [n,...v.map(x=>compact(x)),growthPill(v[2],v[1]),gapTxt(v[2],v[1]),growthPill(v[2],v[0]),gapTxt(v[2],v[0]),pct(tot?v[2]/tot:null)]; };
+    const totV=[y1,y2,y3].map(y=>T(y,'kom',idsY2)+T(y,'usr',idsY2));
     p.append(card('Segmen Komersial & User (same-window)','total per segmen, toko dgn window valid thd '+y2,
-      mkTable(heads,[mkRow('KOMERSIAL',y=>T(y,'kom',idsY2)),mkRow('USER',y=>T(y,'usr',idsY2))])));
+      mkTable(heads,[mkRow('KOMERSIAL',y=>T(y,'kom',idsY2)),mkRow('USER',y=>T(y,'usr',idsY2))],
+        ['TOTAL',...totV.map(x=>compact(x)),growthPill(totV[2],totV[1]),gapTxt(totV[2],totV[1]),growthPill(totV[2],totV[0]),gapTxt(totV[2],totV[0]),pct(tot?totV[2]/tot:null)])));
   }
 
   /* ---------- Rincian Brand per Segmen (same-window idsY2) — item 4: section H2H yang belum ada di SSSG.
@@ -4206,8 +4259,10 @@ function renderSSSG(){
     const heads=[H('SEGMEN',{s:1}),...[y1,y2,y3].map(y=>H(String(y),{r:1})),H(`Δ ${y3} VS ${y2}`,{r:1}),H(`GAP ${y3}-${y2}`,{r:1}),H(`Δ ${y3} VS ${y1}`,{r:1}),H(`GAP ${y3}-${y1}`,{r:1}),H('PORSI '+y3,{r:1})];
     const tot=T(y3,'kom',idsY2)+T(y3,'usr',idsY2);
     const mkRow=(n,vfn)=>{ const v=[y1,y2,y3].map(y=>vfn(y)); return [n,...v.map(x=>compact(x)),growthPill(v[2],v[1]),gapTxt(v[2],v[1]),growthPill(v[2],v[0]),gapTxt(v[2],v[0]),pct(tot?v[2]/tot:null)]; };
+    const totV=[y1,y2,y3].map(y=>T(y,'kt',idsY2)+T(y,'ut',idsY2)+T(y,'um',idsY2));
     p.append(card('Rincian Brand per Segmen (same-window)','Komersial Tigalapan, User Tigalapan, dan User Mamu — toko dgn window valid thd '+y2,
-      mkTable(heads,[mkRow('KOMERSIAL TIGALAPAN',y=>T(y,'kt',idsY2)),mkRow('USER TIGALAPAN',y=>T(y,'ut',idsY2)),mkRow('USER MAMU',y=>T(y,'um',idsY2))])));
+      mkTable(heads,[mkRow('KOMERSIAL TIGALAPAN',y=>T(y,'kt',idsY2)),mkRow('USER TIGALAPAN',y=>T(y,'ut',idsY2)),mkRow('USER MAMU',y=>T(y,'um',idsY2))],
+        ['TOTAL',...totV.map(x=>compact(x)),growthPill(totV[2],totV[1]),gapTxt(totV[2],totV[1]),growthPill(totV[2],totV[0]),gapTxt(totV[2],totV[0]),pct(tot?totV[2]/tot:null)])));
   }
 
   /* ---------- Segmen per toko (same-window idsY2) — item 4: section H2H yang belum ada di SSSG.
@@ -4218,7 +4273,10 @@ function renderSSSG(){
     const rows=idsY2.slice().sort((a,b)=>G(y3,b,'sales')-G(y3,a,'sales')).map(id=>[names.get(id),...[y1,y2,y3].map(y=>compact(G(y,id,'kom'))),
       growthPill(G(y3,id,'kom'),G(y2,id,'kom')),gapTxt(G(y3,id,'kom'),G(y2,id,'kom')),growthPill(G(y3,id,'kom'),G(y1,id,'kom')),gapTxt(G(y3,id,'kom'),G(y1,id,'kom')),
       ...[y1,y2,y3].map(y=>compact(G(y,id,'usr'))),growthPill(G(y3,id,'usr'),G(y2,id,'usr')),gapTxt(G(y3,id,'usr'),G(y2,id,'usr')),growthPill(G(y3,id,'usr'),G(y1,id,'usr')),gapTxt(G(y3,id,'usr'),G(y1,id,'usr'))]);
-    p.append(card('Segmen per toko (same-window)',`${y1}/${y2}/${y3} · diurutkan sales ${y3} terbesar→terkecil`,mkTable(heads,rows)));
+    const footKomV=[y1,y2,y3].map(y=>T(y,'kom',idsY2)), footUsrV=[y1,y2,y3].map(y=>T(y,'usr',idsY2));
+    p.append(card('Segmen per toko (same-window)',`${y1}/${y2}/${y3} · diurutkan sales ${y3} terbesar→terkecil`,
+      mkTable(heads,rows,['TOTAL',...footKomV.map(x=>compact(x)),growthPill(footKomV[2],footKomV[1]),gapTxt(footKomV[2],footKomV[1]),growthPill(footKomV[2],footKomV[0]),gapTxt(footKomV[2],footKomV[0]),
+        ...footUsrV.map(x=>compact(x)),growthPill(footUsrV[2],footUsrV[1]),gapTxt(footUsrV[2],footUsrV[1]),growthPill(footUsrV[2],footUsrV[0]),gapTxt(footUsrV[2],footUsrV[0])])));
   }
 
   /* ---------- item sales (same-window penuh, idsFull — angka konsisten 3 tahun; m1/m2 kalender penuh
