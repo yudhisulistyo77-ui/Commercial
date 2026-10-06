@@ -4106,46 +4106,59 @@ function renderSSSG(){
 
   if(noAnchor.length) p.append(el('div',{class:'note warn'},el('b',{},'Tidak bisa dibandingkan pada cut-off ini: '),noAnchor.join(', ')+'.'));
 
-  /* ---------- tiles — item 2: 2024 vs 2026 (y1 vs y3) dan 2025 vs 2026 (y2 vs y3) lengkap dgn growth & GAP ---------- */
+  /* ---------- tiles — round 16 item 3: disamakan STRUKTURNYA persis dengan H2H (tl: 3 tile Total Sales
+     per tahun + 1 tile Growth; tl2: Growth y3-vs-y1 + Target harian + Pencapaian thd target + AOV) —
+     dipakai idsFull (toko dgn window valid di 3 tahun sekaligus) sebagai SATU himpunan toko yang sama utk
+     ketiga tahun di baris ini, persis seperti H2H memakai satu himpunan `liveIds` yang sama di seluruh tile. ---------- */
   const tl=el('div',{class:'grid g4'});
-  const s3_2=T(y3,'sales',idsY2), s2_2=T(y2,'sales',idsY2);
-  const g32=s2_2>0?(s3_2-s2_2)/s2_2:null;
-  const s3_1=T(y3,'sales',idsFull), s1_1=T(y1,'sales',idsFull);
-  const g31=s1_1>0?(s3_1-s1_1)/s1_1:null;
-  tl.append(tile(`SSSG ${y3} vs ${y2}`,pct(g32),`${idsY2.length} toko same-window · ${compact(s3_2)} vs ${compact(s2_2)}`,null,
-    g32==null?el('span',{class:'pill neu'},'—'):el('span',{class:'pill '+(g32>=0?'ok':'bad')},g32>=0?'Tumbuh':'Turun')));
-  tl.append(tile(`GAP ${y3} vs ${y2}`,s2_2>0?compact(s3_2-s2_2):'—',`${compact(s3_2)} (${y3}) − ${compact(s2_2)} (${y2})`,null));
-  tl.append(tile(`SSSG ${y3} vs ${y1}`,pct(g31),`${idsFull.length} toko same-window · ${compact(s3_1)} vs ${compact(s1_1)}`,null,
-    g31==null?el('span',{class:'pill neu'},'—'):el('span',{class:'pill '+(g31>=0?'ok':'bad')},g31>=0?'Tumbuh':'Turun')));
-  tl.append(tile(`GAP ${y3} vs ${y1}`,s1_1>0?compact(s3_1-s1_1):'—',`${compact(s3_1)} (${y3}) − ${compact(s1_1)} (${y1})`,null));
+  [y1,y2,y3].forEach((y,i)=>tl.append(tile(`Total sales ${y}`,compact(T(y,'sales',idsFull)),
+    `${idsFull.length} toko same-window (jendela thd ${y1})`+(i===2?` · target ${compact(T(y,'tgt',idsFull))}`:''),null)));
+  const s3F=T(y3,'sales',idsFull), s2F=T(y2,'sales',idsFull), s1F=T(y1,'sales',idsFull);
+  const g32F=s2F>0?(s3F-s2F)/s2F:null;
+  tl.append(tile(`Growth ${y3} vs ${y2}`,pct(g32F),`GAP ${s2F>0?compact(s3F-s2F):'—'}`,null,
+    g32F==null?el('span',{class:'pill neu'},'—'):el('span',{class:'pill '+(g32F>=0?'ok':'bad')},g32F>=0?'Tumbuh':'Turun')));
   p.append(tl);
-  /* round 12 item 3: grid g4 sebelumnya hanya diisi 2 tile (2 slot kosong) — dilengkapi 2 tile rangkuman
-     "toko tumbuh/turun" supaya baris ini terisi penuh & proporsional, bukan cuma memperbesar tile lama. */
   const tl2=el('div',{class:'grid g4'});
-  tl2.append(tile('Toko ikut — vs '+y2,`${idsY2.length} / ${idsAll.length}`,'punya window valid thd '+y2+' · total toko pada cakupan filter',null));
-  tl2.append(tile('Toko ikut — vs '+y1,`${idsFull.length} / ${idsAll.length}`,'punya window valid thd '+y1+' (3 tahun penuh) · total toko pada cakupan filter',null));
-  const upCnt=idsY2.filter(id=>G(y3,id,'sales')>G(y2,id,'sales')).length, dnCnt=idsY2.filter(id=>G(y3,id,'sales')<G(y2,id,'sales')).length;
-  tl2.append(tile('Toko tumbuh vs '+y2,`${upCnt} / ${idsY2.length}`,'jumlah toko dgn sales '+y3+' lebih tinggi dari '+y2+' pada window-nya',idsY2.length?upCnt/idsY2.length:null));
-  tl2.append(tile('Toko turun vs '+y2,`${dnCnt} / ${idsY2.length}`,'jumlah toko dgn sales '+y3+' lebih rendah dari '+y2+' pada window-nya',null,
-    dnCnt?el('span',{class:'pill '+(dnCnt>upCnt?'bad':'neu')},dnCnt+' turun'):null));
+  const g31F=s1F>0?(s3F-s1F)/s1F:null;
+  tl2.append(tile(`Growth ${y3} vs ${y1}`,pct(g31F),`GAP ${s1F>0?compact(s3F-s1F):'—'}`,null,
+    g31F==null?el('span',{class:'pill neu'},'—'):el('span',{class:'pill '+(g31F>=0?'ok':'bad')},g31F>=0?'Tumbuh':'Turun')));
+  const daysF3=T(y3,'days',idsFull), tgtDaily3=daysF3>0?T(y3,'tgt',idsFull)/daysF3:null;
+  tl2.append(tile(`Target harian ${y3}`,tgtDaily3!=null?compact(tgtDaily3):'—','rata² target per hari — target jendela ÷ jumlah hari jendela (same-window, mengikuti tgl buka toko)',null));
+  const tgtF3=T(y3,'tgt',idsFull);
+  tl2.append(tile(`Pencapaian thd target ${y3}`,pct(tgtF3>0?s3F/tgtF3:null),'sales same-window vs target same-window, toko dgn window valid thd '+y1,null));
+  const aovYF=y=>{ const c=T(y,'trx',idsFull); return c>0?T(y,'val',idsFull)/c:null; };
+  const aov3F=aovYF(y3), aov2F=aovYF(y2), aovGF=(aov3F!=null&&aov2F>0)?(aov3F-aov2F)/aov2F:null;
+  tl2.append(tile(`AOV ${y3} vs ${y2}`,aov3F!=null?rp(aov3F):'—',aovGF!=null?`${aovGF>=0?'naik':'turun'} ${pct(Math.abs(aovGF))} dari AOV ${y2} (${aov2F!=null?rp(aov2F):'—'})`:'belum ada pembanding',
+    null,aovGF==null?null:el('span',{class:'pill '+(aovGF>=0?'ok':'bad')},aovGF>=0?'Naik':'Turun')));
   p.append(tl2);
+
+  /* ---------- baris tile tambahan KHAS SSSG (tidak ada padanannya di H2H karena H2H tidak punya konsep
+     "toko ikut"/window per-toko) — toko ikut & toko tumbuh/turun, round 12 item 3 ---------- */
+  const tl3=el('div',{class:'grid g4'});
+  tl3.append(tile('Toko ikut — vs '+y2,`${idsY2.length} / ${idsAll.length}`,'punya window valid thd '+y2+' · total toko pada cakupan filter',null));
+  tl3.append(tile('Toko ikut — vs '+y1,`${idsFull.length} / ${idsAll.length}`,'punya window valid thd '+y1+' (3 tahun penuh) · total toko pada cakupan filter',null));
+  const upCnt=idsY2.filter(id=>G(y3,id,'sales')>G(y2,id,'sales')).length, dnCnt=idsY2.filter(id=>G(y3,id,'sales')<G(y2,id,'sales')).length;
+  tl3.append(tile('Toko tumbuh vs '+y2,`${upCnt} / ${idsY2.length}`,'jumlah toko dgn sales '+y3+' lebih tinggi dari '+y2+' pada window-nya',idsY2.length?upCnt/idsY2.length:null));
+  tl3.append(tile('Toko turun vs '+y2,`${dnCnt} / ${idsY2.length}`,'jumlah toko dgn sales '+y3+' lebih rendah dari '+y2+' pada window-nya',null,
+    dnCnt?el('span',{class:'pill '+(dnCnt>upCnt?'bad':'neu')},dnCnt+' turun'):null));
+  p.append(tl3);
 
   /* ---------- item 2/5: rata-rata sales HARIAN = total sales jendela ÷ jumlah hari dalam jendela
      (hari mengikuti tanggal buka toko / ulang tahun buka di tiap tahun — field 'days' dari sssgStoreWindowData),
      INI basis sesungguhnya dari "same store sales growth" yang diminta, bukan cuma total sales jendela. ---------- */
   const avgDaily=(y,set)=>{ const d=T(y,'days',set); return d>0?T(y,'sales',set)/d:null; };
-  const tl3=el('div',{class:'grid g4'});
+  const tl4=el('div',{class:'grid g4'});
   const ad3_2=avgDaily(y3,idsY2), ad2_2=avgDaily(y2,idsY2);
   const gA32=ad2_2>0?(ad3_2-ad2_2)/ad2_2:null;
   const ad3_1=avgDaily(y3,idsFull), ad1_1=avgDaily(y1,idsFull);
   const gA31=ad1_1>0?(ad3_1-ad1_1)/ad1_1:null;
-  tl3.append(tile(`Rata² sales harian ${y3} vs ${y2}`,pct(gA32),`${rp(ad3_2)} vs ${rp(ad2_2)} /hari · total sales ÷ jumlah hari jendela`,null,
+  tl4.append(tile(`Rata² sales harian ${y3} vs ${y2}`,pct(gA32),`${rp(ad3_2)} vs ${rp(ad2_2)} /hari · total sales ÷ jumlah hari jendela`,null,
     gA32==null?el('span',{class:'pill neu'},'—'):el('span',{class:'pill '+(gA32>=0?'ok':'bad')},gA32>=0?'Naik':'Turun')));
-  tl3.append(tile(`Rata² sales harian ${y3}`,rp(ad3_2),`${idsY2.length} toko same-window · dasar perhitungan SSSG`,null));
-  tl3.append(tile(`Rata² sales harian ${y3} vs ${y1}`,pct(gA31),`${rp(ad3_1)} vs ${rp(ad1_1)} /hari · 3 tahun`,null,
+  tl4.append(tile(`Rata² sales harian ${y3}`,rp(ad3_2),`${idsY2.length} toko same-window · dasar perhitungan SSSG`,null));
+  tl4.append(tile(`Rata² sales harian ${y3} vs ${y1}`,pct(gA31),`${rp(ad3_1)} vs ${rp(ad1_1)} /hari · 3 tahun`,null,
     gA31==null?el('span',{class:'pill neu'},'—'):el('span',{class:'pill '+(gA31>=0?'ok':'bad')},gA31>=0?'Naik':'Turun')));
-  tl3.append(tile('Hari dihitung ('+y3+')',int(T(y3,'days',idsY2)),'total hari dlm jendela seluruh toko same-window, mengikuti tgl buka masing-masing toko',null));
-  p.append(tl3);
+  tl4.append(tile('Hari dihitung ('+y3+')',int(T(y3,'days',idsY2)),'total hari dlm jendela seluruh toko same-window, mengikuti tgl buka masing-masing toko',null));
+  p.append(tl4);
 
   /* ---------- chart per bulan same-window (idsY2) — pendekatan: pakai sales bulanan apa adanya (tanpa
      pecahan hari) utk visual tren, karena jendela awal tiap toko berbeda-beda sehingga sumbu bulan Jan–Des
