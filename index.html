@@ -320,6 +320,7 @@ th[data-t]:hover{background:var(--line)}
 .review-overview{padding:12px!important}.review-overview>header{flex-wrap:wrap;gap:8px;margin-bottom:8px}.review-overview-numbers{gap:24px;margin:10px 0 12px;font-size:12px}.review-overview-numbers strong{font-size:22px}.review-store-cards{grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.review-store-card{padding:10px;border:1px solid var(--line);border-radius:12px;background:var(--surface)}.review-store-card h3{font-size:12px;line-height:1.35;min-height:18px;margin:0 0 3px}.review-card-stars{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.review-card-stars .review-stars{font-size:19px;letter-spacing:1px}.review-card-stars b{font-size:14px}.review-store-card .sub{font-size:11px;line-height:1.5}.review-card-count{font-size:13px;margin-top:5px}.review-progress{height:6px;margin:7px 0}.review-card-ach{display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px;font-size:11px}.review-card-ach .pill{font-size:10px;padding:2px 5px}@media(max-width:1050px){.review-store-cards{grid-template-columns:repeat(3,minmax(0,1fr))}}@media(max-width:700px){.review-store-cards{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.review-store-card{padding:9px}.review-overview-numbers{gap:12px}}@media(max-width:350px){.review-store-cards{grid-template-columns:1fr}}
 
 .review-form-maps{padding:10px;border:1px solid var(--line);border-radius:12px;overflow-wrap:anywhere}.review-form-maps a{white-space:normal}.review-pending .btn{white-space:normal;max-width:100%;overflow-wrap:anywhere}.review-pending{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}.review-attendance details summary{cursor:pointer;overflow-wrap:anywhere}
+.comparison-grid{display:grid;grid-template-columns:minmax(95px,1fr) minmax(95px,1fr) minmax(110px,1.1fr) auto minmax(150px,1.3fr) minmax(135px,1.2fr) minmax(135px,1.2fr) auto;gap:8px;align-items:end}.comparison-grid .fld{min-width:0;gap:4px}.comparison-grid input,.comparison-grid select,.comparison-grid .msd-btn{width:100%;min-width:0;min-height:34px;padding:7px 9px;font-size:12px}.comparison-grid .btn{min-height:34px;padding:7px 9px}.comparison-method{margin-top:9px;font-size:11px;color:var(--muted)}.comparison-method p{margin:6px 0 0}.comparison-grid #f-clear{font-size:11px}#p-h2h>.card:first-of-type,#p-sssg>.card:first-of-type{padding:14px 16px}#p-h2h>.card:first-of-type>header,#p-sssg>.card:first-of-type>header{margin-bottom:10px}.product-filter-grid{display:flex;gap:10px;flex-wrap:wrap;align-items:end;margin:0 0 12px}.product-filter-grid>.fld{flex:1 1 180px;max-width:360px}@media(max-width:1200px){.comparison-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}@media(max-width:850px){.comparison-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.comparison-grid .msd-pop{min-width:150px;max-width:calc(100vw - 55px)}}
 </style>
 <style id="store-operation-ui">
 /* Store Operation visual system — Analytics Admin reference.
@@ -1074,11 +1075,11 @@ function buildNav(){
 const FILTER_VISIBILITY={ review:['brand','spv','store'],links:[],schedule:[],tasks:[],
   dash:['year','month','range','brand','spv','store'], sales:['year','month','range','brand','spv','store'],
   trx:['year','month','range','brand','spv','store'], mkt:['year','month','range','brand','spv','store'],
-  brand:['year','month','range','brand','spv','store'],
-  item:['year','month','brand','store'],
+  brand:['year','month','range','spv','store'],
+  item:['year','month','store'],
   kpi:['year','month'],
   kpi_spv:['year'],
-  top:['year','month','brand','spv','store'],
+  top:['year','month','spv','store'],
   h2h:['brand','spv','store'],  // 'year' dihapus round 7 item 1/5: tahun H2H kini tetap/terkunci (h2hCurrentYear), bukan dari filter Tahun
   /* round 9 item 6 (diperbarui round 10 item 5): tahun SSSG tetap mengikuti tanggal cut-off (S.sssg.cutoffTo,
      bisa diatur user di kartu filter halaman itu sendiri), jadi 'year'/'month'/'range' global tetap
@@ -1101,6 +1102,7 @@ const FILTER_VISIBILITY={ review:['brand','spv','store'],links:[],schedule:[],ta
    milik halaman yang sedang aktif. Karena dipindah (appendChild), tiap elemen cuma ada 1 instance
    di seluruh dokumen — listener onchange yang lama tetap berfungsi apa adanya. */
 function pageFilterBar(id){
+  if(productFilterPage())syncStoreOptions();
   const vis=FILTER_VISIBILITY[id]!==undefined?FILTER_VISIBILITY[id]:['year','month','range','brand','spv','store'];
   if(!vis.length) return null;
   /* Ambil referensi & nilai SEBELUM memindah node apa pun: begitu sebuah elemen dipindah ke dalam
@@ -1234,7 +1236,7 @@ function storeList(){ return (S.store||'').split(',').filter(Boolean); }
 function spvList(){ return (S.spv||'').split(',').filter(Boolean); }
 function firstStoreId(){ return storeList()[0]||''; }
 function syncStoreOptions(){
-  const bl=brandList(), pl=spvList(), prevSel=storeList();
+  const bl=productFilterPage()?[]:brandList(), pl=spvList(), prevSel=storeList();
   const opts=S.stores.filter(s=>(!bl.length||bl.includes(s.brand))&&(!pl.length||pl.includes(s.spv))).map(s=>({value:String(s.id),label:s.name}));
   const keep=prevSel.filter(v=>opts.some(o=>o.value===v));
   S.store=keep.join(',');
@@ -1250,13 +1252,13 @@ async function loadAll(){
                  // oleh tombol Muat ulang, ganti filter Tahun/Brand/Toko, simpan target, dll)
   try{
     const opt = p=>p.catch(()=>[]);       // tabel baru: jangan gagalkan seluruh muat bila belum ada
-    const [stores,aliases,dashAll,growth,trxAll,map,unmapped,metrics,entries,pdca,settings,logs,
+    const [stores,aliases,dashAll,growth,trxRows,map,unmapped,metrics,entries,pdca,settings,logs,
            people,brandTargets,chanTargets,mkt,pica,kpiWeekly] = await Promise.all([
       DB.sel('stores?select=*&order=sort_order'),
       DB.sel('store_aliases?select=*,stores(name)&order=alias'),
       DB.selAll('v_sales_dashboard?select=*'),
       DB.sel(`v_growth?select=*&year=eq.${S.year}`),
-      DB.selAll('v_transaksi?select=*'),
+      DB.selAll('transaksi?select=*&is_manual=eq.true'),
       DB.sel('sales_type_map?select=*&order=sales_type'),
       DB.sel('v_unmapped_sales_type?select=*'),
       DB.sel('kpi_metrics?select=*&order=sort_order'),
@@ -1271,6 +1273,7 @@ async function loadAll(){
       opt(DB.sel('pica?select=*&order=due_date.asc.nullslast,id.desc&limit=1000')),
       opt(DB.sel('kpi_weekly?select=*'))
     ]);
+    const trxAll=trxRows.filter(r=>r.is_manual===true).map(r=>{const st=stores.find(s=>s.id===r.store_id)||{};return {...r,store_name:st.name||String(r.store_id),brand:st.brand,spv:st.spv,aov:N(r.jumlah_transaksi)>0?N(r.nilai_transaksi)/N(r.jumlah_transaksi):null};});
     const dash=dashAll.filter(r=>r.year===S.year), trx=trxAll.filter(r=>r.year===S.year);
     /* round 17: channel "MARKETPLACE" (bucket generik round 10, dipakai sbg override MAMU TSM dkk) DIGABUNG
        jadi SHOPEE di SETIAP tempat channel dibaca — dilakukan di SATU titik di sini (bukan di tiap
@@ -1309,10 +1312,11 @@ function setConn(t,c){ const p=$('#conn'); p.textContent=t; p.className='pill '+
 
 /* ---------- agregasi ---------- */
 /* satu pintu untuk filter Brand · SPV · Toko */
+function productFilterPage(){return ['item','brand','top'].includes(S.page);}
 function storeOk(sid){
   const st=S.stores.find(s=>s.id===sid); if(!st) return false;
   const sl=storeList(); if(sl.length && !sl.includes(String(sid))) return false;
-  const bl=brandList(); if(bl.length && !bl.includes(st.brand)) return false;
+  const bl=productFilterPage()?[]:brandList(); if(bl.length && !bl.includes(st.brand)) return false;
   const pl=spvList(); if(pl.length && !pl.includes(st.spv)) return false;
   return true;
 }
@@ -1384,8 +1388,10 @@ function growthScope(){
     return storeOk(r.store_id);
   });
 }
+function manualTrxRows(){return S.trxAll.filter(r=>S.demo||r.is_manual===true);}
 function trxScope(){
   return S.trx.filter(r=>{
+    if(!S.demo&&r.is_manual!==true)return false;
     if(!inPeriod(r.month)) return false;
     return storeOk(r.store_id);
   });
@@ -1409,7 +1415,7 @@ function periodLabel(){
 /* Label ringkas cakupan Brand/SPV/Toko terpilih — dipakai periodLabel() dan subtitle H2H/SSSG,
    satu titik supaya multi-select SPV (round 18) konsisten di mana pun label ini dirender. */
 function scopeLabel(){
-  const sl=storeList(), bl=brandList(), pl=spvList();
+  const sl=storeList(), bl=productFilterPage()?[]:brandList(), pl=spvList();
   return sl.length ? (sl.length===1?(S.stores.find(s=>String(s.id)===sl[0])?.name||''):sl.length+' toko')
     : [bl.length?(bl.length===1?bl[0]:bl.length+' brand'):'', pl.length?(pl.length===1?('SPV '+spvLabel(pl[0])):pl.length+' SPV'):''].filter(Boolean).join(' · ') || 'semua toko';
 }
@@ -1975,7 +1981,7 @@ async function diagnose(box, url, key){
 
   /* 3. fungsi RPC */
   put('3. Cek fungsi:');
-  for(const fn of ['rebuild_sales_actual','rebuild_transaksi_from_raw']){
+  for(const fn of ['rebuild_sales_actual']){
     try{
       const rr=await fetch(`${url}/rest/v1/rpc/${fn}`,{method:'POST',
         headers:Object.assign({'Content-Type':'application/json'},hdr),body:'{}'});
@@ -2313,76 +2319,13 @@ async function renderItem(){
   parkFilters();
   const p=$('#p-item'); p.innerHTML='';
   p.append(el('div',{class:'phead'},el('div',{},el('h1',{},'Item Sales'),
-    el('p',{},'Total Item Sold sudah bersih: item sold − item refunded. '+periodLabel()))));
+    el('p',{},'Total Item Sold sudah bersih: item sold − item refunded. '+ymLabel(S.year,...periodM1M2(S.year))+' · brand produk: '+(selectedCategories(S.itemBrand).join(', ')||'semua')))));
   const pf_item=pageFilterBar('item'); if(pf_item) p.append(pf_item);
   if(S.demo) p.append(demoBanner());
-  /* round 9 item 1: pakai periodM1M2()/scopeStoreIds() yang sama persis dengan rollup()/Brand Performance,
-     supaya total Item Sales selalu konsisten dengan Brand Performance pada filter apa pun.
-     round 10 item 7: halaman ini TIDAK LAGI menarik baris mentah item_sales ke browser — item_sales punya
-     ~108rb baris/tahun dan DB.selAll() diam-diam berhenti paginasi di cap=40000 baris, jadi untuk cakupan
-     penuh (setahun, 13 toko) hanya ~37% baris yang kebaca dan totalnya salah (lebih kecil dari Brand
-     Performance yang memakai RPC item_rollup, agregasi penuh di server). Sekarang Item Sales memakai 3 RPC
-     server-side baru (item_totals/item_top/item_categories_scoped) yang mengagregasi SELURUH baris di
-     database tanpa batas — jadi totalnya WAJIB sama persis dengan tile "Total item sales" di Brand
-     Performance untuk filter yang identik. */
-  const [im1,im2]=periodM1M2(S.year);
-  const ids=scopeStoreIds();
-  const pStores=ids&&ids.length?ids:(ids?[-1]:null);
-  const ex=excludedCats();
-
-  /* daftar kategori untuk dropdown lokal — discope ke tahun/periode/toko aktif (round 10 item 7),
-     bukan daftar kategori global yang tidak sadar demo/filter seperti sebelumnya */
-  const catKey=`${S.year}|${im1}|${im2}|${JSON.stringify(pStores)}`;
-  if(S.itemCatListScope!==catKey){
-    p.append(el('div',{class:'empty'},'Memuat kategori…'));
-    (async()=>{
-      try{
-        if(S.demo) S.itemCatList=[...new Set(demoItems().map(r=>r.category_name).filter(Boolean))].sort();
-        else{ const rows=await DB.rpc('item_categories_scoped',{p_year:S.year,p_m1:im1,p_m2:im2,p_stores:pStores});
-          S.itemCatList=rows.map(r=>r.category).filter(Boolean).sort(); }
-        S.itemCatListScope=catKey; renderItem();
-      }catch(e){ toast('Gagal memuat kategori: '+e.message); }
-    })();
-    return;
-  }
-  const catOpts=S.itemCatList||[];
-  const catSel=el('select',{id:'item-cat'},el('option',{value:''},'Semua kategori'),
-    catOpts.map(c=>el('option',{value:c,selected:S.itemCat===c?'':null},c)));
-  catSel.onchange=()=>{ S.itemCat=catSel.value; renderItem(); };
-  p.append(el('div',{class:'rowline',style:'margin-bottom:11px'},
-    el('div',{class:'fld'},el('label',{for:'item-cat'},'Kategori'),catSel)));
-
-  /* tiles + peringkat item: dari item_totals / item_top (agregasi server, bukan raw rows) */
-  const key=`${S.year}|${im1}|${im2}|${S.store}|${S.brand}|${S.spv}|${S.itemCat||''}`;
-  if(S.itemScope!==key){
-    p.append(el('div',{class:'empty'},'Memuat data item…'));
-    (async()=>{
-      try{
-        if(S.demo){
-          const all=demoItems();
-          const catScoped=all.filter(r=>!S.itemCat||r.category_name===S.itemCat);
-          const rows=catScoped.filter(r=>!isExcludedCat(r.category_name,ex));
-          const sold=rows.reduce((s,r)=>s+N(r.item_sold),0), ref=rows.reduce((s,r)=>s+N(r.item_refunded),0), net=rows.reduce((s,r)=>s+N(r.net_sales),0);
-          S.itemTotals={sold,refunded:ref,net_sales:net,sku_count:new Set(rows.map(r=>r.sku||r.item_name)).size,row_count:rows.length};
-          const itm=new Map();
-          rows.forEach(r=>{ const k=(r.item_name||'')+'|'+(r.item_variant_name||'');
-            const o=itm.get(k)||{item_name:r.item_name,item_variant_name:r.item_variant_name,category:r.category_name,sku:r.sku,sold:0,refunded:0,net_sales:0};
-            o.sold+=N(r.item_sold); o.refunded+=N(r.item_refunded); o.net_sales+=N(r.net_sales); itm.set(k,o); });
-          S.itemTop=[...itm.values()].sort((a,b)=>(b.sold-b.refunded)-(a.sold-a.refunded)).slice(0,300);
-          S.itemScope=key; renderItem(); return;
-        }
-        const args={p_year:S.year,p_m1:im1,p_m2:im2,p_stores:pStores,p_category:S.itemCat||null,p_exclude:ex.length?ex:null};
-        const [totRows,topRows]=await Promise.all([
-          DB.rpc('item_totals',args),
-          DB.rpc('item_top',{...args,p_limit:300})
-        ]);
-        S.itemTotals=(totRows&&totRows[0])?totRows[0]:{sold:0,refunded:0,net_sales:0,sku_count:0,row_count:0};
-        S.itemTop=topRows||[];
-        S.itemScope=key; renderItem();
-      }catch(e){ toast('Gagal memuat item: '+e.message); }
-    })();
-    return;
-  }
+  const ids=scopeStoreIds(),ex=excludedCats();const [im1,im2]=periodM1M2(S.year),args=productArgs(S.year,im1,im2,S.itemBrand,S.itemCat),key=JSON.stringify(args);
+  const brandBox=el('div',{id:'item-brand'});multiSelectDropdown(brandBox,['TIGALAPAN','MAMU','MYNO','DEFECT','LAINNYA'].map(b=>({value:b,label:b})),selectedCategories(S.itemBrand),arr=>{S.itemBrand=arr;S.itemScope='';renderItem();},{allLabel:'Semua brand produk'});
+  p.append(el('div',{class:'product-filter-grid'},opsField('Brand produk',brandBox),opsField('Kategori',categoryPicker('item-cat',S.itemCat,arr=>{S.itemCat=arr;S.itemScope='';renderItem();})),el('button',{class:'btn sm',onclick:()=>{S.itemBrand=[];S.itemCat=[];S.itemScope='';renderItem();}},'Reset produk')));
+  if(S.itemScope!==key){p.append(el('div',{class:'empty'},'Memuat data item…'));try{let data;if(S.demo){const rows=demoItems().filter(r=>(!args.p_categories.length||args.p_categories.includes(r.category_name))&&(!args.p_brands.length||args.p_brands.includes(/MAMU/.test(r.category_name)?'MAMU':/MYNO/.test(r.category_name)?'MYNO':'TIGALAPAN'))&&!isExcludedCat(r.category_name,args.p_exclude)),map=new Map();for(const r of rows){const k=(r.item_name||'')+'|'+(r.item_variant_name||'');const o=map.get(k)||{item_name:r.item_name,item_variant_name:r.item_variant_name,category:r.category_name,sku:r.sku,sold:0,refunded:0,net_sales:0};o.sold+=N(r.item_sold);o.refunded+=N(r.item_refunded);o.net_sales+=N(r.net_sales);map.set(k,o);}data={totals:{sold:rows.reduce((n,r)=>n+N(r.item_sold),0),refunded:rows.reduce((n,r)=>n+N(r.item_refunded),0),net_sales:rows.reduce((n,r)=>n+N(r.net_sales),0),sku_count:new Set(rows.map(r=>r.sku||r.item_name)).size,row_count:rows.length},top:[...map.values()].sort((a,b)=>(b.sold-b.refunded)-(a.sold-a.refunded)).slice(0,300)};}else data=await DB.rpc('commercial_item_data_v1',args);if(!p.isConnected||S.page!=='item'||key!==JSON.stringify(productArgs(S.year,...periodM1M2(S.year),S.itemBrand,S.itemCat)))return;S.itemTotals=data.totals;S.itemTop=data.top||[];S.itemScope=key;renderItem();}catch(e){if(S.page==='item'){p.querySelector('.empty')?.remove();p.append(el('div',{class:'note warn'},'Gagal memuat item: '+e.message+' · Jalankan SQL pembaruan filter produk bila fungsi belum tersedia.'));}}return;}
   const tot=S.itemTotals||{sold:0,refunded:0,net_sales:0,sku_count:0,row_count:0};
   if(!N(tot.row_count)){ p.append(el('div',{class:'empty'},el('b',{},'Belum ada data item'),
     'Unggah file dari folder Item Sales di menu Upload Data.')); return; }
@@ -2402,7 +2345,7 @@ async function renderItem(){
   /* kategori — rollup() sudah server-side & konsisten, cukup panggil ulang (tanpa fetch raw rows) */
   const catHost=chartCard('Net sales per kategori','Memuat…',el('div',{class:'empty'},'Memuat…'));
   p.append(catHost);
-  rollup('category',S.year,im1,im2,{stores:ids,category:S.itemCat||undefined}).then(catArr=>{
+  productRollup('category',S.year,im1,im2,{stores:ids,brand:S.itemBrand,category:S.itemCat||undefined}).then(catArr=>{
     const sorted=catArr.slice().sort((a,b)=>b.sales-a.sales);
     catHost.replaceWith(chartCard('Net sales per kategori',`${sorted.length} kategori`,
       hBars(sorted.slice(0,12).map(r=>({label:r.k,v:r.sales,
@@ -2436,7 +2379,7 @@ function renderTrx(){
   parkFilters();
   const p=$('#p-trx'); p.innerHTML='';
   p.append(el('div',{class:'phead'},el('div',{},el('h1',{},'Transaksi & AOV'),
-    el('p',{},'AOV = nilai transaksi ÷ jumlah transaksi. '+periodLabel()))));
+    el('p',{},'Sumber: input manual / upload khusus Transaksi. AOV = nilai transaksi ÷ jumlah transaksi. '+periodLabel()))));
   const pf_trx=pageFilterBar('trx'); if(pf_trx) p.append(pf_trx);
   if(S.demo) p.append(demoBanner());
   const t=trxScope();
@@ -2461,7 +2404,7 @@ function renderTrx(){
   })();
 
   /* tren bulanan */
-  const base=S.trx.filter(r=>storeOk(r.store_id));
+  const base=S.trx.filter(r=>(S.demo||r.is_manual===true)&&storeOk(r.store_id));
   const mAov=MONTHS.map((_,i)=>{ const rs=base.filter(r=>r.month===i+1);
     const c=rs.reduce((s,r)=>s+N(r.jumlah_transaksi),0), v=rs.reduce((s,r)=>s+N(r.nilai_transaksi),0);
     return c>0?v/c:null; });
@@ -2487,7 +2430,7 @@ function renderTrx(){
       cCell=cIn2; vCell=vIn2;
       const save=el('button',{class:'btn sm pri',onclick:async()=>{
         try{
-          await DB.write('transaksi',[{store_id:r.store_id,year:r.year,month:r.month,jumlah_transaksi:N(cIn2.value),nilai_transaksi:N(vIn2.value)}],'store_id,year,month');
+          await DB.write('transaksi',[{store_id:r.store_id,year:r.year,month:r.month,jumlah_transaksi:N(cIn2.value),nilai_transaksi:N(vIn2.value),is_manual:true}],'store_id,year,month');
           toast('Tersimpan.'); window.S_trxEditing.delete(rowKey); await loadAll(); renderTrx();
         }catch(e){ toast('Gagal: '+e.message); }
       }},'Simpan');
@@ -2540,7 +2483,7 @@ function renderTrx(){
       if(!cIn.value && !vIn.value){ toast('Isi jumlah dan nilai transaksi dulu.'); return; }
       try{
         await DB.write('transaksi',[{store_id:Number(sSel.value),year:S.year,month:Number(mSel.value),
-          jumlah_transaksi:N(cIn.value),nilai_transaksi:N(vIn.value)}],'store_id,year,month');
+          jumlah_transaksi:N(cIn.value),nilai_transaksi:N(vIn.value),is_manual:true}],'store_id,year,month');
         toast('Tersimpan.'); cIn.value=''; vIn.value=''; upd(); await loadAll();
       }catch(e){ toast('Gagal: '+e.message); }
     }},'Simpan')));
@@ -3633,10 +3576,7 @@ async function handleFiles(files,kind){
     try{ await DB.rpc('rebuild_sales_actual',{}); logLine('  → sales_actual dihitung ulang dari mapping'); }
     catch(e){ logLine('  ! gagal hitung ulang: '+e.message); }
   }
-  if(kind==='sales'){
-    try{ await DB.rpc('rebuild_transaksi_from_raw',{}); logLine('  → transaksi & AOV diperbarui dari kolom Count (baris yang diinput manual tidak ditimpa)'); }
-    catch(e){ logLine('  ! gagal perbarui transaksi: '+e.message); }
-  }
+  // TRX/AOV only come from manual entry or the dedicated transaction upload.
   S.itemScope=''; S.rollCache.clear();
   await loadAll();
   toast(`${okN} file diproses${failN?', '+failN+' gagal':''}.`);
@@ -4578,6 +4518,10 @@ function lastMonthWithData(y){
   let mx=0; S.dashAll.forEach(r=>{ if(r.year===y&&N(r.total_sales)>0&&r.month>mx) mx=r.month; }); return mx||12; }
 
 /* ---------- rollup item sales (dihitung di database, ringan) ---------- */
+function selectedCategories(value){return Array.isArray(value)?value.filter(Boolean):value?[value]:[];}
+function categoryPicker(id,value,onchange){const box=el('div',{id}),selected=selectedCategories(value);itemCategoryList().then(list=>{if(box.isConnected)multiSelectDropdown(box,[...new Set([...list,...selected])].map(c=>({value:c,label:c})),selected,onchange,{allLabel:'Semua kategori'});});return box;}
+function productArgs(year,m1,m2,brands,categories,stores=scopeStoreIds()){return {p_year:year,p_m1:m1,p_m2:m2,p_stores:stores,p_brands:selectedCategories(brands),p_categories:selectedCategories(categories),p_exclude:excludedCats()};}
+async function productRollup(dim,year,m1,m2,o={}){const args={...productArgs(year,m1,m2,o.brand,o.category,o.stores===undefined?scopeStoreIds():o.stores),p_dim:dim,p_limit:o.limit||300};const key='product-v2|'+JSON.stringify(args);if(S.rollCache.has(key))return S.rollCache.get(key);let rows;if(S.demo){const brands=args.p_brands.length?args.p_brands:[null],cats=args.p_categories.length?args.p_categories:[null],map=new Map();for(const brand of brands)for(const category of cats)for(const r of demoRollup(dim,year,m1,m2,brand,category)){const old=map.get(r.k)||{k:r.k,qty:0,refunded:0,sales:0,n_stores:0};old.qty+=r.qty;old.refunded+=r.refunded;old.sales+=r.sales;old.n_stores=Math.max(old.n_stores,r.n_stores||0);map.set(r.k,old);}rows=[...map.values()];}else rows=await DB.rpc('commercial_item_rollup_v1',args);rows=rows.map(r=>({k:r.k,qty:N(r.qty),refunded:N(r.refunded),sales:N(r.sales),n:N(r.n_stores)}));S.rollCache.set(key,rows);return rows;}
 async function rollup(dim,year,m1,m2,o={}){
   const ids=o.stores===undefined?scopeStoreIds():o.stores, ex=excludedCats();
   const key=JSON.stringify([dim,year,m1,m2,o.brand||null,o.category||null,o.limit||300,ids,ex]);
@@ -4641,19 +4585,20 @@ function colorRowsFromProducts(rows){
   return [...m.values()];
 }
 async function topBlock(host,o={}){
-  const lim=o.limit||S.topN||20, m1=o.m1||(S.month||1), m2=o.m2||(S.month||12);
+  const lim=o.limit||S.topN||20,[pm1,pm2]=periodM1M2(S.year),m1=o.m1||pm1,m2=o.m2||pm2;const token=host._renderToken=(host._renderToken||0)+1;
   host.innerHTML=''; host.append(el('div',{class:'empty'},'Memuat peringkat produk…'));
   let prod,size,cat,prodAll;
   try{
     [prod,size,cat,prodAll]=await Promise.all([
-      rollup('product',S.year,m1,m2,{brand:o.brand,category:o.category,limit:o.full?300:60}),
-      rollup('size',S.year,m1,m2,{brand:o.brand,category:o.category,limit:o.full?300:60}),
-      rollup('category',S.year,m1,m2,{brand:o.brand,category:o.category,limit:o.full?300:60}),
-      rollup('product',S.year,m1,m2,{brand:o.brand,category:o.category,limit:2000})
+      productRollup('product',S.year,m1,m2,{brand:o.brand,category:o.category,limit:o.full?300:60}),
+      productRollup('size',S.year,m1,m2,{brand:o.brand,category:o.category,limit:o.full?300:60}),
+      productRollup('category',S.year,m1,m2,{brand:o.brand,category:o.category,limit:o.full?300:60}),
+      productRollup('product',S.year,m1,m2,{brand:o.brand,category:o.category,limit:2000})
     ]);
   }
-  catch(e){ host.innerHTML=''; host.append(el('div',{class:'note warn'},'Gagal memuat peringkat produk: '+e.message+
+  catch(e){ if(token!==host._renderToken||!host.isConnected)return;host.innerHTML=''; host.append(el('div',{class:'note warn'},'Gagal memuat peringkat produk: '+e.message+
     ' — pastikan migrasi database terbaru sudah dijalankan.')); return; }
+  if(token!==host._renderToken||!host.isConnected)return;
   host.innerHTML='';
   if(!prod.length){ host.append(el('div',{class:'empty'},el('b',{},'Belum ada data item sales pada filter ini'),
     'Item Sales dimuat dari folder Drive atau Upload Data.')); return; }
@@ -4686,7 +4631,7 @@ function renderTop(){
   const bsel=el('select',{id:'top-brand'},el('option',{value:''},'Semua brand produk'),
     ['TIGALAPAN','MAMU','MYNO'].map(b=>el('option',{value:b,selected:S.topBrand===b?'':null},b)));
   const nsel=el('select',{id:'top-n'},[10,20,50,100].map(n=>el('option',{value:String(n),selected:S.topN===n?'':null},'Top '+n)));
-  const catSel=el('select',{id:'top-cat'},el('option',{value:''},'Semua kategori'));
+  const catSel=categoryPicker('top-cat',S.topCat,arr=>{S.topCat=arr;run();});
   const clearBtn=el('button',{class:'btn sm',title:'Reset filter halaman ini'},'Clear');
   clearBtn.onclick=()=>{ S.topBrand=''; S.topN=20; S.topCat=''; renderTop(); };
   p.append(el('div',{class:'phead'},el('div',{},el('h1',{},'Top Product'),
@@ -4703,8 +4648,8 @@ function renderTop(){
   const run=()=>topBlock(host,{brand:S.topBrand||null,category:S.topCat||null,limit:S.topN,full:true});
   bsel.onchange=()=>{ S.topBrand=bsel.value; run(); };
   nsel.onchange=()=>{ S.topN=Number(nsel.value)||20; run(); };
-  catSel.onchange=()=>{ S.topCat=catSel.value; run(); };
-  itemCategoryList().then(list=>{ list.forEach(c=>catSel.append(el('option',{value:c,selected:S.topCat===c?'':null},c))); });
+
+
   run();
 }
 
@@ -4736,23 +4681,29 @@ function comparisonWindow(st){
  const parse=value=>{if(!/^\d{4}-\d{2}-\d{2}$/.test(value||''))throw Error('Isi tanggal awal dan akhir rentang.');const [y,m,d]=value.split('-').map(Number);if(m<1||m>12||d<1||d>daysInMonth(y,m))throw Error('Tanggal tidak valid.');return {y,m,d};};
  const a=parse(st.cutoffFrom),b=parse(st.cutoffTo);if(a.y!==b.y)throw Error('Pilih rentang dalam satu tahun; bulan/tanggal yang sama diterapkan ke tiap tahun pembanding.');if(st.cutoffFrom>st.cutoffTo)throw Error('Tanggal awal harus sebelum atau sama dengan tanggal akhir.');return {mode:'range',m1:a.m,m2:b.m,d1:a.d,d2:b.d};
 }
-function comparisonMonthDays(w,y,m){if(m<w.m1||m>w.m2)return 0;const dim=daysInMonth(y,m),a=m===w.m1?Math.min(w.d1,dim):1,b=m===w.m2?Math.min(w.d2,dim):dim;return Math.max(0,b-a+1);}
-function comparisonFraction(w,y,m){return comparisonMonthDays(w,y,m)/daysInMonth(y,m);}
+function comparisonAvailableDays(y,m){const [cy,cm,cd]=opsToday().split('-').map(Number);if(y===cy&&m===cm)return cd-1;if(y>cy||(y===cy&&m>cm))return 0;return daysInMonth(y,m);}
+function comparisonMonthDays(w,y,m){if(m<w.m1||m>w.m2)return 0;const dim=daysInMonth(y,m),available=comparisonAvailableDays(y,m),[cy,cm,cd]=opsToday().split('-').map(Number),sharedLimit=h2hCurrentYear()===cy?(m>cm?0:m===cm?cd-1:dim):dim,a=m===w.m1?Math.min(w.d1,dim):1,b=Math.min(m===w.m2?Math.min(w.d2,dim):dim,available,sharedLimit);return Math.max(0,b-a+1);}
+function comparisonFraction(w,y,m){const source=comparisonAvailableDays(y,m);return source>0?comparisonMonthDays(w,y,m)/source:0;}
+function comparisonTargetFraction(w,y,m){return comparisonMonthDays(w,y,m)/daysInMonth(y,m);}
 function comparisonDays(w,y){let n=0;for(let m=w.m1;m<=w.m2;m++)n+=comparisonMonthDays(w,y,m);return n;}
+function comparisonDataNote(w){const [y,m,d]=opsToday().split('-').map(Number);return h2hCurrentYear()===y&&w.m1<=m&&w.m2>=m?'Data '+MONTHS[m-1]+' tersedia sampai tanggal '+(d-1)+' (WITA); batas tanggal yang sama diterapkan ke tahun pembanding.':'';}
 function comparisonLabel(w){return w.mode==='range'?`${w.d1} ${MONTHS[w.m1-1]} – ${w.d2} ${MONTHS[w.m2-1]} (inklusif)`:(w.m1===w.m2?MONTHS[w.m1-1]:MONTHS[w.m1-1]+' – '+MONTHS[w.m2-1])+' (bulan penuh)';}
 function comparisonControls(st,prefix,rerender){
  if(st.mode==='range'){try{const w=comparisonWindow(st);st.m1=w.m1;st.m2=w.m2;}catch(e){}}
  const y=h2hCurrentYear(),mode=opsSelect([['month','Bulanan'],['range','Rentang tanggal']],st.mode,{id:prefix+'-period-mode',onchange:e=>{st.mode=e.target.value;rerender();}});
  const month=(k)=>opsSelect(MONTHS.map((n,i)=>[i+1,n]),st[k],{id:prefix+'-'+k,onchange:e=>{st[k]=Number(e.target.value);if(st.m1>st.m2){if(k==='m1')st.m2=st.m1;else st.m1=st.m2;}st.mode='month';st.cutoffFrom=`${y}-${String(st.m1).padStart(2,'0')}-01`;st.cutoffTo=`${y}-${String(st.m2).padStart(2,'0')}-${daysInMonth(y,st.m2)}`;rerender();}});
  const date=k=>opsInput(st[k]||'','date',{id:prefix+(k==='cutoffFrom'?'-cutoff-from':'-cutoff-to'),onchange:e=>{st[k]=e.target.value;st.mode='range';rerender();}});
- return el('div',{},el('div',{class:'rowline',style:'flex-wrap:wrap'},opsField('Hitung berdasarkan',mode),opsField('Dari bulan',month('m1')),opsField('Sampai bulan',month('m2')),el('button',{class:'btn sm',onclick:()=>{Object.assign(st,comparisonInit(st.key));rerender();}},'Reset periode')),
- el('div',{class:'rowline',style:'margin-top:11px;flex-wrap:wrap'},opsField('Dari tanggal',date('cutoffFrom')),opsField('Sampai tanggal',date('cutoffTo'))),el('p',{class:'note'},'Bulanan menghitung bulan penuh. Rentang tanggal menghitung sales bulanan ÷ hari kalender pada bulan itu × hari yang dipilih (tanggal awal dan akhir termasuk). Bulan/tanggal yang sama dibandingkan pada setiap tahun; 29 Februari menjadi 28 Februari pada tahun nonkabisat. Angka rentang adalah estimasi dari data bulanan.'));
+ const monthly=st.mode!=='range';
+ return el('div',{class:'comparison-controls'},el('div',{class:'comparison-grid'},opsField('Hitung berdasarkan',mode),monthly?opsField('Dari bulan',month('m1')):opsField('Dari tanggal',date('cutoffFrom')),monthly?opsField('Sampai bulan',month('m2')):opsField('Sampai tanggal',date('cutoffTo')),el('button',{class:'btn sm',onclick:()=>{Object.assign(st,comparisonInit(st.key));rerender();}},'Reset periode')),
+ el('details',{class:'comparison-method'},el('summary',{},'Cara hitung · data bulan berjalan sampai kemarin'),el('p',{class:'sub'},'Bulan selesai: total ÷ hari kalender × hari rentang. Bulan berjalan: total MTD ÷ (tanggal hari ini − 1) × hari rentang yang tersedia. Batas data memakai WITA; tanggal awal/akhir termasuk. Target tetap dibagi hari kalender. 29 Februari menjadi 28 Februari pada tahun nonkabisat. Angka rentang merupakan estimasi.')));
+}
+function comparisonPanel(pf,controls){const grid=controls.querySelector('.comparison-grid');if(pf){const scope=[...pf.childNodes];for(let i=scope.length-1;i>=0;i--)grid.prepend(scope[i]);}return controls;
 }
 function h2hData(years,m1,m2,window=null){
  const w=window&&typeof window==='object'?window:{mode:'month',m1,m2,d1:1,d2:31},out={};
  for(const y of years){const map=new Map(),get=id=>{if(!map.has(id))map.set(id,{name:(S.stores.find(s=>s.id===id)||{}).name||String(id),sales:0,kom:0,usr:0,kt:0,ut:0,um:0,tgt:0,tgtDays:0,trx:0,val:0,days:comparisonDays(w,y)});return map.get(id);};
- S.dashAll.forEach(r=>{if(r.year!==y||!storeOk(r.store_id))return;const f=comparisonFraction(w,y,r.month);if(!f)return;const o=get(r.store_id);for(const [key,col] of Object.entries({sales:'total_sales',kom:'sales_komersial',usr:'sales_user',kt:'sales_komersial_tigalapan',ut:'sales_user_tigalapan',um:'sales_user_mamu',tgt:'target_total'}))o[key]+=N(r[col])*f;});
- S.trxAll.forEach(r=>{if(r.year!==y||!storeOk(r.store_id))return;const f=comparisonFraction(w,y,r.month);if(!f)return;const o=get(r.store_id);o.trx+=N(r.jumlah_transaksi)*f;o.val+=N(r.nilai_transaksi)*f;});map.forEach(o=>o.tgtDays=o.days?o.tgt/o.days:0);out[y]=map;}
+ S.dashAll.forEach(r=>{if(r.year!==y||!storeOk(r.store_id))return;const f=comparisonFraction(w,y,r.month);if(!f)return;const o=get(r.store_id);for(const [key,col] of Object.entries({sales:'total_sales',kom:'sales_komersial',usr:'sales_user',kt:'sales_komersial_tigalapan',ut:'sales_user_tigalapan',um:'sales_user_mamu',tgt:'target_total'}))o[key]+=N(r[col])*(key==='tgt'?comparisonTargetFraction(w,y,r.month):f);});
+ manualTrxRows().forEach(r=>{if(r.year!==y||!storeOk(r.store_id))return;const f=comparisonFraction(w,y,r.month);if(!f)return;const o=get(r.store_id);o.trx+=N(r.jumlah_transaksi)*f;o.val+=N(r.nilai_transaksi)*f;});map.forEach(o=>o.tgtDays=o.days?o.tgt/o.days:0);out[y]=map;}
  return out;
 }
 async function comparisonRollup(dim,year,w,o={}){
@@ -4768,9 +4719,9 @@ function renderH2H(){
   const st=h2hInit(); const [y1,y2,y3]=st.y;
   p.append(el('div',{class:'phead'},el('div',{},el('h1',{},'H2H Sales'),el('p',{},`${y1}/${y2}/${y3} · `+scopeLabel()))));
   const pf_h2h=pageFilterBar('h2h');if(S.demo)p.append(demoBanner());
-  p.append(card('Filter & Atur Perbandingan','Periode yang sama untuk ketiga tahun.',pf_h2h?el('div',{class:'rowline',style:'flex-wrap:wrap'},...[...pf_h2h.childNodes]):null,comparisonControls(st,'h2h',renderH2H)));
+  p.append(card('Filter & Atur Perbandingan','Periode yang sama untuk ketiga tahun.',comparisonPanel(pf_h2h,comparisonControls(st,'h2h',renderH2H))));
   let window;try{window=comparisonWindow(st);}catch(e){p.append(el('div',{class:'note warn',role:'alert'},e.message));return;}
-  const {m1,m2}=window,periodText=comparisonLabel(window);p.append(el('p',{class:'note'},'Periode aktif: '+periodText+' · '+y1+'/'+y2+'/'+y3+'. Target dan transaksi juga dihitung proporsional pada rentang tanggal.'));
+  const {m1,m2}=window,periodText=comparisonLabel(window);if(comparisonDataNote(window))p.append(el('p',{class:'sub'},comparisonDataNote(window)));p.append(el('p',{class:'note'},'Periode aktif: '+periodText+' · '+y1+'/'+y2+'/'+y3+'. Target dan transaksi juga dihitung proporsional pada rentang tanggal.'));
   const D=h2hData(st.y,m1,m2,window);
   const ids=[...new Set(st.y.flatMap(y=>[...D[y].keys()]))];
   const names=new Map(ids.map(id=>[id,(S.stores.find(s=>s.id===id)||{}).name||String(id)]));
@@ -4814,7 +4765,7 @@ function renderH2H(){
      tanpa target di atas). Memakai comboBarsLine() yang sama dipakai Dashboard/Marketplace/Program Sales,
      supaya setiap grafik yang punya target juga punya trendline achievement. */
   {
-    const tgtMon=y=>MONTHS.map((_,i)=>S.dashAll.filter(r=>r.year===y&&r.month===i+1&&storeOk(r.store_id)).reduce((s,r)=>s+N(r.target_total)*comparisonFraction(window,y,r.month),0));
+    const tgtMon=y=>MONTHS.map((_,i)=>S.dashAll.filter(r=>r.year===y&&r.month===i+1&&storeOk(r.store_id)).reduce((s,r)=>s+N(r.target_total)*comparisonTargetFraction(window,y,r.month),0));
     const salesY3=mon(y3), tgtY3=tgtMon(y3);
     const achY3=MONTHS.map((_,i)=>tgtY3[i]>0&&salesY3[i]>0?salesY3[i]/tgtY3[i]:null);
     const ser2=[{name:'Sales '+y3,color:'var(--s1)',vals:salesY3},{name:'Target '+y3,color:'var(--target-bar)',vals:tgtY3}];
@@ -4967,9 +4918,9 @@ function renderSSSG(){
   const sst=sssgInit(),y3=h2hCurrentYear(),y2=y3-1,y1=y3-2;
   p.append(el('div',{class:'phead'},el('div',{},el('h1',{},'Same Store Sales Growth'),el('p',{},`${y1}/${y2}/${y3} · Periode yang sama untuk toko pembanding · `+scopeLabel()))));
   const pf=pageFilterBar('sssg');if(S.demo)p.append(demoBanner());
-  p.append(card('Filter & Atur Perbandingan','Pilih bulan penuh atau rentang tanggal yang sama pada tiap tahun.',pf?el('div',{class:'rowline',style:'flex-wrap:wrap'},...[...pf.childNodes]):null,comparisonControls(sst,'sssg',renderSSSG)));
+  p.append(card('Filter & Atur Perbandingan','Pilih bulan penuh atau rentang tanggal yang sama pada tiap tahun.',comparisonPanel(pf,comparisonControls(sst,'sssg',renderSSSG))));
   let window;try{window=comparisonWindow(sst);}catch(e){p.append(el('div',{class:'note warn',role:'alert'},e.message));return;}
-  const {m1,m2}=window,periodText=comparisonLabel(window),cf={label:periodText};p.append(el('p',{class:'note'},'Periode aktif: '+periodText+'. Toko harus sudah buka pada awal periode pembanding agar dibandingkan selama periode yang sama. Tahun sebelum toko buka ditampilkan —. Target dan transaksi mengikuti proporsi hari yang sama.'));
+  const {m1,m2}=window,periodText=comparisonLabel(window),cf={label:periodText};if(comparisonDataNote(window))p.append(el('p',{class:'sub'},comparisonDataNote(window)));p.append(el('p',{class:'note'},'Periode aktif: '+periodText+'. Toko harus sudah buka pada awal periode pembanding agar dibandingkan selama periode yang sama. Tahun sebelum toko buka ditampilkan —. Target dan transaksi mengikuti proporsi hari yang sama.'));
   const D=sssgData([y1,y2,y3],m1,m2,window);
   const idsAll=[...D.keys()];
   const names=new Map(idsAll.map(id=>[id,D.get(id).name]));
@@ -5535,7 +5486,7 @@ function renderMkt(){
   const sumRows=chsSorted.map(ch=>{ const rr=mktRows(S.year,m1,m2,ch), s=rr.reduce((a,r)=>a+N(r.amount),0), c=rr.reduce((a,r)=>a+N(r.trx),0);
     const t=chanTarget(ch,S.year,m1,m2), py=mktRows(S.year-1,m1,m2,ch).reduce((a,r)=>a+N(r.amount),0);
     return [ch,magCell(s,maxChSales,compact(s)),t>0?compact(t):'—',pillCell(t>0?s/t:null),t>0?compact(s-t):'—',int(c),c>0?rp(s/c):'—',py>0?compact(py):'',growthPill(s,py),gapTxt(s,py),pct(allSales?s/allSales:null)]; });
-  p.append(card('Pencapaian per channel',ymLabel(S.year,m1,m2)+' · diurutkan sales terbesar→terkecil',mkTable(sumHeads,sumRows)));
+  p.append(card('Pencapaian per channel',ymLabel(S.year,m1,m2)+' · diurutkan sales terbesar→terkecil',mkTable(sumHeads,sumRows)),el('p',{class:'note'},'TRX/AOV memakai input manual atau upload khusus Transaksi per toko/bulan. Data itu belum memiliki rincian channel, sehingga TRX/AOV per channel ditampilkan — dan tidak dihitung dari Sales Type.'));
 
   /* grafik per bulan per channel — round 7 item 6: SEBELUMNYA ditaruh dalam grid 2 kolom (g2) sehingga
      tiap chart groupedBars() tampil ±separuh lebar (teks/bar jadi kecil) dibanding chart H2H sepenuh-lebar
@@ -5687,7 +5638,7 @@ function renderDataTrack(){
   /* ---------- cakupan + anomali, dihitung per tahun yang ditampilkan ---------- */
   const perYear=years.map(year=>{
     const dashByKey=new Map(S.dashAll.filter(r=>r.year===year).map(r=>[r.store_id+'|'+r.month,r]));
-    const trxByKey=new Map(S.trxAll.filter(r=>r.year===year).map(r=>[r.store_id+'|'+r.month,r]));
+    const trxByKey=new Map(manualTrxRows().filter(r=>r.year===year).map(r=>[r.store_id+'|'+r.month,r]));
     const cells=[];
     stores.forEach(st=>{ for(let m=1;m<=12;m++){
       cells.push({store:st,month:m,status:dtStatus(st,year,m,dashByKey.get(st.id+'|'+m),todayY,todayM)});
@@ -5771,7 +5722,7 @@ function renderDataTrack(){
   {
     const hasItemLog=(sid,y,m)=>S.logs.some(l=>l.kind==='ITEM_SALES'&&l.store_id===sid&&l.year===y&&l.month===m&&l.status==='OK'&&!uploadLogWasReset(l));
     const hasSalesTypeLog=(sid,y,m)=>S.logs.some(l=>l.kind==='SALES_TYPE'&&l.store_id===sid&&l.year===y&&l.month===m&&l.status==='OK'&&!uploadLogWasReset(l));
-    const hasTrx=(sid,y,m)=>S.trxAll.some(r=>r.store_id===sid&&r.year===y&&r.month===m&&N(r.jumlah_transaksi)>0);
+    const hasTrx=(sid,y,m)=>manualTrxRows().some(r=>r.store_id===sid&&r.year===y&&r.month===m&&N(r.jumlah_transaksi)>0);
     const typeStatus=(fn,st,year,month)=>{
       if(st.opening_date){ const d=new Date(st.opening_date+'T00:00:00');
         if(!isNaN(d)&&(year<d.getFullYear()||(year===d.getFullYear()&&month<d.getMonth()+1))) return 'closed'; }
@@ -5862,7 +5813,8 @@ function renderBrand(){
     ['TIGALAPAN','MAMU','MYNO'].map(b=>el('option',{value:b,selected:S.bpBrand===b?'':null},b)));
   p.append(el('div',{class:'phead'},el('div',{},el('h1',{},'Brand Performance'),
     el('p',{},'Performa brand dan kategori dari Item Sales yang dicocokkan ke master DATABASE STOCK. '+ymLabel(S.year,m1,m2)+' · '+periodLabel().split(' · ').slice(1).join(' · '))),
-    el('span',{class:'spacer'}),el('div',{class:'fld'},el('label',{for:'bp-brand'},'Brand untuk tabel kategori'),bsel)));
+    el('span',{class:'spacer'}),el('div',{class:'fld'},el('label',{for:'bp-brand'},'Brand produk'),bsel)));
+  p.append(el('div',{class:'product-filter-grid'},opsField('Kategori',categoryPicker('bp-cat',S.bpCat,arr=>{S.bpCat=arr;renderBrand();})),el('button',{class:'btn sm',onclick:()=>{S.bpBrand='';S.bpCat=[];renderBrand();}},'Reset produk')));
   const pf_brand=pageFilterBar('brand'); if(pf_brand) p.append(pf_brand);
   if(S.demo) p.append(demoBanner());
   const host=el('div',{style:'display:flex;flex-direction:column;gap:18px'}); p.append(host);
@@ -5871,20 +5823,20 @@ function renderBrand(){
   (async()=>{
     try{
       const brandFilter=S.bpBrand||null;
-      const [b0,b1,c0,c1,cb]=await Promise.all([rollup('brand',S.year,m1,m2),rollup('brand',S.year-1,m1,m2),
-        rollup('category',S.year,m1,m2,{brand:brandFilter,limit:300}),rollup('category',S.year-1,m1,m2,{brand:brandFilter,limit:300}),loadCatBrand()]);
-      host.innerHTML='';
+      const [b0,b1,c0,c1,cb]=await Promise.all([productRollup('brand',S.year,m1,m2,{brand:brandFilter,category:S.bpCat}),productRollup('brand',S.year-1,m1,m2,{brand:brandFilter,category:S.bpCat}),
+        productRollup('category',S.year,m1,m2,{brand:brandFilter,category:S.bpCat,limit:300}),productRollup('category',S.year-1,m1,m2,{brand:brandFilter,category:S.bpCat,limit:300}),loadCatBrand()]);
+      if(!host.isConnected)return;host.innerHTML='';
       const tQty=b0.reduce((s,r)=>s+r.qty,0), tSales=b0.reduce((s,r)=>s+r.sales,0);
       if(!b0.length){ host.append(el('div',{class:'empty'},el('b',{},'Belum ada data item sales pada filter ini'),'Item Sales dimuat dari Drive / Upload Data.')); return; }
       const order=['TIGALAPAN','MAMU','MYNO','DEFECT','LAINNYA'];
       /* item 8 (ronde ini): urutan brand diurutkan NET SALES terbesar→terkecil, bukan urutan tetap. */
-      const names=[...new Set([...order.filter(b=>b0.some(r=>r.k===b)||BRAND_TARGET_KEY[b]),...b0.map(r=>r.k)])]
+      const names=[...new Set([...order.filter(b=>(!brandFilter||b===brandFilter)&&(b0.some(r=>r.k===b)||BRAND_TARGET_KEY[b])),...b0.map(r=>r.k)])]
         .sort((a,b)=>N(get0(b)?.sales)-N(get0(a)?.sales));
       function get0(k){ return b0.find(r=>r.k===k); }
       const get=(arr,k)=>arr.find(r=>r.k===k)||{qty:0,sales:0,refunded:0};
       /* tiles */
       const tl=el('div',{class:'grid g4'});
-      ['TIGALAPAN','MAMU','MYNO'].forEach(b=>{ const r=get(b0,b), t=brandTarget(b,S.year,m1,m2);
+      ['TIGALAPAN','MAMU','MYNO'].filter(b=>!brandFilter||b===brandFilter).forEach(b=>{ const r=get(b0,b), t=brandTarget(b,S.year,m1,m2);
         tl.append(tile(b,compact(r.sales),(t>0?`target ${compact(t)} · `:'')+`${int(r.qty)} item`,t>0?r.sales/t:null)); });
       tl.append(tile('Total item sales',compact(tSales),`${int(tQty)} item terjual bersih`,null));
       host.append(tl);
@@ -5897,7 +5849,7 @@ function renderBrand(){
           py.sales>0?compact(py.sales):'',growthPill(r.sales,py.sales),gapTxt(r.sales,py.sales),r.qty>0?rp(r.sales/r.qty):'—']; });
       host.append(card('Performa per brand',ymLabel(S.year,m1,m2)+' · diurutkan net sales terbesar→terkecil',mkTable(heads,rows)));
       /* chart brand vs target */
-      const achItems=['TIGALAPAN','MAMU','MYNO'].map(b=>{ const r=get(b0,b), t=brandTarget(b,S.year,m1,m2);
+      const achItems=['TIGALAPAN','MAMU','MYNO'].filter(b=>!brandFilter||b===brandFilter).map(b=>{ const r=get(b0,b), t=brandTarget(b,S.year,m1,m2);
         return t>0?{label:b,v:r.sales/t,tip:`<div class="row"><span>Net sales</span><span>${compact(r.sales)}</span></div><div class="row"><span>Target</span><span>${compact(t)}</span></div>`}:null; }).filter(Boolean);
       if(achItems.length) host.append(chartCard('Achievement brand terhadap TARGET BRAND',`${ymLabel(S.year,m1,m2)} · garis putus-putus = 100%`,hBars(achItems,{mode:'ach',fmt:v=>pct(v,0),name:'Achievement',min:1,lw:100})));
       /* kategori — item 8: diurutkan NET SALES terbesar→terkecil (bukan urutan dari RPC yg berdasar qty) */
@@ -5906,7 +5858,7 @@ function renderBrand(){
         H(`NET ${S.year-1}`,{r:1}),H('GROWTH',{r:1}),H('GAP GROWTH',{r:1}),H('HARGA RATA2',{r:1})];
       const cTot=c0.reduce((s,r)=>s+r.sales,0);
       const maxCatSales=c0sorted.length?c0sorted[0].sales:0;
-      const cRows=c0sorted.map(r=>{ const py=get(c1,r.k); return [r.k,brandChip(cb.get(r.k)||brandFilter||'—'),int(r.qty),int(r.refunded),magCell(r.sales,maxCatSales,compact(r.sales)),pct(cTot?r.sales/cTot:null),
+      const cRows=c0sorted.map(r=>{ const py=get(c1,r.k); return [r.k,brandChip(brandFilter||cb.get(r.k)||'—'),int(r.qty),int(r.refunded),magCell(r.sales,maxCatSales,compact(r.sales)),pct(cTot?r.sales/cTot:null),
         py.sales>0?compact(py.sales):'',growthPill(r.sales,py.sales),gapTxt(r.sales,py.sales),r.qty>0?rp(r.sales/r.qty):'—']; });
       host.append(chartCard('Net sales per kategori',(brandFilter||'semua brand')+' · 12 teratas',
         hBars(c0sorted.slice(0,12).map(r=>({label:r.k,v:r.sales,tip:`<div class="row"><span>Net sales</span><span>${compact(r.sales)}</span></div><div class="row"><span>Item sold</span><span>${int(r.qty)}</span></div>`})),{lw:170})));
@@ -6716,7 +6668,7 @@ async function programRawSales(year,m1,m2,ids){
 }
 function aggregateProgramCounts(raw,categories,map){const result=new Map();for(const r of raw){const cat=programCategoryForType(r.sales_type,categories,map);if(!cat)continue;const key=String(r.store_id)+'|'+cat;const v=result.get(key)||{count:0,value:0,types:[],hasCount:false,incomplete:false};const count=Number(r.trx_count);if(r.trx_count!=null&&r.trx_count!==''&&Number.isFinite(count)&&count>=0&&(count>0||N(r.amount)<=0)){v.count+=count;v.hasCount=true;}else v.incomplete=true;v.value+=N(r.amount);if(!v.types.includes(r.sales_type))v.types.push(r.sales_type);result.set(key,v);}return result;}
 async function programStoreMetrics(prog,year,m1,m2,ids,raw){
-  const stores=S.stores.filter(s=>ids===null||ids.includes(s.id)),counts=aggregateProgramCounts(raw,prog.categories,programTypeMap()),items=new Map();let next=0;
+  const stores=S.stores.filter(s=>ids===null||ids.includes(s.id)),counts=new Map(),items=new Map();let next=0;
   await Promise.all(Array.from({length:Math.min(4,stores.length)},async()=>{for(;;){const i=next++;if(i>=stores.length)return;const store=stores[i],rows=await rollup('category',year,m1,m2,{stores:[store.id],limit:1000});if(rows.length>=1000)throw Error('Kategori item terlalu banyak. Persempit cakupan data.');for(const row of rows)if(prog.categories.includes(row.k))items.set(String(store.id)+'|'+row.k,row);}}));
   const rows=[];for(const store of stores)for(const cat of prog.categories){const key=String(store.id)+'|'+cat,item=items.get(key),trx=counts.get(key);rows.push({store_id:store.id,store:store.name,category:cat,item_sales:item?item.sales:null,qty:item?item.qty:null,transaction_value:trx?trx.value:null,transactions:trx?.hasCount&&!trx.incomplete?trx.count:null,aov:trx?.hasCount&&!trx.incomplete&&trx.count>0?trx.value/trx.count:null,types:trx?.types||[]});}
   return rows.sort((a,b)=>a.store.localeCompare(b.store)||((b.item_sales??b.transaction_value??0)-(a.item_sales??a.transaction_value??0)));
@@ -6724,10 +6676,10 @@ async function programStoreMetrics(prog,year,m1,m2,ids,raw){
 function appendProgramStoreRecap(host,prog,year,m1,m2){
   const ids=scopeStoreIds(),scopeIds=ids===null?null:[...ids];const wrap=el('div',{class:'card',id:'program-store-category'});wrap.append(el('header',{},el('h2',{},'Rekap kategori per toko'),el('span',{class:'sub'},ymLabel(year,m1,m2))));const body=el('div',{},el('div',{class:'empty'},'Memuat kategori, transaksi dan AOV…'));wrap.append(body);host.append(wrap);
   (async()=>{try{const raw=await programRawSales(year,m1,m2,scopeIds),rows=await programStoreMetrics(prog,year,m1,m2,scopeIds,raw);if(!wrap.isConnected)return;body.innerHTML='';
-    const heads=[H('TOKO',{s:1}),H('KATEGORI'),H('NET SALES ITEM',{r:1}),H('UNIT NET',{r:1}),H('NILAI SALES TYPE',{r:1}),H('TRANSAKSI (COUNT)',{r:1}),H('AOV SALES TYPE',{r:1}),H('SUMBER TRANSAKSI')];
+    const heads=[H('TOKO',{s:1}),H('KATEGORI'),H('NET SALES ITEM',{r:1}),H('UNIT NET',{r:1}),H('NILAI SALES TYPE',{r:1}),H('TRX MANUAL KATEGORI',{r:1}),H('AOV MANUAL KATEGORI',{r:1}),H('SUMBER TRANSAKSI')];
     const countRows=rows.filter(r=>r.transactions!=null),countTotal=countRows.reduce((s,r)=>s+r.transactions,0),matchedValue=countRows.reduce((s,r)=>s+(r.transaction_value||0),0);
     const total=(field)=>{const filled=rows.filter(r=>r[field]!=null);return filled.length?filled.reduce((s,r)=>s+r[field],0):null;};
-    body.append(el('div',{class:'note'},'Net sales dan unit berasal dari Item Sales. Transaksi berasal dari Count Sales Type yang dipetakan ke kategori. AOV = nilai Sales Type yang memiliki Count ÷ Count pada sumber yang sama. “—” berarti data belum tersedia atau Count belum lengkap. Jumlah Count lintas kategori belum tentu jumlah struk unik.'));
+    body.append(el('div',{class:'note'},'Net sales dan unit berasal dari Item Sales. TRX/AOV aplikasi hanya berasal dari input manual atau upload khusus Transaksi per toko/bulan. Sumber tersebut belum memiliki rincian kategori, sehingga TRX/AOV kategori ditampilkan —; tidak diturunkan dari Count Sales Type atau jumlah item.'));
     if(S.demo)body.append(el('div',{class:'note warn'},'Semua angka rekap pada mode contoh adalah ilustrasi, bukan data produksi.'));
     body.append(mkTable(heads,rows.map(r=>[r.store,r.category,r.item_sales==null?'—':compact(r.item_sales),r.qty==null?'—':int(r.qty),r.transaction_value==null?'—':compact(r.transaction_value),r.transactions==null?'—':int(r.transactions),r.aov==null?'—':rp(r.aov),el('span',{style:'white-space:normal;max-width:240px;display:block'},r.types.join(', ')||'Belum dipetakan')]),['TOTAL','',total('item_sales')==null?'—':compact(total('item_sales')),total('qty')==null?'—':int(total('qty')),total('transaction_value')==null?'—':compact(total('transaction_value')),countRows.length?String(int(countTotal))+(countRows.length<rows.length?' (parsial)':''):'—',countTotal>0?String(rp(matchedValue/countTotal))+(countRows.length<rows.length?' (parsial)':''):'—','AOV berbobot; hanya data dengan Count lengkap']));
     const mapping=el('details',{class:'program-map-panel'},el('summary',{},'Pemetaan Sales Type → kategori produk'));const table=el('div',{class:'tw'}),draft={...programTypeMap()};const types=[...new Set(raw.map(r=>r.sales_type))].sort();let picks=[];
