@@ -2394,7 +2394,7 @@ async function renderItem(){
   const ids=scopeStoreIds(),ex=excludedCats();const [im1,im2]=periodM1M2(S.year),args=productArgs(S.year,im1,im2,S.itemBrand,S.itemCat),key=JSON.stringify(args);
   const brandBox=el('div',{id:'item-brand'});multiSelectDropdown(brandBox,['TIGALAPAN','MAMU','MYNO','DEFECT','LAINNYA'].map(b=>({value:b,label:b})),selectedCategories(S.itemBrand),arr=>{S.itemBrand=arr;S.itemScope='';renderItem();},{allLabel:'Semua brand produk'});
   p.append(el('div',{class:'product-filter-grid'},opsField('Brand produk',brandBox),opsField('Kategori',categoryPicker('item-cat',S.itemCat,arr=>{S.itemCat=arr;S.itemScope='';renderItem();})),el('button',{class:'btn sm',onclick:()=>{S.itemBrand=[];S.itemCat=[];S.itemScope='';renderItem();}},'Reset produk')));
-  if(S.itemScope!==key){p.append(el('div',{class:'empty'},'Memuat data item…'));try{let data;if(S.demo){const rows=demoItems().filter(r=>(!args.p_categories.length||args.p_categories.includes(r.category_name))&&(!args.p_brands.length||args.p_brands.includes(/MAMU/.test(r.category_name)?'MAMU':/MYNO/.test(r.category_name)?'MYNO':'TIGALAPAN'))&&!isExcludedCat(r.category_name,args.p_exclude)),map=new Map();for(const r of rows){const k=(r.item_name||'')+'|'+(r.item_variant_name||'');const o=map.get(k)||{item_name:r.item_name,item_variant_name:r.item_variant_name,category:r.category_name,sku:r.sku,sold:0,refunded:0,net_sales:0};o.sold+=N(r.item_sold);o.refunded+=N(r.item_refunded);o.net_sales+=N(r.net_sales);map.set(k,o);}data={totals:{sold:rows.reduce((n,r)=>n+N(r.item_sold),0),refunded:rows.reduce((n,r)=>n+N(r.item_refunded),0),net_sales:rows.reduce((n,r)=>n+N(r.net_sales),0),sku_count:new Set(rows.map(r=>r.sku||r.item_name)).size,row_count:rows.length},top:[...map.values()].sort((a,b)=>(b.sold-b.refunded)-(a.sold-a.refunded)).slice(0,300)};}else data=await DB.rpc('commercial_item_data_v1',args);if(!p.isConnected||S.page!=='item'||key!==JSON.stringify(productArgs(S.year,...periodM1M2(S.year),S.itemBrand,S.itemCat)))return;S.itemTotals=data.totals;S.itemTop=data.top||[];S.itemScope=key;renderItem();}catch(e){if(S.page==='item'){p.querySelector('.empty')?.remove();p.append(el('div',{class:'note warn'},'Gagal memuat item: '+e.message+' · Jalankan SQL pembaruan filter produk bila fungsi belum tersedia.'));}}return;}
+  if(S.itemScope!==key){p.append(el('div',{class:'empty'},'Memuat data item…'));try{let data;if(S.demo){const rows=demoItems().filter(r=>(!args.p_categories.length||args.p_categories.includes(r.category_name))&&(!args.p_brands.length||args.p_brands.includes(/MAMU/.test(r.category_name)?'MAMU':/MYNO/.test(r.category_name)?'MYNO':'TIGALAPAN'))&&!isExcludedCat(r.category_name,args.p_exclude)),map=new Map();for(const r of rows){const k=(r.item_name||'')+'|'+(r.item_variant_name||'');const o=map.get(k)||{item_name:r.item_name,item_variant_name:r.item_variant_name,category:r.category_name,sku:r.sku,sold:0,refunded:0,net_sales:0};o.sold+=N(r.item_sold);o.refunded+=N(r.item_refunded);o.net_sales+=N(r.net_sales);map.set(k,o);}data={totals:{sold:rows.reduce((n,r)=>n+N(r.item_sold),0),refunded:rows.reduce((n,r)=>n+N(r.item_refunded),0),net_sales:rows.reduce((n,r)=>n+N(r.net_sales),0),sku_count:new Set(rows.map(r=>r.sku||r.item_name)).size,row_count:rows.length},top:[...map.values()].sort((a,b)=>N(b.net_sales)-N(a.net_sales)||a.item_name.localeCompare(b.item_name)).slice(0,300)};}else data=await DB.rpc('commercial_item_data_v1',args);if(!p.isConnected||S.page!=='item'||key!==JSON.stringify(productArgs(S.year,...periodM1M2(S.year),S.itemBrand,S.itemCat)))return;S.itemTotals=data.totals;S.itemTop=data.top||[];S.itemScope=key;renderItem();}catch(e){if(S.page==='item'){p.querySelector('.empty')?.remove();p.append(el('div',{class:'note warn'},'Gagal memuat item: '+e.message+' · Jalankan SQL pembaruan filter produk bila fungsi belum tersedia.'));}}return;}
   const tot=S.itemTotals||{sold:0,refunded:0,net_sales:0,sku_count:0,row_count:0};
   if(!N(tot.row_count)){ p.append(el('div',{class:'empty'},el('b',{},'Belum ada data item'),
     'Unggah file dari folder Item Sales di menu Upload Data.')); return; }
@@ -4594,19 +4594,7 @@ function selectedCategories(value){return Array.isArray(value)?value.filter(Bool
 function categoryPicker(id,value,onchange){const box=el('div',{id}),selected=selectedCategories(value);itemCategoryList().then(list=>{if(box.isConnected)multiSelectDropdown(box,[...new Set([...list,...selected])].map(c=>({value:c,label:c})),selected,onchange,{allLabel:'Semua kategori'});});return box;}
 function productArgs(year,m1,m2,brands,categories,stores=scopeStoreIds()){return {p_year:year,p_m1:m1,p_m2:m2,p_stores:stores,p_brands:brands===undefined?activeProductBrands():selectedCategories(brands).map(b=>String(b).trim().toUpperCase()),p_categories:selectedCategories(categories),p_exclude:excludedCats()};}
 async function productRollup(dim,year,m1,m2,o={}){const args={...productArgs(year,m1,m2,o.brand,o.category,o.stores===undefined?scopeStoreIds():o.stores),p_dim:dim,p_limit:o.limit||300};const key='product-v2|'+JSON.stringify(args);if(S.rollCache.has(key))return S.rollCache.get(key);let rows;if(S.demo){const brands=args.p_brands.length?args.p_brands:[null],cats=args.p_categories.length?args.p_categories:[null],map=new Map();for(const brand of brands)for(const category of cats)for(const r of demoRollup(dim,year,m1,m2,brand,category)){const old=map.get(r.k)||{k:r.k,qty:0,refunded:0,sales:0,n_stores:0};old.qty+=r.qty;old.refunded+=r.refunded;old.sales+=r.sales;old.n_stores=Math.max(old.n_stores,r.n_stores||0);map.set(r.k,old);}rows=[...map.values()];}else rows=await DB.rpc('commercial_item_rollup_v1',args);rows=rows.map(r=>({k:r.k,qty:N(r.qty),refunded:N(r.refunded),sales:N(r.sales),n:N(r.n_stores)}));S.rollCache.set(key,rows);return rows;}
-async function rollup(dim,year,m1,m2,o={}){
-  const brands=o.brand===undefined?activeProductBrands():selectedCategories(o.brand);
-  if(brands.length)return productRollup(dim,year,m1,m2,{...o,brand:brands});
-  const ids=o.stores===undefined?scopeStoreIds():o.stores, ex=excludedCats();
-  const key=JSON.stringify([dim,year,m1,m2,o.brand||null,o.category||null,o.limit||300,ids,ex]);
-  if(S.rollCache.has(key)) return S.rollCache.get(key);
-  let rows;
-  if(S.demo) rows=demoRollup(dim,year,m1,m2,o.brand,o.category);
-  else rows=await DB.rpc('item_rollup',{p_dim:dim,p_year:year,p_m1:m1,p_m2:m2,p_stores:ids&&ids.length?ids:(ids?[-1]:null),
-    p_brand:o.brand||null,p_exclude:ex.length?ex:null,p_limit:o.limit||300,p_category:o.category||null});
-  rows=rows.map(r=>({k:r.k,qty:N(r.qty),refunded:N(r.refunded),sales:N(r.sales),n:N(r.n_stores)}));
-  S.rollCache.set(key,rows); return rows;
-}
+async function rollup(dim,year,m1,m2,o={}){return productRollup(dim,year,m1,m2,o);}
 /* Daftar kategori item distinct, dipakai untuk filter Kategori lokal (item 10) di Top Product & Breakdown */
 let _catListCache=null;
 async function itemCategoryList(){
@@ -4667,7 +4655,7 @@ async function topBlock(host,o={}){
       productRollup('product',S.year,m1,m2,{brand:o.brand,category:o.category,limit:o.full?300:60}),
       productRollup('size',S.year,m1,m2,{brand:o.brand,category:o.category,limit:o.full?300:60}),
       productRollup('category',S.year,m1,m2,{brand:o.brand,category:o.category,limit:o.full?300:60}),
-      productRollup('product',S.year,m1,m2,{brand:o.brand,category:o.category,limit:2000})
+      productRollup('product',S.year,m1,m2,{brand:o.brand,category:o.category,limit:10000})
     ]);
   }
   catch(e){ if(token!==host._renderToken||!host.isConnected)return;host.innerHTML=''; host.append(el('div',{class:'note warn'},'Gagal memuat peringkat produk: '+e.message+
@@ -4676,22 +4664,23 @@ async function topBlock(host,o={}){
   host.innerHTML='';
   if(!prod.length){ host.append(el('div',{class:'empty'},el('b',{},'Belum ada data item sales pada filter ini'),
     'Item Sales dimuat dari folder Drive atau Upload Data.')); return; }
+  if(prodAll.length>=10000){host.append(el('div',{class:'note warn'},'Hasil mencapai 10.000 produk. Persempit filter agar total dan peringkat tidak terpotong.'));return;}
   const colorRows=colorRowsFromProducts(prodAll), sizeRows=size.filter(r=>r.k!=='(Tanpa size)');
-  const totQty=prod.reduce((s,r)=>s+r.qty,0), totSales=prod.reduce((s,r)=>s+r.sales,0);
-  const tops=(rows,n)=>rows.slice().sort((a,b)=>b.qty-a.qty).slice(0,n);
+  const totQty=prodAll.reduce((s,r)=>s+r.qty,0), totSales=prodAll.reduce((s,r)=>s+r.sales,0);
+  const tops=(rows,n)=>rows.slice().sort((a,b)=>N(b.sales)-N(a.sales)||String(a.k).localeCompare(String(b.k))).slice(0,n);
   /* item 8: kolom warna dihapus dari Top Product — sudah ada bagian Top Color tersendiri */
   const pTbl=(rows,n)=>mkTable([H('#',{r:1,w:34}),H('PRODUK',{s:1}),H('ITEM SOLD',{r:1}),H('NET SALES',{r:1}),H('SHARE',{r:1})],
-    tops(rows,n).map((r,i)=>[String(i+1),r.k,int(r.qty),compact(r.sales),pct(totQty?r.qty/totQty:null)]));
+    tops(rows,n).map((r,i)=>[String(i+1),r.k,int(r.qty),compact(r.sales),pct(totSales?r.sales/totSales:null)]));
   const cTbl=(rows,n)=>mkTable([H('#',{r:1,w:34}),H('WARNA',{s:1}),H('ITEM SOLD',{r:1}),H('NET SALES',{r:1}),H('SHARE',{r:1})],
-    tops(rows,n).map((r,i)=>[String(i+1),colorChip(r.k),int(r.qty),compact(r.sales),pct(totQty?r.qty/totQty:null)]));
+    tops(rows,n).map((r,i)=>[String(i+1),colorChip(r.k),int(r.qty),compact(r.sales),pct(totSales?r.sales/totSales:null)]));
   const sTbl=(rows,n)=>mkTable([H('#',{r:1,w:34}),H('UKURAN',{s:1}),H('ITEM SOLD',{r:1}),H('NET SALES',{r:1}),H('SHARE',{r:1})],
-    tops(rows,n).map((r,i)=>[String(i+1),r.k,int(r.qty),compact(r.sales),pct(totQty?r.qty/totQty:null)]));
+    tops(rows,n).map((r,i)=>[String(i+1),r.k,int(r.qty),compact(r.sales),pct(totSales?r.sales/totSales:null)]));
   const g=el('div',{class:'grid g2'});
-  g.append(card('Top Product',`${int(prod.length)} produk · urut item sold`,pTbl(prod,lim)));
-  g.append(card('Top Color',`${int(colorRows.length)} warna · tanpa grafik, urut item sold`,cTbl(colorRows,lim)));
+  g.append(card('Top Product',`${int(prod.length)} produk · urut nilai sales (Rp)`,pTbl(prod,lim)));
+  g.append(card('Top Color',`${int(colorRows.length)} warna · tanpa grafik, urut nilai sales (Rp)`,cTbl(colorRows,lim)));
   host.append(g);
   const g2=el('div',{class:'grid g2'});
-  g2.append(card('Top Size',`${int(sizeRows.length)} ukuran · tanpa grafik, urut item sold`,sTbl(sizeRows,lim)));
+  g2.append(card('Top Size',`${int(sizeRows.length)} ukuran · tanpa grafik, urut nilai sales (Rp)`,sTbl(sizeRows,lim)));
   g2.append(card('Top Category',`${int(cat.length)} kategori`,mkTable([H('#',{r:1,w:34}),H('KATEGORI',{s:1}),H('ITEM SOLD',{r:1}),H('NET SALES',{r:1}),H('SHARE',{r:1})],
     tops(cat,lim).map((r,i)=>[String(i+1),r.k,int(r.qty),compact(r.sales),pct(totSales?r.sales/totSales:null)]))));
   host.append(g2);
@@ -4709,7 +4698,7 @@ function renderTop(){
   const clearBtn=el('button',{class:'btn sm',title:'Reset filter halaman ini'},'Clear');
   clearBtn.onclick=()=>{ S.topBrand=''; S.topN=20; S.topCat=''; renderTop(); };
   p.append(el('div',{class:'phead'},el('div',{},el('h1',{},'Top Product'),
-    el('p',{},'Produk, warna, ukuran dan kategori terlaris dari Item Sales (item sold bersih). '+periodLabel())),
+    el('p',{},'Produk, warna, ukuran dan kategori terbaik berdasarkan nilai net sales (Rp). '+periodLabel())),
     el('span',{class:'spacer'}),
     el('div',{class:'fld'},el('label',{for:'top-n'},'Tampilkan'),nsel),
     el('div',{class:'fld'},el('label',{for:'top-brand'},'Brand produk'),bsel),
@@ -4785,6 +4774,92 @@ async function comparisonRollup(dim,year,w,o={}){
  const jobs=[];let start=null;for(let m=w.m1;m<=w.m2;m++){const f=comparisonFraction(w,year,m);if(f===1){if(start==null)start=m;}else{if(start!=null){jobs.push({m1:start,m2:m-1,f:1});start=null;}if(f>0)jobs.push({m1:m,m2:m,f});}}if(start!=null)jobs.push({m1:start,m2:w.m2,f:1});
  const results=await Promise.all(jobs.map(async j=>{const rows=await rollup(dim,year,j.m1,j.m2,{...o,stores:ids,limit:10000});if(rows.length>=10000)throw Error('Hasil item mencapai batas 10.000 kelompok. Persempit filter toko/periode.');return {rows,f:j.f};})),agg=new Map();for(const {rows,f} of results)for(const r of rows){const v=agg.get(r.k)||{k:r.k,qty:0,refunded:0,sales:0,n:0};v.qty+=r.qty*f;v.refunded+=r.refunded*f;v.sales+=r.sales*f;v.n=Math.max(v.n,r.n||0);agg.set(r.k,v);}return [...agg.values()].sort((a,b)=>b.sales-a.sales);
 }
+/* Monthly movement: shares source, day fractions and store cohorts with comparison cards. */
+const MOVEMENT_METRICS=[['sales','Sales','rp'],['kom','Sales komersial','rp'],['usr','Sales user','rp'],['kt','Komersial Tigalapan','rp'],['ut','User Tigalapan','rp'],['um','User MAMU','rp'],['tgt','Target','rp'],['gap','GAP target','rp'],['ach','Achievement','pct'],['daily','Sales per hari','rp'],['targetDaily','Target per hari','rp'],['trx','Transaksi','int'],['val','Nilai transaksi','rp'],['aov','AOV','rp'],['qty','Unit bersih','int'],['refunded','Refund unit','int'],['itemSales','Item net sales','rp'],['upt','UPT','dec'],['days','Hari periode','int'],['yoy','Growth vs tahun sebelumnya','pct'],['yoy2','Growth vs dua tahun sebelumnya','pct'],['mom','Growth sales bulan sebelumnya','pct']];
+function movementMonthWindow(w,m){return {...w,m1:m,m2:m,d1:m===w.m1?w.d1:1,d2:m===w.m2?w.d2:31};}
+function movementDerived(o){return {...o,gap:o.tgt==null||o.sales==null?null:o.sales-o.tgt,ach:o.tgt>0?o.sales/o.tgt:null,daily:o.days>0&&o.sales!=null?o.sales/o.days:null,targetDaily:o.days>0&&o.tgt!=null?o.tgt/o.days:null,aov:o.trx>0&&o.val!=null?o.val/o.trx:null,upt:o.trx>0&&o.qty!=null?o.qty/o.trx:null};}
+function movementTotal(values){const rows=values.filter(Boolean),sum=k=>{const present=rows.filter(r=>r[k]!=null);return present.length&&(!['tgt','prev','prev2'].includes(k)||present.length===rows.length)?present.reduce((n,r)=>n+N(r[k]),0):null;};const out={};for(const k of ['sales','kom','usr','kt','ut','um','tgt','trx','val','qty','refunded','itemSales','days','prev','prev2'])out[k]=sum(k);out.yoy=out.prev>0?(out.sales-out.prev)/out.prev:null;out.yoy2=out.prev2>0?(out.sales-out.prev2)/out.prev2:null;out.mom=null;return movementDerived(out);}
+function movementFormat(value,type){if(value==null)return '—';return type==='pct'?pct(value):type==='int'?int(value):type==='dec'?Number(value).toLocaleString('id-ID',{maximumFractionDigits:2}):rp(value);}
+function movementSalesMonths(years,w,ids){
+ const all={};for(const year of years)all[year]=Array(12).fill(null);
+ for(let m=w.m1;m<=w.m2;m++){const mw=movementMonthWindow(w,m),d=h2hData(years,m,m,mw);for(const year of years){if(!comparisonMonthDays(mw,year,m))continue;const rows=new Map();for(const id of ids){const r=d[year].get(id);if(!r)continue;const hasTrx=!activeProductBrands().length&&manualTrxRows().some(t=>t.year===year&&t.month===m&&t.store_id===id);rows.set(id,movementDerived({...r,trx:hasTrx?r.trx:null,val:hasTrx?r.val:null,qty:null,refunded:null,itemSales:null}));}all[year][m-1]=rows;}}
+ return all;
+}
+function appendMonthlyMovement(page,kind,years,selectedWindow,selectedIds){
+ const host=el('div',{id:'movement-'+kind}),body=el('div',{}),controls=el('div',{class:'rowline',style:'flex-wrap:wrap'});
+ const year=el('select',{'aria-label':'Tahun pergerakan'},years.map(y=>el('option',{value:y,selected:y===years.at(-1)?'':null},String(y))));
+ const dim=el('select',{'aria-label':'Rincian pergerakan'},[['summary','Semua indikator'],['store','Toko'],['category','Kategori'],['product','Produk'],['color','Warna'],['size','Ukuran']].map(([v,t])=>el('option',{value:v},t)));
+ const metric=el('select',{'aria-label':'Indikator pergerakan'},MOVEMENT_METRICS.map(([v,t])=>el('option',{value:v},t)));
+ const full=el('input',{type:'checkbox','aria-label':'Setahun penuh',style:'width:16px;height:16px;min-height:16px'});
+ const runBtn=el('button',{class:'btn pri',type:'button'},'Muat pergerakan bulanan');
+ controls.append(el('div',{class:'fld'},el('label',{},'Tahun'),year),el('div',{class:'fld'},el('label',{},'Rincian'),dim),el('div',{class:'fld'},el('label',{},'Indikator'),metric),el('label',{style:'display:flex;align-items:center;gap:6px'},full,'Setahun penuh'),runBtn);
+ const note=el('p',{class:'sub'},'Kolom Jan–Des · default mengikuti periode aktif · peringkat berdasarkan sales Rupiah · transaksi dari input manual/upload transaksi · klik Muat untuk mengambil rincian item.');
+ host.append(card('Pergerakan bulanan · '+kind.toUpperCase(),'Semua indikator, toko, kategori, produk, warna dan ukuran.',controls,note,body));page.append(host);
+ let token=0,loaded=false,limit=100;const cache=new Map();
+ const signature=()=>JSON.stringify([S.page,activeProductBrands(),spvList(),storeList(),excludedCats()]);const initial=signature();
+ const live=t=>host.isConnected&&initial===signature()&&t===token;
+ const load=async()=>{const t=++token;loaded=true;runBtn.disabled=true;body.replaceChildren(el('div',{class:'empty'},'Memuat pergerakan bulanan…'));try{
+   const w=full.checked?{mode:'month',m1:1,m2:12,d1:1,d2:31}:{...selectedWindow},y=Number(year.value),dimension=dim.value;
+   let ids=selectedIds.slice();if(kind==='sssg'&&full.checked){const data=sssgData(years,1,12,w);ids=[...data].filter(([,r])=>years.every(yy=>r.by[yy]!=null)).map(([id])=>id);}
+   const source=movementSalesMonths(years,w,ids),monthly=source[y];
+   const jobs=[];for(let m=w.m1;m<=w.m2;m++)if(comparisonMonthDays(movementMonthWindow(w,m),y,m)>0)jobs.push(m);
+   const itemRows=Array(12).fill(null),rpcDim=['summary','store'].includes(dimension)?'store':dimension==='color'?'product':dimension;
+   let next=0;await Promise.all(Array.from({length:Math.min(3,jobs.length)},async()=>{for(;;){if(!live(t))return;const i=next++;if(i>=jobs.length)return;const m=jobs[i],mw=movementMonthWindow(w,m),key=JSON.stringify([y,mw,ids,rpcDim]);let rows=cache.get(key);if(!rows){rows=await comparisonRollup(rpcDim,y,mw,{stores:ids});if(!live(t))return;cache.set(key,rows);}itemRows[m-1]=dimension==='color'?colorRowsFromProducts(rows):rows;}}));if(!live(t))return;
+   const totalAt=(yy,i)=>{const rows=source[yy][i];if(!rows)return null;const total=movementTotal([...rows.values()]);total.days=comparisonMonthDays(movementMonthWindow(w,i+1),yy,i+1);if(activeProductBrands().length)total.tgt=brandComparisonTarget(yy,movementMonthWindow(w,i+1),ids);return movementDerived(total);};
+   const summary=MONTHS.map((_,i)=>{let o=totalAt(y,i);if(!o)return null;const items=itemRows[i]||[];o.qty=items.reduce((n,r)=>n+N(r.qty),0);o.refunded=items.reduce((n,r)=>n+N(r.refunded),0);o.itemSales=items.reduce((n,r)=>n+N(r.sales),0);o=movementDerived(o);const prev=totalAt(y-1,i),prev2=totalAt(y-2,i),last=i>0?totalAt(y,i-1):null;o.prev=prev?.sales??null;o.prev2=prev2?.sales??null;o.yoy=o.prev>0?(o.sales-o.prev)/o.prev:null;o.yoy2=o.prev2>0?(o.sales-o.prev2)/o.prev2:null;o.mom=last?.sales>0?(o.sales-last.sales)/last.sales:null;return o;});
+   body.innerHTML='';note.textContent=`${y} · ${comparisonLabel(w)} · ${ids.length} toko${kind==='sssg'?' pembanding yang sama untuk tiga tahun':''} · — = di luar periode, bulan belum berjalan, atau rincian sumber belum tersedia. Total rasio dihitung ulang dari total pembilang/penyebut.`;
+   const heads=[H(dimension==='summary'?'INDIKATOR':dimension.toUpperCase(),{s:1}),...MON3.map(m=>H(m.toUpperCase(),{r:1})),H('TOTAL / RASIO PERIODE',{r:1})];
+   const total=movementTotal(summary);
+   if(dimension==='summary'){
+     const rows=MOVEMENT_METRICS.map(([k,label,type])=>[label,...summary.map(o=>movementFormat(o?.[k],type)),movementFormat(total[k],type)]);body.append(mkTable(heads,rows));
+     body.append(hBars(summary.map((o,i)=>({label:MON3[i],v:o?.sales||0})),{lw:60}));
+   }else if(dimension==='store'){
+     const k=metric.value,type=MOVEMENT_METRICS.find(r=>r[0]===k)[2],records=ids.map(id=>{const values=MONTHS.map((_,i)=>{const o=monthly[i]?.get(id);if(!o)return null;const item=(itemRows[i]||[]).find(r=>r.k===S.stores.find(s=>s.id===id)?.name);o.qty=item?N(item.qty):0;o.refunded=item?N(item.refunded):0;o.itemSales=item?N(item.sales):0;const prev=source[y-1]?.[i]?.get(id),prev2=source[y-2]?.[i]?.get(id),last=i>0?monthly[i-1]?.get(id):null;return movementDerived({...o,prev:prev?.sales??null,prev2:prev2?.sales??null,yoy:prev?.sales>0?(o.sales-prev.sales)/prev.sales:null,yoy2:prev2?.sales>0?(o.sales-prev2.sales)/prev2.sales:null,mom:last?.sales>0?(o.sales-last.sales)/last.sales:null});});return {id,values,total:movementTotal(values)};}).sort((a,b)=>N(b.total.sales)-N(a.total.sales));
+     body.append(mkTable(heads,records.map(r=>[S.stores.find(s=>s.id===r.id)?.name||String(r.id),...r.values.map(o=>movementFormat(o?.[k],type)),movementFormat(r.total[k],type)]),['TOTAL',...summary.map(o=>movementFormat(o?.[k],type)),movementFormat(total[k],type)]));
+   }else{
+     const allowed=['sales','qty','refunded'],k=allowed.includes(metric.value)?metric.value:'sales',field=k,type=k==='sales'?'rp':'int',map=new Map();
+     itemRows.forEach((rows,i)=>{if(!rows)return;for(const r of rows){const o=map.get(r.k)||{name:r.k,values:Array(12).fill(null),sales:0};o.values[i]=N(r[field]);o.sales+=N(r.sales);map.set(r.k,o);}});
+     const records=[...map.values()].sort((a,b)=>b.sales-a.sales||a.name.localeCompare(b.name,'id'));const rows=records.slice(0,limit).map(r=>[dimension==='color'?colorChip(r.name):r.name,...r.values.map((v,i)=>movementFormat(itemRows[i]?(v??0):null,type)),movementFormat(r.values.reduce((n,v)=>n+N(v),0),type)]);
+     const totals=itemRows.map(rows=>rows?rows.reduce((n,r)=>n+N(r[field]),0):null);body.append(el('p',{class:'sub'},`Indikator: ${k==='sales'?'Net sales (Rp)':k==='qty'?'Unit bersih':'Refund unit'} · urut nilai sales periode · ${records.length} baris.`),mkTable(heads,rows,['TOTAL',...totals.map(v=>movementFormat(v,type)),movementFormat(totals.reduce((n,v)=>n+N(v),0),type)]));
+     if(records.length>limit)body.append(el('button',{class:'btn',onclick:()=>{limit+=100;load();}},'Tampilkan 100 baris berikutnya'));
+   }
+ }catch(e){if(live(t))body.replaceChildren(el('div',{class:'note warn',role:'alert'},'Gagal memuat pergerakan bulanan: '+e.message));}finally{if(live(t))runBtn.disabled=false;}};
+ const syncMetrics=()=>{const item=!['summary','store'].includes(dim.value);for(const opt of metric.options)opt.disabled=item&&!['sales','qty','refunded'].includes(opt.value);if(item&&!['sales','qty','refunded'].includes(metric.value))metric.value='sales';metric.disabled=dim.value==='summary';};const changed=()=>{limit=100;syncMetrics();if(loaded)load();};syncMetrics();year.onchange=changed;dim.onchange=changed;metric.onchange=changed;full.onchange=changed;runBtn.onclick=load;
+ body.append(el('p',{class:'note'},'Pilih tahun dan rincian, lalu Muat pergerakan bulanan. Brand/toko mengikuti filter halaman. Untuk matriks item tersedia Net Sales, Unit bersih dan Refund; target/TRX/AOV tersedia pada Semua indikator dan Toko sesuai kelengkapan sumber.'));
+}
+
+/* Product dimensions as rows, stores as columns, using the comparison's day window. */
+function storeMatrixColors(rows){const groups=new Map();for(const r of rows){const k=deriveWarna(r.k)||'(Tanpa warna)',o=groups.get(k)||{k,qty:0,refunded:0,sales:0};o.qty+=N(r.qty);o.refunded+=N(r.refunded);o.sales+=N(r.sales);groups.set(k,o);}return [...groups.values()];}
+function appendStoreItemMatrix(page,kind,years,w,scopeIds){
+ const host=el('div',{id:'store-items-'+kind}),body=el('div',{}),controls=el('div',{class:'rowline',style:'flex-wrap:wrap'});
+ const year=el('select',{'aria-label':'Tahun perbandingan antar toko'},years.map(y=>el('option',{value:y,selected:y===years.at(-1)?'':null},String(y))));
+ const dim=el('select',{'aria-label':'Rincian item antar toko'},[['category','Kategori'],['product','Item / Produk'],['color','Warna'],['size','Ukuran']].map(([v,t])=>el('option',{value:v},t)));
+ const metric=el('select',{'aria-label':'Nilai item antar toko'},[['sales','Net sales (Rp)'],['qty','Unit bersih'],['refunded','Refund unit']].map(([v,t])=>el('option',{value:v},t)));
+ const compare=el('input',{type:'checkbox','aria-label':'Bandingkan tiga tahun per toko',style:'width:16px;height:16px;min-height:16px'}),button=el('button',{class:'btn pri'},'Muat perbandingan toko');
+ controls.append(el('div',{class:'fld'},el('label',{},'Rincian'),dim),el('div',{class:'fld'},el('label',{},'Tahun'),year),el('div',{class:'fld'},el('label',{},'Nilai'),metric),el('label',{style:'display:flex;gap:6px;align-items:center'},compare,'Bandingkan 3 tahun'),button);
+ const note=el('p',{class:'sub'},'Baris kategori/item/warna/ukuran · kolom toko · default net sales Rupiah · mengikuti periode, brand, SPV dan toko halaman.');
+ host.append(card('Perbandingan item antar toko · '+kind.toUpperCase(),comparisonLabel(w),controls,note,body));page.append(host);
+ let loaded=false,token=0,limit=100,result=null;const cache=new Map(),initial=JSON.stringify([S.page,activeProductBrands(),spvList(),storeList(),excludedCats()]),live=t=>host.isConnected&&token===t&&initial===JSON.stringify([S.page,activeProductBrands(),spvList(),storeList(),excludedCats()]);
+ const paint=()=>{if(!result)return;const {columns,rows,rankYear}=result,k=metric.value,type=k==='sales'?'rp':'int',format=v=>movementFormat(v,type),max=rows.reduce((n,r)=>Math.max(n,N(r.rank)),0);
+   body.innerHTML='';const heads=[H(dim.options[dim.selectedIndex].text,{s:1}),...columns.map(c=>H(c.store.name+(compare.checked?' · '+c.year:''),{r:1})),H('TOTAL '+rankYear,{r:1})];
+   const display=rows.slice(0,limit).map(r=>{const totals=columns.filter(c=>c.year===rankYear).reduce((n,c)=>n+N(r.values.get(c.key)?.[k]),0);return [dim.value==='color'?colorChip(r.name):r.name,...columns.map(c=>format(r.values.get(c.key)?.[k]??0)),k==='sales'?magCell(totals,max,format(totals)):format(totals)];});
+   const columnTotals=columns.map(c=>rows.reduce((n,r)=>n+N(r.values.get(c.key)?.[k]),0)),total=columns.reduce((n,c,i)=>n+(c.year===rankYear?columnTotals[i]:0),0);
+   body.append(mkTable(heads,display,['TOTAL',...columnTotals.map(format),format(total)]));
+   if(rows.length>limit)body.append(el('button',{class:'btn',onclick:()=>{limit+=100;paint();}},'Tampilkan 100 baris berikutnya'));
+   note.textContent=`${comparisonLabel(w)} · ${scopeIds.length} toko${kind==='sssg'?' pembanding yang sama untuk tiga tahun':''} · ${rows.length} ${dim.options[dim.selectedIndex].text.toLowerCase()} · urut net sales ${rankYear} terbesar→terkecil. TOTAL tidak menjumlah tahun pembanding; setiap tahun tetap terpisah. Nilai 0 = tidak ada item pada filter, bukan kesalahan pemuatan.`;
+ };
+ const load=async()=>{const t=++token;loaded=true;limit=100;button.disabled=true;result=null;body.replaceChildren(el('div',{class:'empty'},'Memuat perbandingan item antar toko…'));try{
+   const yy=compare.checked?years.slice():[Number(year.value)],dimension=dim.value,stores=scopeIds.map(id=>S.stores.find(s=>s.id===id)).filter(Boolean),columns=stores.flatMap(store=>yy.map(y=>({store,year:y,key:store.id+'|'+y}))),map=new Map();let next=0;
+   await Promise.all(Array.from({length:Math.min(3,columns.length)},async()=>{for(;;){if(!live(t))return;const i=next++;if(i>=columns.length)return;const c=columns[i],rpcDim=dimension==='color'?'product':dimension,key=JSON.stringify([c.store.id,c.year,w,rpcDim]);let rows=cache.get(key);if(!rows){rows=await comparisonRollup(rpcDim,c.year,w,{stores:[c.store.id]});if(!live(t))return;cache.set(key,rows);}if(dimension==='color')rows=storeMatrixColors(rows);for(const row of rows){const r=map.get(row.k)||{name:row.k,values:new Map(),rank:0};r.values.set(c.key,row);map.set(row.k,r);}}}));if(!live(t))return;
+   const rankYear=compare.checked?years.at(-1):Number(year.value),rows=[...map.values()];for(const r of rows)r.rank=columns.filter(c=>c.year===rankYear).reduce((n,c)=>n+N(r.values.get(c.key)?.sales),0);rows.sort((a,b)=>b.rank-a.rank||a.name.localeCompare(b.name,'id'));result={columns,rows,rankYear};
+   if(!columns.length)body.replaceChildren(el('div',{class:'empty'},'Tidak ada toko pada cakupan pembanding ini. Ubah filter atau periksa tanggal buka toko.'));
+   else if(!rows.length)body.replaceChildren(el('div',{class:'empty'},'Tidak ada data item pada toko, brand dan periode ini.'));
+   else paint();
+ }catch(e){if(live(t))body.replaceChildren(el('div',{class:'note warn',role:'alert'},'Gagal memuat perbandingan toko: '+e.message));}finally{if(live(t))button.disabled=false;}};
+ const change=()=>{year.disabled=compare.checked;if(loaded)load();};dim.onchange=change;year.onchange=change;compare.onchange=change;metric.onchange=()=>{if(result)paint();};button.onclick=load;
+ body.append(el('p',{class:'note'},'Klik Muat perbandingan toko. Pilih Bandingkan 3 tahun untuk menampilkan tiga kolom tahun pada setiap toko. Pada HP, geser tabel ke samping untuk melihat seluruh toko.'));
+}
+
 function sumObj(maps,key){ return maps.reduce((s,o)=>s+N(o[key]),0); }
 
 function renderH2H(){
@@ -4797,6 +4872,8 @@ function renderH2H(){
   if(activeProductBrands().length)p.append(el('p',{class:'note'},brandMetricNote()));
   let window;try{window=comparisonWindow(st);}catch(e){p.append(el('div',{class:'note warn',role:'alert'},e.message));return;}
   const {m1,m2}=window,periodText=comparisonLabel(window);if(comparisonDataNote(window))p.append(el('p',{class:'sub'},comparisonDataNote(window)));p.append(el('p',{class:'note'},'Periode aktif: '+periodText+' · '+y1+'/'+y2+'/'+y3+'. Target dan transaksi juga dihitung proporsional pada rentang tanggal.'));
+  appendMonthlyMovement(p,'h2h',st.y,window,S.stores.filter(s=>storeOk(s.id)).map(s=>s.id));
+  appendStoreItemMatrix(p,'h2h',st.y,window,S.stores.filter(s=>storeOk(s.id)).map(s=>s.id));
   const D=h2hData(st.y,m1,m2,window);
   const ids=[...new Set(st.y.flatMap(y=>[...D[y].keys()]))];
   const names=new Map(ids.map(id=>[id,(S.stores.find(s=>s.id===id)||{}).name||String(id)]));
@@ -5006,6 +5083,8 @@ function renderSSSG(){
 
   const idsY2=idsAll.filter(id=>hasY(y2,id)&&hasY(y3,id));    // valid same-window utk y3 vs y2
   const idsFull=idsAll.filter(id=>hasY(y1,id)&&hasY(y3,id));  // valid same-window utk y3 vs y1 (3 tahun)
+  appendMonthlyMovement(p,'sssg',[y1,y2,y3],window,idsFull);
+  appendStoreItemMatrix(p,'sssg',[y1,y2,y3],window,idsFull);
   const T=(y,k,set)=>{if(activeProductBrands().length){if(k==='trx'||k==='val')return null;if(k==='tgt')return brandComparisonTarget(y,window,set);}return set.reduce((s,id)=>s+N(G(y,id,k)),0);};
 
   if(noAnchor.length) p.append(el('div',{class:'note warn'},el('b',{},'Tanggal buka belum tersedia/valid: '),noAnchor.join(', ')+'.'));
