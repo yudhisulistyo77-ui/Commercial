@@ -2379,7 +2379,8 @@ function renderTrx(){
   parkFilters();
   const p=$('#p-trx'); p.innerHTML='';
   p.append(el('div',{class:'phead'},el('div',{},el('h1',{},'Transaksi & AOV'),
-    el('p',{},'Sumber: input manual / upload khusus Transaksi. AOV = nilai transaksi ÷ jumlah transaksi. '+periodLabel()))));
+    el('p',{},'Sumber: data sebelumnya sebagai acuan awal, kemudian input manual / upload khusus Transaksi. AOV = nilai transaksi ÷ jumlah transaksi. '+periodLabel()))));
+  if(S.settings.commercial_trx_baseline_20261009) p.append(el('p',{class:'note'},'Data transaksi sebelumnya telah dipertahankan sebagai acuan awal. Upload Sales Type dan Item Sales tidak mengubah Transaksi / AOV. Pilih toko dan bulan pada form untuk melihat atau memperbarui angka yang sudah tersimpan.'));
   const pf_trx=pageFilterBar('trx'); if(pf_trx) p.append(pf_trx);
   if(S.demo) p.append(demoBanner());
   const t=trxScope();
@@ -2415,9 +2416,8 @@ function renderTrx(){
     groupedBars(MON3,[{name:'Transaksi',color:'var(--s1)',vals:mTrx}],{h:260})));
   p.append(row);
 
-  /* tabel + input — round 10 item 8: tambah kolom AKSI (Edit/Hapus) utk baris is_manual=true. Baris
-     non-manual (dibangun otomatis dari Sales Type lewat rebuild_transaksi_from_raw) tidak boleh dihapus
-     tangan — ditandai pill "Otomatis" netral, tanpa tombol aksi. */
+  /* Data acuan lama telah diadopsi sebagai data yang dapat diperbarui manual.
+     Hanya sumber yang disetujui (is_manual=true) masuk tabel dan perhitungan. */
   window.S_trxEditing=window.S_trxEditing||new Set();
   const tb=el('tbody');
   t.sort((a,b)=>a.month-b.month||a.store_name.localeCompare(b.store_name)).forEach(r=>{
@@ -2472,6 +2472,8 @@ function renderTrx(){
   const aOut=el('span',{class:'pill neu'},'AOV —');
   const upd=()=>{ const cv=N(cIn.value), vv=N(vIn.value); aOut.textContent='AOV '+(cv>0?rp(vv/cv):'—'); };
   cIn.addEventListener('input',upd); vIn.addEventListener('input',upd);
+  const fillSaved=()=>{const saved=manualTrxRows().find(r=>Number(r.store_id)===Number(sSel.value)&&Number(r.year)===Number(S.year)&&Number(r.month)===Number(mSel.value));cIn.value=saved?String(N(saved.jumlah_transaksi)):'';vIn.value=saved?String(N(saved.nilai_transaksi)):'';upd();};
+  sSel.addEventListener('change',fillSaved);mSel.addEventListener('change',fillSaved);fillSaved();
   c.append(el('div',{class:'rowline'},
     el('div',{class:'fld'},el('label',{for:'tx-store'},'Toko'),sSel),
     el('div',{class:'fld'},el('label',{for:'tx-month'},'Bulan'),mSel),
@@ -2480,11 +2482,11 @@ function renderTrx(){
     aOut,
     el('button',{class:'btn pri',onclick:async()=>{
       if(guard()) return;
-      if(!cIn.value && !vIn.value){ toast('Isi jumlah dan nilai transaksi dulu.'); return; }
+      if(cIn.value==='' || vIn.value===''){ toast('Isi jumlah dan nilai transaksi dulu.'); return; }
       try{
         await DB.write('transaksi',[{store_id:Number(sSel.value),year:S.year,month:Number(mSel.value),
           jumlah_transaksi:N(cIn.value),nilai_transaksi:N(vIn.value),is_manual:true}],'store_id,year,month');
-        toast('Tersimpan.'); cIn.value=''; vIn.value=''; upd(); await loadAll();
+        toast('Tersimpan.'); await loadAll(); fillSaved();
       }catch(e){ toast('Gagal: '+e.message); }
     }},'Simpan')));
   p.append(c);
