@@ -1145,7 +1145,8 @@ const FILTER_VISIBILITY={ review:['brand','spv','store'],links:[],schedule:[],ta
    milik halaman yang sedang aktif. Karena dipindah (appendChild), tiap elemen cuma ada 1 instance
    di seluruh dokumen — listener onchange yang lama tetap berfungsi apa adanya. */
 function pageFilterBar(id){
-  if(productFilterPage())syncStoreOptions();
+  syncStoreOptions();
+  const brandLabel=$('#f-brand-label');if(brandLabel)brandLabel.textContent=id==='review'?'Brand toko':'Brand produk';
   const vis=FILTER_VISIBILITY[id]!==undefined?FILTER_VISIBILITY[id]:['year','month','range','brand','spv','store'];
   if(!vis.length) return null;
   /* Ambil referensi & nilai SEBELUM memindah node apa pun: begitu sebuah elemen dipindah ke dalam
@@ -1263,7 +1264,7 @@ function fillFilters(){
     ms.append(el('option',{value:'0'},'Semua (YTD)'));
     MONTHS.forEach((m,i)=>ms.append(el('option',{value:String(i+1)},m)));
   }
-  const brandOpts=[...new Set(S.stores.map(s=>s.brand).filter(Boolean))].sort().map(b=>({value:b,label:b}));
+  const brandOpts=[...new Set([...S.stores.map(s=>s.brand),...(S.brandStores||[]).map(r=>r.brand)].filter(Boolean))].sort().map(b=>({value:b,label:b}));
   const brandSel=(S.brand||'').split(',').filter(Boolean);
   multiSelectDropdown($('#f-brand'), brandOpts, brandSel,
     arr=>{ S.brand=arr.join(','); syncStoreOptions(); S.itemScope=''; render(); },
@@ -1284,8 +1285,8 @@ function storeList(){ return (S.store||'').split(',').filter(Boolean); }
 function spvList(){ return (S.spv||'').split(',').filter(Boolean); }
 function firstStoreId(){ return storeList()[0]||''; }
 function syncStoreOptions(){
-  const bl=productFilterPage()?[]:brandList(), pl=spvList(), prevSel=storeList();
-  const opts=S.stores.filter(s=>(!bl.length||bl.includes(s.brand))&&(!pl.length||pl.includes(s.spv))).map(s=>({value:String(s.id),label:s.name}));
+  const bl=activeProductBrands(), pl=spvList(), prevSel=storeList();
+  const opts=S.stores.filter(s=>(!bl.length||(S.page==='review'?bl.includes(s.brand):storeHasProductBrand(s.id,bl)))&&(!pl.length||pl.includes(s.spv))).map(s=>({value:String(s.id),label:s.name}));
   const keep=prevSel.filter(v=>opts.some(o=>o.value===v));
   S.store=keep.join(',');
   multiSelectDropdown($('#f-store'), opts, keep,
@@ -1339,6 +1340,7 @@ async function loadAll(){
       people,brandTargets,chanTargets,mkt,pica,kpiWeekly,ready:true,demo:false});
     S.rollCache.clear();
     S.settings = Object.fromEntries(settings.map(r=>[r.key,r.value]));
+    S.brandScopeError='';try{S.brandStores=await DB.rpc('commercial_brand_stores_v1',{p_exclude:excludedCats()});}catch(e){S.brandStores=[];S.brandScopeError='Pasang SQL pembaruan brand/toko untuk melengkapi daftar toko dari Item Sales.';}
     fillFilters();
     setConn('Terhubung','ok');
   }catch(e){
@@ -1361,10 +1363,17 @@ function setConn(t,c){ const p=$('#conn'); p.textContent=t; p.className='pill '+
 /* ---------- agregasi ---------- */
 /* satu pintu untuk filter Brand · SPV · Toko */
 function productFilterPage(){return ['item','brand','top'].includes(S.page);}
+function activeProductBrands(){const value=S.page==='item'?S.itemBrand:S.page==='brand'?S.bpBrand:S.page==='top'?S.topBrand:brandList();return selectedCategories(value).map(b=>String(b).trim().toUpperCase());}
+function storeHasProductBrand(sid,brands){
+ if(!brands.length)return true;
+ if((S.brandStores||[]).some(r=>Number(r.store_id)===Number(sid)&&brands.includes(String(r.brand||'').trim().toUpperCase())))return true;
+ return dashAllRows().some(r=>Number(r.store_id)===Number(sid)&&((brands.includes('MAMU')&&N(r.sales_user_mamu)!==0)||(brands.includes('TIGALAPAN')&&(N(r.sales_komersial_tigalapan)!==0||N(r.sales_user_tigalapan)!==0))));
+}
+
 function storeOk(sid){
   const st=S.stores.find(s=>s.id===sid); if(!st) return false;
   const sl=storeList(); if(sl.length && !sl.includes(String(sid))) return false;
-  const bl=productFilterPage()?[]:brandList(); if(bl.length && !bl.includes(st.brand)) return false;
+  const bl=activeProductBrands();if(bl.length&&!(S.page==='review'?bl.includes(st.brand):storeHasProductBrand(sid,bl)))return false;
   const pl=spvList(); if(pl.length && !pl.includes(st.spv)) return false;
   return true;
 }
@@ -1463,7 +1472,7 @@ function periodLabel(){
 /* Label ringkas cakupan Brand/SPV/Toko terpilih — dipakai periodLabel() dan subtitle H2H/SSSG,
    satu titik supaya multi-select SPV (round 18) konsisten di mana pun label ini dirender. */
 function scopeLabel(){
-  const sl=storeList(), bl=productFilterPage()?[]:brandList(), pl=spvList();
+  const sl=storeList(), bl=activeProductBrands(), pl=spvList();
   return sl.length ? (sl.length===1?(S.stores.find(s=>String(s.id)===sl[0])?.name||''):sl.length+' toko')
     : [bl.length?(bl.length===1?bl[0]:bl.length+' brand'):'', pl.length?(pl.length===1?('SPV '+spvLabel(pl[0])):pl.length+' SPV'):''].filter(Boolean).join(' · ') || 'semua toko';
 }
@@ -4570,9 +4579,11 @@ function lastMonthWithData(y){
 /* ---------- rollup item sales (dihitung di database, ringan) ---------- */
 function selectedCategories(value){return Array.isArray(value)?value.filter(Boolean):value?[value]:[];}
 function categoryPicker(id,value,onchange){const box=el('div',{id}),selected=selectedCategories(value);itemCategoryList().then(list=>{if(box.isConnected)multiSelectDropdown(box,[...new Set([...list,...selected])].map(c=>({value:c,label:c})),selected,onchange,{allLabel:'Semua kategori'});});return box;}
-function productArgs(year,m1,m2,brands,categories,stores=scopeStoreIds()){return {p_year:year,p_m1:m1,p_m2:m2,p_stores:stores,p_brands:selectedCategories(brands),p_categories:selectedCategories(categories),p_exclude:excludedCats()};}
+function productArgs(year,m1,m2,brands,categories,stores=scopeStoreIds()){return {p_year:year,p_m1:m1,p_m2:m2,p_stores:stores,p_brands:brands===undefined?activeProductBrands():selectedCategories(brands).map(b=>String(b).trim().toUpperCase()),p_categories:selectedCategories(categories),p_exclude:excludedCats()};}
 async function productRollup(dim,year,m1,m2,o={}){const args={...productArgs(year,m1,m2,o.brand,o.category,o.stores===undefined?scopeStoreIds():o.stores),p_dim:dim,p_limit:o.limit||300};const key='product-v2|'+JSON.stringify(args);if(S.rollCache.has(key))return S.rollCache.get(key);let rows;if(S.demo){const brands=args.p_brands.length?args.p_brands:[null],cats=args.p_categories.length?args.p_categories:[null],map=new Map();for(const brand of brands)for(const category of cats)for(const r of demoRollup(dim,year,m1,m2,brand,category)){const old=map.get(r.k)||{k:r.k,qty:0,refunded:0,sales:0,n_stores:0};old.qty+=r.qty;old.refunded+=r.refunded;old.sales+=r.sales;old.n_stores=Math.max(old.n_stores,r.n_stores||0);map.set(r.k,old);}rows=[...map.values()];}else rows=await DB.rpc('commercial_item_rollup_v1',args);rows=rows.map(r=>({k:r.k,qty:N(r.qty),refunded:N(r.refunded),sales:N(r.sales),n:N(r.n_stores)}));S.rollCache.set(key,rows);return rows;}
 async function rollup(dim,year,m1,m2,o={}){
+  const brands=o.brand===undefined?activeProductBrands():selectedCategories(o.brand);
+  if(brands.length)return productRollup(dim,year,m1,m2,{...o,brand:brands});
   const ids=o.stores===undefined?scopeStoreIds():o.stores, ex=excludedCats();
   const key=JSON.stringify([dim,year,m1,m2,o.brand||null,o.category||null,o.limit||300,ids,ex]);
   if(S.rollCache.has(key)) return S.rollCache.get(key);
@@ -4696,7 +4707,7 @@ function renderTop(){
   const host=el('div',{style:'display:flex;flex-direction:column;gap:18px'});
   p.append(host);
   const run=()=>topBlock(host,{brand:S.topBrand||null,category:S.topCat||null,limit:S.topN,full:true});
-  bsel.onchange=()=>{ S.topBrand=bsel.value; run(); };
+  bsel.onchange=()=>{ S.topBrand=bsel.value; renderTop(); };
   nsel.onchange=()=>{ S.topN=Number(nsel.value)||20; run(); };
 
 
@@ -4770,6 +4781,7 @@ function renderH2H(){
   p.append(el('div',{class:'phead'},el('div',{},el('h1',{},'H2H Sales'),el('p',{},`${y1}/${y2}/${y3} · `+scopeLabel()))));
   const pf_h2h=pageFilterBar('h2h');if(S.demo)p.append(demoBanner());
   p.append(card('Filter & Atur Perbandingan','Periode yang sama untuk ketiga tahun.',comparisonPanel(pf_h2h,comparisonControls(st,'h2h',renderH2H))));
+  if(activeProductBrands().length)p.append(el('p',{class:'note'},'Brand produk memfilter seluruh rekap Item Sales dan mencakup toko yang menjual brand tersebut. Sales total, target, transaksi manual dan AOV tetap merupakan total toko dalam cakupan.'+(S.brandScopeError?' '+S.brandScopeError:'')));
   let window;try{window=comparisonWindow(st);}catch(e){p.append(el('div',{class:'note warn',role:'alert'},e.message));return;}
   const {m1,m2}=window,periodText=comparisonLabel(window);if(comparisonDataNote(window))p.append(el('p',{class:'sub'},comparisonDataNote(window)));p.append(el('p',{class:'note'},'Periode aktif: '+periodText+' · '+y1+'/'+y2+'/'+y3+'. Target dan transaksi juga dihitung proporsional pada rentang tanggal.'));
   const D=h2hData(st.y,m1,m2,window);
@@ -4969,6 +4981,7 @@ function renderSSSG(){
   p.append(el('div',{class:'phead'},el('div',{},el('h1',{},'Same Store Sales Growth'),el('p',{},`${y1}/${y2}/${y3} · Periode yang sama untuk toko pembanding · `+scopeLabel()))));
   const pf=pageFilterBar('sssg');if(S.demo)p.append(demoBanner());
   p.append(card('Filter & Atur Perbandingan','Pilih bulan penuh atau rentang tanggal yang sama pada tiap tahun.',comparisonPanel(pf,comparisonControls(sst,'sssg',renderSSSG))));
+  if(activeProductBrands().length)p.append(el('p',{class:'note'},'Brand produk memfilter seluruh rekap Item Sales dan mencakup toko yang menjual brand tersebut. Sales total, target, transaksi manual dan AOV tetap merupakan total toko dalam cakupan.'+(S.brandScopeError?' '+S.brandScopeError:'')));
   let window;try{window=comparisonWindow(sst);}catch(e){p.append(el('div',{class:'note warn',role:'alert'},e.message));return;}
   const {m1,m2}=window,periodText=comparisonLabel(window),cf={label:periodText};if(comparisonDataNote(window))p.append(el('p',{class:'sub'},comparisonDataNote(window)));p.append(el('p',{class:'note'},'Periode aktif: '+periodText+'. Toko harus sudah buka pada awal periode pembanding agar dibandingkan selama periode yang sama. Tahun sebelum toko buka ditampilkan —. Target dan transaksi mengikuti proporsi hari yang sama.'));
   const D=sssgData([y1,y2,y3],m1,m2,window);
