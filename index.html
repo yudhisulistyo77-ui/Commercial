@@ -5,6 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#bd2579">
 <title>Store Operation — Commercial Departement</title>
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="32x32" href="./assets/cmc-icon-32.png">
+<link rel="apple-touch-icon" sizes="180x180" href="./assets/cmc-icon-180.png">
+<meta name="apple-mobile-web-app-title" content="CMC Commercial">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
 
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap">
@@ -109,6 +115,7 @@ nav button svg{width:17px;height:17px;flex:0 0 auto}
   background:var(--surface);border:1px solid var(--line);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.18);padding:6px;display:none;
   flex-direction:column}
 .msd.open .msd-pop{display:flex}
+.msd-pop::before{content:"";position:absolute;left:0;right:0;top:-8px;height:8px}
 /* Round 18: kotak cari — field tetap di atas, baris foot (Bersihkan/Pilih semua) tetap di bawah, hanya
    daftar opsi (.msd-opts) yang scroll bila panjang. */
 .msd-search{width:100%;box-sizing:border-box;padding:6px 8px;margin-bottom:4px;border:1px solid var(--line);
@@ -1138,13 +1145,17 @@ function go(id){
    pilih lebih dari satu (Tahun, Brand, Toko, dan filter Kategori/Warna di halaman lain) — ganti
    chip-row permanen (round 7) & <select multiple> lama yang kaku. `container` = elemen DOM yang
    akan diisi (biasanya div dalam .fld). `selected` = array string TERKINI (dimutasi in-place
-   supaya caller bisa baca balik tanpa callback tambahan). `onChange(arr)` dipanggil setiap toggle. */
+   supaya caller bisa baca balik tanpa callback tambahan). Pilihan diterapkan sekali saat filter ditutup. */
+let activeMultiSelect=null;
 function multiSelectDropdown(container, options, selected, onChange, opt={}){
   if(!container) return null;
   container.innerHTML='';
   const msd=el('div',{class:'msd'});
+  let dirty=false,leaveTimer=null;
+  const close=()=>{clearTimeout(leaveTimer);msd.classList.remove('open');btn.setAttribute('aria-expanded','false');if(activeMultiSelect?.node===msd)activeMultiSelect=null;if(dirty){dirty=false;onChange(selected.slice());}};
+  const changed=()=>{dirty=true;};
   const lbl=el('span',{class:'lbl'});
-  const btn=el('button',{type:'button',class:'msd-btn'},lbl,
+  const btn=el('button',{type:'button',class:'msd-btn','aria-expanded':'false'},lbl,
     el('svg',{viewBox:'0 0 24 24',width:'11',height:'11',fill:'none',stroke:'currentColor','stroke-width':'3'},
       el('path',{d:'M6 9l6 6 6-6'})));
   const pop=el('div',{class:'msd-pop'});
@@ -1171,7 +1182,7 @@ function multiSelectDropdown(container, options, selected, onChange, opt={}){
       cb.onchange=()=>{
         const i=selected.indexOf(o.value);
         if(cb.checked){ if(i<0) selected.push(o.value); } else if(i>=0) selected.splice(i,1);
-        renderLabel(); onChange(selected.slice());
+        renderLabel(); changed();
       };
       optsHost.append(el('label',{class:'msd-opt'},cb,document.createTextNode(o.label)));
     });
@@ -1188,20 +1199,21 @@ function multiSelectDropdown(container, options, selected, onChange, opt={}){
          kembali ke tampilan awal" (laporan user). Sekarang kedua tombol footer juga mereset kotak cari. */
       pop.append(el('div',{class:'msd-foot'},
         el('button',{type:'button',class:'btn sm',title:'Kosongkan pilihan (tampilkan semua)',
-          onclick:()=>{ selected.length=0; if(searchBox){ searchBox.value=''; q=''; } renderOpts(); renderLabel(); onChange(selected.slice()); }},'✕ Bersihkan'),
-        el('button',{type:'button',class:'btn sm',onclick:()=>{ selected.length=0; options.forEach(o=>selected.push(o.value)); if(searchBox){ searchBox.value=''; q=''; } renderOpts(); renderLabel(); onChange(selected.slice()); }},'Pilih semua')));
+          onclick:()=>{ selected.length=0; if(searchBox){ searchBox.value=''; q=''; } renderOpts(); renderLabel(); changed(); }},'✕ Bersihkan'),
+        el('button',{type:'button',class:'btn sm',onclick:()=>{ selected.length=0; options.forEach(o=>selected.push(o.value)); if(searchBox){ searchBox.value=''; q=''; } renderOpts(); renderLabel(); changed(); }},'Pilih semua')));
     }
   };
   buildPop(); renderLabel();
-  btn.onclick=e=>{ e.stopPropagation(); const willOpen=!msd.classList.contains('open');
-    document.querySelectorAll('.msd.open').forEach(m=>{ if(m!==msd) m.classList.remove('open'); });
-    msd.classList.toggle('open',willOpen);
-    if(willOpen && searchBox) setTimeout(()=>searchBox.focus(),0); };
+  btn.onclick=e=>{e.stopPropagation();if(msd.classList.contains('open')){close();return;}activeMultiSelect?.close();if(!msd.isConnected)return;msd.classList.add('open');btn.setAttribute('aria-expanded','true');activeMultiSelect={node:msd,close};if(searchBox)setTimeout(()=>{if(msd.isConnected&&msd.classList.contains('open'))searchBox.focus();},0);};
+  msd.addEventListener('pointerenter',()=>clearTimeout(leaveTimer));
+  msd.addEventListener('pointerleave',e=>{if(e.pointerType==='mouse'&&msd.classList.contains('open'))leaveTimer=setTimeout(close,120);});
+  msd.addEventListener('keydown',e=>{if(e.key==='Escape'){e.stopPropagation();btn.focus();close();}});
+  msd.addEventListener('focusout',e=>{if(e.relatedTarget&&!msd.contains(e.relatedTarget)&&msd.classList.contains('open'))close();});
   msd.append(btn,pop); container.append(msd);
   return { rebuild:(newOptions,newSelected)=>{ options=newOptions; if(newSelected){ selected.length=0; selected.push(...newSelected); } buildPop(); renderLabel(); } };
 }
 if(!window.__msdDocClick){ window.__msdDocClick=true;
-  document.addEventListener('click',()=>document.querySelectorAll('.msd.open').forEach(m=>m.classList.remove('open'))); }
+  document.addEventListener('click',e=>{if(activeMultiSelect&&!activeMultiSelect.node.contains(e.target))activeMultiSelect.close();}); }
 
 function fillFilters(){
   multiSelectDropdown($('#f-year'),
