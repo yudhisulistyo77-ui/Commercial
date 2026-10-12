@@ -1147,7 +1147,7 @@ const FILTER_VISIBILITY={ review:['brand','spv','store'],links:[],schedule:[],ta
 function pageFilterBar(id){
   syncStoreOptions();
   const brandLabel=$('#f-brand-label');if(brandLabel)brandLabel.textContent=id==='review'?'Brand toko':'Brand produk';
-  const vis=FILTER_VISIBILITY[id]!==undefined?FILTER_VISIBILITY[id]:['year','month','range','brand','spv','store'];
+  const vis=id==='program'&&programIsAov()?['spv','store']:FILTER_VISIBILITY[id]!==undefined?FILTER_VISIBILITY[id]:['year','month','range','brand','spv','store'];
   if(!vis.length) return null;
   /* Ambil referensi & nilai SEBELUM memindah node apa pun: begitu sebuah elemen dipindah ke dalam
      `wrap` yang masih "lepas" (belum di-append ke dokumen), document.querySelector tidak lagi
@@ -1364,7 +1364,7 @@ function setConn(t,c){ const p=$('#conn'); p.textContent=t; p.className='pill '+
 /* ---------- agregasi ---------- */
 /* satu pintu untuk filter Brand · SPV · Toko */
 function productFilterPage(){return ['item','brand','top'].includes(S.page);}
-function activeProductBrands(){const value=S.page==='item'?S.itemBrand:S.page==='brand'?S.bpBrand:S.page==='top'?S.topBrand:brandList();return selectedCategories(value).map(b=>String(b).trim().toUpperCase());}
+function activeProductBrands(){if(programIsAov())return [];const value=S.page==='item'?S.itemBrand:S.page==='brand'?S.bpBrand:S.page==='top'?S.topBrand:brandList();return selectedCategories(value).map(b=>String(b).trim().toUpperCase());}
 function storeHasProductBrand(sid,brands){
  if(!brands.length)return true;
  if((S.brandStores||[]).some(r=>Number(r.store_id)===Number(sid)&&brands.includes(String(r.brand||'').trim().toUpperCase())))return true;
@@ -5319,7 +5319,7 @@ function renderSSSG(){
    disentuh. Ini bukan batasan permanen, melainkan keterbatasan sesi ini. */
 function programsLoad(){
   try{ const raw=S.settings&&S.settings.sales_programs_json; const arr=raw?JSON.parse(raw):[];
-    return Array.isArray(arr)?arr.map(pr=>({id:pr.id,name:pr.name,categories:Array.isArray(pr.categories)?pr.categories:[],items:Array.isArray(pr.items)?pr.items.filter(r=>r&&typeof r.category==='string'&&typeof r.item_name==='string'&&pr.categories?.includes(r.category)).map(r=>({category:r.category,item_name:r.item_name})):null,targets:pr.targets||{}})):[]; }
+    return Array.isArray(arr)?arr.map(pr=>({id:pr.id,name:pr.name,kind:pr.kind==='AOV'?'AOV':'SALES',aovTargets:pr.aovTargets&&typeof pr.aovTargets==='object'&&!Array.isArray(pr.aovTargets)?pr.aovTargets:{},categories:Array.isArray(pr.categories)?pr.categories:[],items:Array.isArray(pr.items)?pr.items.filter(r=>r&&typeof r.category==='string'&&typeof r.item_name==='string'&&pr.categories?.includes(r.category)).map(r=>({category:r.category,item_name:r.item_name})):null,targets:pr.targets||{}})):[]; }
   catch(e){ return []; }
 }
 async function programsSave(arr){ await DB.write('app_settings',[{key:'sales_programs_json',value:JSON.stringify(arr)}],'key'); S.settings.sales_programs_json=JSON.stringify(arr); }
@@ -5365,17 +5365,51 @@ function progCatTarget(targetsObj,prog,cat,y,m){
   if(prog.categories.length===1){ const legacy=t[y+'-'+m]; if(legacy!=null && legacy!=='') return N(legacy); }
   return 0;
 }
+/* AOV programs use approved transaction rows; never infer receipts from Item/Sales Type. */
+function programIsAov(){return S.page==='program'&&S.programSel!=null&&S.programAovActiveId===S.programSel;}
+function programAovTarget(prog,sid,y,m){const t=prog.aovTargets||{},v=t[sid+'|'+y+'-'+m]??t['*|'+y+'-'+m];return v!=null&&v!==''&&Number.isFinite(Number(v))&&Number(v)>0?Number(v):null;}
+function programAovMetric(prog,y,m1,m2,ids){
+ const wanted=new Set(ids.map(Number)),rows=manualTrxRows().filter(r=>r.year===y&&r.month>=m1&&r.month<=m2&&wanted.has(Number(r.store_id))),valid=[],invalid=[],present=new Set();
+ for(const r of rows){const count=Number(r.jumlah_transaksi),value=Number(r.nilai_transaksi);if(r.jumlah_transaksi==null||r.nilai_transaksi==null||!Number.isFinite(count)||!Number.isFinite(value)||count<0||value<0||(count===0&&value>0)){invalid.push(r);continue;}present.add(Number(r.store_id)+'|'+r.month);if(count>0)valid.push({...r,count,value});}
+ const count=valid.reduce((n,r)=>n+r.count,0),value=valid.reduce((n,r)=>n+r.value,0),actual=count>0?value/count:null;let target=null;
+ if(count>0&&valid.every(r=>programAovTarget(prog,r.store_id,y,r.month)!=null))target=valid.reduce((n,r)=>n+programAovTarget(prog,r.store_id,y,r.month)*r.count,0)/count;
+ if(!count&&ids.length){const goals=[];for(const sid of ids)for(let m=m1;m<=m2;m++)goals.push(programAovTarget(prog,sid,y,m));if(goals.length&&goals.every(v=>v!=null&&v===goals[0]))target=goals[0];}
+ return {count:valid.length?count:null,value:valid.length?value:null,actual,target,gap:actual!=null&&target!=null?actual-target:null,achievement:actual!=null&&target>0?actual/target:null,invalid:invalid.length,covered:valid.length,missingInputs:Math.max(0,ids.length*(m2-m1+1)-present.size),missingTargets:valid.filter(r=>programAovTarget(prog,r.store_id,y,r.month)==null).length};
+}
+function renderProgramAov(page,prog,m1,m2){
+ const root=el('div',{id:'program-aov',style:'display:flex;flex-direction:column;gap:14px'});page.append(root);
+ const options=[...new Set([h2hCurrentYear()-2,h2hCurrentYear()-1,h2hCurrentYear(),h2hCurrentYear()+1,...manualTrxRows().map(r=>r.year),...Object.keys(prog.aovTargets||{}).map(k=>Number(k.split('|')[1]?.split('-')[0])).filter(Number.isFinite)])].sort((a,b)=>a-b);
+ S.programAovYears=S.programAovYears||{};const years=(S.programAovYears[prog.id]||[h2hCurrentYear()-2,h2hCurrentYear()-1,h2hCurrentYear()]).slice().sort((a,b)=>a-b),latest=years.at(-1),previous=years.length>1?years.at(-2):latest-1;
+ const ybox=el('div',{id:'aov-year-filter'});multiSelectDropdown(ybox,options.map(y=>({value:String(y),label:String(y)})),years.map(String),arr=>{S.programAovYears[prog.id]=arr.length?arr.map(Number):[h2hCurrentYear()];renderProgram();},{allLabel:'Pilih tahun perbandingan',allowAll:false});root.append(card('Filter tahun AOV','Bulan, SPV dan toko mengikuti filter program; pilih beberapa tahun untuk dibandingkan.',el('div',{class:'fld',style:'max-width:360px'},el('label',{},'Tahun'),ybox)));
+ root.append(el('p',{class:'note'},'AOV = nilai transaksi manual ÷ jumlah transaksi manual. Tidak dihitung dari QTY atau Sales Type. Target periode digabung dengan bobot transaksi yang sama; bila target pada data transaksi belum lengkap, target/gap/achievement gabungan tampil —. Input 0 transaksi tidak menghasilkan AOV.'));
+ const ids=S.stores.filter(s=>storeOk(s.id)).map(s=>s.id),metricCache=new Map(),metric=(y,a=m1,b=m2,stores=ids)=>{const key=JSON.stringify([y,a,b,stores]);if(!metricCache.has(key))metricCache.set(key,programAovMetric(prog,y,a,b,stores));return metricCache.get(key);},cur=metric(latest),prev=metric(previous),growth=cur.actual!=null&&prev.actual>0?(cur.actual-prev.actual)/prev.actual:null;
+ const tiles=el('div',{class:'grid g4'});tiles.append(tile('AOV aktual '+latest,rp(cur.actual),ymLabel(latest,m1,m2),null),tile('Target AOV '+latest,rp(cur.target),'berbobot transaksi periode',null),tile('GAP AOV',rp(cur.gap),cur.gap==null?'target/data belum lengkap':cur.gap>=0?'di atas target':'di bawah target',null),tile('Achievement AOV',achPct(cur.achievement),'aktual ÷ target',cur.achievement));root.append(tiles);
+ const extra=el('div',{class:'grid g4'});extra.append(tile('Transaksi '+latest,int(cur.count),'sumber input/upload transaksi',null),tile('Nilai transaksi '+latest,rp(cur.value),'total nilai transaksi',null),tile('Growth AOV '+latest+'/'+previous,pct(growth),'periode bulan dan toko yang sama',null),tile('Toko berdata',String(ids.filter(id=>metric(latest,m1,m2,[id]).actual!=null).length)+' / '+ids.length,'toko dalam filter',null));root.append(extra);
+ const gaps=years.reduce((n,y)=>n+metric(y).missingInputs,0);if(gaps)root.append(el('p',{class:'note warn'},gaps+' pasangan toko/bulan pada tahun terpilih belum memiliki input transaksi valid. Angka gabungan memakai data valid yang tersedia; lengkapi input untuk perbandingan utuh.'));
+ const invalid=years.reduce((n,y)=>n+metric(y).invalid,0);if(invalid)root.append(el('p',{class:'note warn'},invalid+' baris transaksi tidak valid dikecualikan. Periksa jumlah/nilai transaksi yang kosong, negatif, atau bernilai positif tanpa transaksi.'));if(cur.missingTargets)root.append(el('p',{class:'note warn'},cur.missingTargets+' baris toko/bulan bertransaksi belum mempunyai target AOV. Isi target untuk menampilkan achievement gabungan.'));
+ root.append(card('Perbandingan AOV antar tahun',ymLabel(latest,m1,m2)+' · AOV gabungan menggunakan bobot transaksi',mkTable([H('TAHUN'),H('TRX',{r:1}),H('NILAI TRANSAKSI',{r:1}),H('AOV',{r:1}),H('TARGET AOV',{r:1}),H('GAP',{r:1}),H('ACHIEVEMENT',{r:1}),H('GROWTH VS TAHUN SEBELUMNYA',{r:1})],years.map(y=>{const r=metric(y),p=metric(y-1);return [String(y),int(r.count),rp(r.value),rp(r.actual),rp(r.target),rp(r.gap),pillCell(r.achievement),r.actual!=null&&p.actual>0?growthPill(r.actual,p.actual):'—'];}))));
+ const months=Array.from({length:m2-m1+1},(_,i)=>m1+i),series=years.map((y,i)=>({name:'AOV '+y,color:['var(--s7)','var(--s2)','var(--s1)','var(--s4)'][i%4],vals:months.map(m=>metric(y,m,m).actual)}));root.append(chartCard('AOV bulanan antar tahun','Rp per transaksi · bulan tanpa transaksi tampil — pada tabel',groupedBars(months.map(m=>MON3[m-1]),series,{h:260})));
+ const heads=[H('BULAN'),...years.map(y=>H('AOV '+y,{r:1})),H('TARGET '+latest,{r:1}),H('GAP',{r:1}),H('ACHIEVEMENT',{r:1}),H('GROWTH BULAN SEBELUMNYA',{r:1})];root.append(card('AOV per bulan','Total periode dihitung ulang dari nilai dan transaksi; tidak merata-ratakan AOV bulanan.',mkTable(heads,months.map(m=>{const r=metric(latest,m,m),p=m>m1?metric(latest,m-1,m-1):null;return [MONTHS[m-1],...years.map(y=>rp(metric(y,m,m).actual)),rp(r.target),rp(r.gap),pillCell(r.achievement),r.actual!=null&&p?.actual>0?growthPill(r.actual,p.actual):'—'];}),['TOTAL PERIODE',...years.map(y=>rp(metric(y).actual)),rp(cur.target),rp(cur.gap),pillCell(cur.achievement),'—'])));
+ const stores=S.stores.filter(s=>ids.includes(s.id)).sort((a,b)=>(metric(latest,m1,m2,[b.id]).actual??-1)-(metric(latest,m1,m2,[a.id]).actual??-1));root.append(card('AOV per toko','Diurutkan AOV aktual '+latest+' terbesar→terkecil · target per toko/bulan atau bawaan semua toko',mkTable([H('TOKO',{s:1}),...years.map(y=>H('AOV '+y,{r:1})),H('TRX '+latest,{r:1}),H('TARGET',{r:1}),H('GAP',{r:1}),H('ACHIEVEMENT',{r:1}),H('GROWTH '+latest+'/'+previous,{r:1})],stores.map(s=>{const r=metric(latest,m1,m2,[s.id]),p=metric(previous,m1,m2,[s.id]);return [s.name,...years.map(y=>rp(metric(y,m1,m2,[s.id]).actual)),int(r.count),rp(r.target),rp(r.gap),pillCell(r.achievement),r.actual!=null&&p.actual>0?growthPill(r.actual,p.actual):'—'];}),['TOTAL GABUNGAN',...years.map(y=>rp(metric(y).actual)),int(cur.count),rp(cur.target),rp(cur.gap),pillCell(cur.achievement),growth==null?'—':pct(growth)])));
+ const matrixValue=el('select',{'aria-label':'Indikator matriks AOV'},[['actual','AOV aktual'],['target','Target AOV'],['gap','GAP AOV'],['achievement','Achievement'],['count','Transaksi'],['value','Nilai transaksi']].map(([value,label])=>el('option',{value},label))),matrixBody=el('div',{});root.append(card('Matriks AOV toko × bulan',String(latest)+' · Jan–Des · di luar periode aktif tampil —',el('div',{class:'fld',style:'max-width:250px'},el('label',{},'Indikator'),matrixValue),matrixBody));const paintMatrix=()=>{const k=matrixValue.value,format=v=>k==='achievement'?pillCell(v):k==='count'?int(v):rp(v);matrixBody.replaceChildren(mkTable([H('TOKO',{s:1}),...MON3.map(m=>H(m,{r:1})),H('PERIODE',{r:1})],stores.map(s=>[s.name,...MONTHS.map((_,i)=>i+1<m1||i+1>m2?'—':format(metric(latest,i+1,i+1,[s.id])[k])),format(metric(latest,m1,m2,[s.id])[k])]),['GABUNGAN',...MONTHS.map((_,i)=>i+1<m1||i+1>m2?'—':format(metric(latest,i+1,i+1)[k])),format(cur[k])]));};matrixValue.onchange=paintMatrix;paintMatrix();
+ const editYear=el('select',{id:'aov-target-year'},options.map(y=>el('option',{value:y,selected:y===latest?'':null},String(y)))),editMonth=el('select',{id:'aov-target-month'},MONTHS.map((m,i)=>el('option',{value:i+1,selected:i+1===m2?'':null},m))),editStore=el('select',{id:'aov-target-store'},el('option',{value:'*'},'Bawaan seluruh toko'),S.stores.map(s=>el('option',{value:s.id},s.name))),input=el('input',{id:'aov-target-value',type:'number',min:'0.01',step:'0.01',placeholder:'Target AOV (Rp)'}),hint=el('p',{class:'sub'});
+ const fill=()=>{const key=editStore.value+'|'+editYear.value+'-'+editMonth.value,v=prog.aovTargets?.[key];input.value=v==null?'':String(v);hint.textContent=editStore.value==='*'?'Berlaku untuk seluruh toko yang belum memiliki target khusus pada bulan/tahun ini.':'Target khusus toko menggantikan target bawaan. Kosongkan dan simpan untuk menghapus target khusus.';};editYear.onchange=fill;editMonth.onchange=fill;editStore.onchange=fill;fill();
+ root.append(card('Input target AOV','Target dalam Rupiah per transaksi · kosongkan dan simpan untuk menghapus isian target',el('div',{class:'rowline',style:'flex-wrap:wrap'},...[[editYear,'Tahun'],[editMonth,'Bulan'],[editStore,'Toko'],[input,'Target AOV (Rp)']].map(([control,label])=>el('div',{class:'fld'},el('label',{},label),control)),el('button',{class:'btn pri',onclick:async()=>{if(guard())return;const value=input.value.trim();if(value!==''&&(!Number.isFinite(Number(value))||Number(value)<=0)){toast('Target AOV harus lebih dari 0.');return;}try{const list=programsLoad(),target=list.find(p=>p.id===prog.id);if(!target)throw Error('Program tidak ditemukan.');const key=editStore.value+'|'+editYear.value+'-'+editMonth.value;target.aovTargets=target.aovTargets||{};if(value==='')delete target.aovTargets[key];else target.aovTargets[key]=Number(value);await programsSave(list);toast('Target AOV tersimpan.');renderProgram();}catch(e){toast(e.message);}}},'Simpan target AOV')),hint));
+ const targetRows=Object.entries(prog.aovTargets||{}).map(([key,value])=>{const [sid,period]=key.split('|');return [period,sid==='*'?'Bawaan seluruh toko':S.stores.find(s=>String(s.id)===sid)?.name||sid,rp(value)];}).sort((a,b)=>String(a[0]).localeCompare(String(b[0])));if(targetRows.length)root.append(card('Daftar target AOV tersimpan','Semua periode target program ini',mkTable([H('PERIODE'),H('TOKO'),H('TARGET AOV',{r:1})],targetRows)));
+}
+
 function renderProgram(){
   parkFilters();
   const p=$('#p-program'); p.innerHTML='';
   const programs=programsLoad();
   const y3=h2hCurrentYear(), y2=y3-1, y1=y3-2, years=[y1,y2,y3];
   if(!S.programSel||!programs.find(pr=>pr.id===S.programSel)) S.programSel=programs.length?programs[0].id:null;
+  S.programAovActiveId=programs.find(pr=>pr.id===S.programSel)?.kind==='AOV'?S.programSel:null;
   if(!S.programM1) S.programM1=1;
   if(!S.programM2) S.programM2=lastMonthWithData(y3);
 
   p.append(el('div',{class:'phead'},el('div',{},el('h1',{},'Program Sales'),
-    el('p',{},`Pilih kategori dan semua/sebagian item untuk program bertarget sendiri — realisasi dari Item Sales. Dibandingkan thd tahun berjalan ${y3} vs hingga 2 tahun sebelumnya (${y1}/${y2}), persis seperti H2H.`))));
+    el('p',{},`Program sales item/kategori atau peningkatan AOV, dengan target dan perbandingan kinerja. Program item dibandingkan thd tahun berjalan ${y3} vs hingga 2 tahun sebelumnya (${y1}/${y2}), persis seperti H2H.`))));
   const pf_prog=pageFilterBar('program'); if(pf_prog) p.append(pf_prog);
   if(S.demo) p.append(demoBanner());
 
@@ -5386,9 +5420,9 @@ function renderProgram(){
   /* Round 18: daftar kategori diganti dari chip-toggle (bisa jadi deretan tombol sangat panjang kalau
      kategori banyak) jadi dropdown multi-select reusable (multiSelectDropdown — sama dengan filter
      Brand/SPV/Toko), lebih rapi dan sudah otomatis dapat kotak cari begitu kategori >6. */
-  const createMembers=programMemberPicker();
-  mgCard.append(el('div',{class:'fld'},el('label',{},'Nama program'),nameIn),createMembers.node,
-    el('button',{class:'btn pri',onclick:async()=>{if(guard())return;if(!nameIn.value.trim()){toast('Isi nama programnya dulu.');return;}try{const members=createMembers.value(),arr=programsLoad();arr.push({id:'pr'+Date.now(),name:nameIn.value.trim(),...members,targets:{}});await programsSave(arr);S.programSel=arr.at(-1).id;toast('Program dibuat.');render();}catch(e){toast(e.message);}}},'Buat program'));
+  const createMembers=programMemberPicker(),kindSelect=el('select',{id:'program-kind',onchange:()=>{createMembers.node.style.display=kindSelect.value==='AOV'?'none':'grid';}},el('option',{value:'SALES'},'Sales kategori / item'),el('option',{value:'AOV'},'Peningkatan AOV'));
+  mgCard.append(el('div',{class:'fld'},el('label',{},'Nama program'),nameIn),el('div',{class:'fld',style:'max-width:360px'},el('label',{},'Jenis program'),kindSelect),createMembers.node,
+    el('button',{class:'btn pri',onclick:async()=>{if(guard())return;if(!nameIn.value.trim()){toast('Isi nama programnya dulu.');return;}try{const members=kindSelect.value==='AOV'?{categories:[],items:null}:createMembers.value(),arr=programsLoad();arr.push({id:'pr'+Date.now(),name:nameIn.value.trim(),kind:kindSelect.value,...members,targets:{},aovTargets:{}});await programsSave(arr);S.programSel=arr.at(-1).id;toast('Program dibuat.');render();}catch(e){toast(e.message);}}},'Buat program'));
   p.append(mgCard);
 
   if(!programs.length){ p.append(el('div',{class:'empty'},el('b',{},'Belum ada program.'),'Buat program pertama Anda di kartu di atas.')); return; }
@@ -5400,7 +5434,7 @@ function renderProgram(){
   const mSel=(k,id)=>el('select',{id,onchange:e=>{ S[k]=Number(e.target.value); if(S.programM1>S.programM2){ if(k==='programM1')S.programM2=S.programM1; else S.programM1=S.programM2; } renderProgram(); }},
     MONTHS.map((m,i)=>el('option',{value:String(i+1),selected:S[k]===i+1?'':null},m)));
   const selCard=el('div',{class:'card'});
-  selCard.append(el('header',{},el('h2',{},'Program aktif'),el('span',{class:'sub'},'Kategori: '+prog.categories.join(', '))));
+  selCard.append(el('header',{},el('h2',{},'Program aktif'),el('span',{class:'sub'},prog.kind==='AOV'?'Program peningkatan AOV':'Kategori: '+prog.categories.join(', '))));
   selCard.append(el('div',{class:'rowline',style:'flex-wrap:wrap;align-items:flex-end'},
     el('div',{class:'fld',style:'min-width:220px'},el('label',{},'Program'),progSel),
     el('div',{class:'fld'},el('label',{for:'prg-m1'},'Dari bulan'),mSel('programM1','prg-m1')),
@@ -5411,6 +5445,7 @@ function renderProgram(){
       const arr=programsLoad().filter(pr=>pr.id!==S.programSel);
       try{ await programsSave(arr); S.programSel=null; toast('Program dihapus.'); render(); }catch(e){ toast('Gagal: '+e.message); } }},'Hapus program')));
   p.append(selCard);
+  if(prog.kind==='AOV'){renderProgramAov(p,prog,S.programM1,S.programM2);return;}
   selCard.append(el('p',{class:'note'},Array.isArray(prog.items)?'Cakupan: '+prog.items.length+' item terpilih. Target kategori berlaku untuk cakupan item program ini; sesuaikan target bila pilihan item berubah.':'Cakupan: semua item di kategori terpilih, termasuk upload item baru.'));
   const editMembers=programMemberPicker(prog),editPanel=el('details',{class:'program-member-edit'},el('summary',{},'Edit kategori / item program'),editMembers.node,el('button',{class:'btn pri',onclick:async()=>{if(guard())return;try{const members=editMembers.value(),arr=programsLoad(),target=arr.find(r=>r.id===prog.id);if(!target)throw Error('Program tidak ditemukan.');Object.assign(target,members);await programsSave(arr);S.rollCache.clear();toast('Pilihan item program diperbarui.');renderProgram();}catch(e){toast(e.message);}}},'Simpan pilihan item'));selCard.append(editPanel);
 
