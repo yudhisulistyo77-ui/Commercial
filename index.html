@@ -576,6 +576,30 @@ tr.segsub td{font-size:11px}
 
 .card:has(.msd){overflow:visible}
 </style>
+<style id="global-ui-preferences">/* Consistent neutral surfaces and familiar dashboard controls. */
+:root[data-ui-preset="minimal"]{--accent:#2563eb;--accent-soft:#eaf1ff;--accent2:#4f46e5;--grad:linear-gradient(135deg,#2563eb,#4f46e5);--font-ui:system-ui,-apple-system,"Segoe UI",sans-serif}
+:root[data-ui-preset="minimal"] .tile{background:var(--surface);color:var(--ink);border:1px solid var(--ring);box-shadow:0 2px 8px #0f172a08;border-top:3px solid var(--accent)}
+:root[data-ui-preset="minimal"] .tile::after{display:none}
+:root[data-ui-preset="minimal"] .tile .k,:root[data-ui-preset="minimal"] .tile .m{color:var(--ink-2)}
+:root[data-ui-preset="minimal"] .tile .v{color:var(--ink)}
+:root[data-ui-preset="minimal"] .tile .pill{background:var(--surface-2)}
+:root[data-ui-preset="minimal"] .card{box-shadow:0 2px 10px #0f172a06}
+:root[data-ui-preset="minimal"] #rail{background:var(--surface);border-right:1px solid var(--ring)}
+:root[data-ui-preset="minimal"] #nav button[aria-current="true"]{background:var(--accent-soft);color:var(--accent)}
+:root[data-ui-preset="minimal"] :is(input,select,textarea,.msd-btn):focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+:root[data-ui-density="compact"] .card{padding:16px}
+:root[data-ui-density="compact"] .grid{gap:12px}
+:root[data-ui-density="compact"] .tile{padding:16px;min-height:108px;gap:7px}
+:root[data-ui-density="compact"] .tile .v{font-size:26px}
+:root[data-ui-density="compact"] .card>header{margin-bottom:12px}
+:root[data-ui-density="compact"] :is(td,th){padding-block:9px}
+:root[data-ui-density="comfortable"] .card{padding:22px}
+:root[data-ui-density="comfortable"] .grid{gap:18px}
+:root[data-ui-density="comfortable"] .tile{padding:22px;min-height:136px}
+:root[data-ui-density="comfortable"] :is(td,th){padding-block:12px;font-size:12px}
+:root[data-ui-density="comfortable"] .msd-opt{min-height:38px}
+@media(max-width:620px){:root[data-ui-density] .card{padding:14px}:root[data-ui-density] .tile{min-height:112px}:root[data-ui-density] .msd-opt{min-height:40px}}
+</style>
 </head>
 <body>
 
@@ -590,6 +614,7 @@ tr.segsub td{font-size:11px}
     </div>
     <nav id="nav"></nav>
     <div class="railfoot">
+      <button class="btn sm" id="uiprefsbtn" title="Atur tampilan semua menu">Tampilan</button>
       <button class="btn sm" id="themebtn" title="Ganti tema">Tema</button>
       <button class="btn sm" id="reloadbtn" title="Muat ulang data">Muat ulang</button>
     </div>
@@ -3933,7 +3958,7 @@ function renderSetReal(){
   p.append(el('div',{class:'phead'},el('div',{},el('h1',{},'Pengaturan'),
     el('p',{},'Koneksi, aturan hitung, alias toko, dan database Sales Type.'))));
   if(S.demo) p.append(demoBanner());
-  p.append(connCard());
+  p.append(uiPreferencesCard(),connCard());
   if(!S.ready) return;
   p.append(spvCard());
 
@@ -4741,18 +4766,18 @@ function comparisonInit(key){
  const y=h2hCurrentYear(),m2=S.month||lastMonthWithData(y),m1=S.month||1;
  return {key,mode:'month',m1,m2,cutoffFrom:`${y}-${String(m1).padStart(2,'0')}-01`,cutoffTo:`${y}-${String(m2).padStart(2,'0')}-${String(daysInMonth(y,m2)).padStart(2,'0')}`};
 }
-function h2hInit(){const key='h2h-period-v3';if(S.h2h?.key!==key)S.h2h=comparisonInit(key);S.h2h.y=[h2hCurrentYear()-2,h2hCurrentYear()-1,h2hCurrentYear()];return S.h2h;}
+function h2hInit(){const key='h2h-period-v3';if(S.h2h?.key!==key)S.h2h=comparisonInit(key);if(S.h2h.alignToCurrent===undefined)S.h2h.alignToCurrent=false;S.h2h.y=[h2hCurrentYear()-2,h2hCurrentYear()-1,h2hCurrentYear()];return S.h2h;}
 function comparisonWindow(st){
- if(st.mode!=='range')return {mode:'month',m1:st.m1,m2:st.m2,d1:1,d2:31};
+ if(st.mode!=='range')return {mode:'month',m1:st.m1,m2:st.m2,d1:1,d2:31,alignToCurrent:st.alignToCurrent!==false};
  const parse=value=>{if(!/^\d{4}-\d{2}-\d{2}$/.test(value||''))throw Error('Isi tanggal awal dan akhir rentang.');const [y,m,d]=value.split('-').map(Number);if(m<1||m>12||d<1||d>daysInMonth(y,m))throw Error('Tanggal tidak valid.');return {y,m,d};};
- const a=parse(st.cutoffFrom),b=parse(st.cutoffTo);if(a.y!==b.y)throw Error('Pilih rentang dalam satu tahun; bulan/tanggal yang sama diterapkan ke tiap tahun pembanding.');if(st.cutoffFrom>st.cutoffTo)throw Error('Tanggal awal harus sebelum atau sama dengan tanggal akhir.');return {mode:'range',m1:a.m,m2:b.m,d1:a.d,d2:b.d};
+ const a=parse(st.cutoffFrom),b=parse(st.cutoffTo);if(a.y!==b.y)throw Error('Pilih rentang dalam satu tahun; bulan/tanggal yang sama diterapkan ke tiap tahun pembanding.');if(st.cutoffFrom>st.cutoffTo)throw Error('Tanggal awal harus sebelum atau sama dengan tanggal akhir.');return {mode:'range',m1:a.m,m2:b.m,d1:a.d,d2:b.d,alignToCurrent:st.alignToCurrent!==false};
 }
 function comparisonAvailableDays(y,m){const [cy,cm,cd]=opsToday().split('-').map(Number);if(y===cy&&m===cm)return cd-1;if(y>cy||(y===cy&&m>cm))return 0;return daysInMonth(y,m);}
-function comparisonMonthDays(w,y,m){if(m<w.m1||m>w.m2)return 0;const dim=daysInMonth(y,m),available=comparisonAvailableDays(y,m),[cy,cm,cd]=opsToday().split('-').map(Number),sharedLimit=h2hCurrentYear()===cy?(m>cm?0:m===cm?cd-1:dim):dim,a=m===w.m1?Math.min(w.d1,dim):1,b=Math.min(m===w.m2?Math.min(w.d2,dim):dim,available,sharedLimit);return Math.max(0,b-a+1);}
+function comparisonMonthDays(w,y,m){if(m<w.m1||m>w.m2)return 0;const dim=daysInMonth(y,m),available=comparisonAvailableDays(y,m),[cy,cm,cd]=opsToday().split('-').map(Number),sharedLimit=w.alignToCurrent!==false&&h2hCurrentYear()===cy?(m>cm?0:m===cm?cd-1:dim):dim,a=m===w.m1?Math.min(w.d1,dim):1,b=Math.min(m===w.m2?Math.min(w.d2,dim):dim,available,sharedLimit);return Math.max(0,b-a+1);}
 function comparisonFraction(w,y,m){const source=comparisonAvailableDays(y,m);return source>0?comparisonMonthDays(w,y,m)/source:0;}
 function comparisonTargetFraction(w,y,m){return comparisonMonthDays(w,y,m)/daysInMonth(y,m);}
 function comparisonDays(w,y){let n=0;for(let m=w.m1;m<=w.m2;m++)n+=comparisonMonthDays(w,y,m);return n;}
-function comparisonDataNote(w){const [y,m,d]=opsToday().split('-').map(Number);return h2hCurrentYear()===y&&w.m1<=m&&w.m2>=m?'Data '+MONTHS[m-1]+' tersedia sampai tanggal '+(d-1)+' (WITA); batas tanggal yang sama diterapkan ke tahun pembanding.':'';}
+function comparisonDataNote(w){const [y,m,d]=opsToday().split('-').map(Number);return h2hCurrentYear()===y?'Data tahun berjalan sampai '+(d-1)+' '+MONTHS[m-1]+' '+y+' (WITA). '+(w.alignToCurrent!==false?'Tahun pembanding menggunakan batas bulan/tanggal yang sama.':'Tahun historis ditampilkan sampai akhir rentang yang dipilih, termasuk November–Desember. Growth terhadap tahun berjalan dapat terpengaruh periode yang belum lengkap.'):'';}
 function comparisonLabel(w){return w.mode==='range'?`${w.d1} ${MONTHS[w.m1-1]} – ${w.d2} ${MONTHS[w.m2-1]} (inklusif)`:(w.m1===w.m2?MONTHS[w.m1-1]:MONTHS[w.m1-1]+' – '+MONTHS[w.m2-1])+' (bulan penuh)';}
 function comparisonControls(st,prefix,rerender){
  if(st.mode==='range'){try{const w=comparisonWindow(st);st.m1=w.m1;st.m2=w.m2;}catch(e){}}
@@ -4760,7 +4785,8 @@ function comparisonControls(st,prefix,rerender){
  const month=(k)=>opsSelect(MONTHS.map((n,i)=>[i+1,n]),st[k],{id:prefix+'-'+k,onchange:e=>{st[k]=Number(e.target.value);if(st.m1>st.m2){if(k==='m1')st.m2=st.m1;else st.m1=st.m2;}st.mode='month';st.cutoffFrom=`${y}-${String(st.m1).padStart(2,'0')}-01`;st.cutoffTo=`${y}-${String(st.m2).padStart(2,'0')}-${daysInMonth(y,st.m2)}`;rerender();}});
  const date=k=>opsInput(st[k]||'','date',{id:prefix+(k==='cutoffFrom'?'-cutoff-from':'-cutoff-to'),onchange:e=>{st[k]=e.target.value;st.mode='range';rerender();}});
  const monthly=st.mode!=='range';
- return el('div',{class:'comparison-controls'},el('div',{class:'comparison-grid'},opsField('Hitung berdasarkan',mode),monthly?opsField('Dari bulan',month('m1')):opsField('Dari tanggal',date('cutoffFrom')),monthly?opsField('Sampai bulan',month('m2')):opsField('Sampai tanggal',date('cutoffTo')),el('button',{class:'btn sm',onclick:()=>{Object.assign(st,comparisonInit(st.key));rerender();}},'Reset periode')),
+ return el('div',{class:'comparison-controls'},el('div',{class:'comparison-grid'},opsField('Hitung berdasarkan',mode),monthly?opsField('Dari bulan',month('m1')):opsField('Dari tanggal',date('cutoffFrom')),monthly?opsField('Sampai bulan',month('m2')):opsField('Sampai tanggal',date('cutoffTo')),el('button',{class:'btn sm',onclick:()=>{Object.assign(st,comparisonInit(st.key),{alignToCurrent:prefix!=='h2h'});rerender();}},'Reset periode')),
+ el('label',{style:'display:flex;align-items:center;gap:7px;margin-top:10px;font-size:12px'},el('input',{type:'checkbox',id:prefix+'-align-years',checked:st.alignToCurrent!==false?'':null,style:'width:16px;height:16px;min-height:16px',onchange:e=>{st.alignToCurrent=e.target.checked;rerender();}}),'Samakan batas tahun pembanding dengan tahun berjalan (MTD)'),
  el('details',{class:'comparison-method'},el('summary',{},'Cara hitung · data bulan berjalan sampai kemarin'),el('p',{class:'sub'},'Bulan selesai: total ÷ hari kalender × hari rentang. Bulan berjalan: total MTD ÷ (tanggal hari ini − 1) × hari rentang yang tersedia. Batas data memakai WITA; tanggal awal/akhir termasuk. Target tetap dibagi hari kalender. 29 Februari menjadi 28 Februari pada tahun nonkabisat. Angka rentang merupakan estimasi.')));
 }
 function comparisonPanel(pf,controls){const grid=controls.querySelector('.comparison-grid');if(pf){const scope=[...pf.childNodes];for(let i=scope.length-1;i>=0;i--)grid.prepend(scope[i]);}return controls;
@@ -4802,13 +4828,13 @@ function appendMonthlyMovement(page,kind,years,selectedWindow,selectedIds){
  const signature=()=>JSON.stringify([S.page,activeProductBrands(),spvList(),storeList(),excludedCats()]);const initial=signature();
  const live=t=>host.isConnected&&initial===signature()&&t===token;
  const load=async()=>{const t=++token;loaded=true;runBtn.disabled=true;body.replaceChildren(el('div',{class:'empty'},'Memuat pergerakan bulanan…'));try{
-   const w=full.checked?{mode:'month',m1:1,m2:12,d1:1,d2:31}:{...selectedWindow},y=Number(year.value),dimension=dim.value;
+   const w=full.checked?{mode:'month',m1:1,m2:12,d1:1,d2:31,alignToCurrent:selectedWindow.alignToCurrent!==false}:{...selectedWindow},y=Number(year.value),dimension=dim.value;
    let ids=selectedIds.slice();if(kind==='sssg'&&full.checked){const data=sssgData(years,1,12,w);ids=[...data].filter(([,r])=>years.every(yy=>r.by[yy]!=null)).map(([id])=>id);}
    const source=movementSalesMonths(years,w,ids),monthly=source[y];
    const jobs=[];for(let m=w.m1;m<=w.m2;m++)if(comparisonMonthDays(movementMonthWindow(w,m),y,m)>0)jobs.push(m);
    const itemRows=Array(12).fill(null),rpcDim=['summary','store'].includes(dimension)?'store':dimension==='color'?'product':dimension;
    let next=0;await Promise.all(Array.from({length:Math.min(3,jobs.length)},async()=>{for(;;){if(!live(t))return;const i=next++;if(i>=jobs.length)return;const m=jobs[i],mw=movementMonthWindow(w,m),key=JSON.stringify([y,mw,ids,rpcDim]);let rows=cache.get(key);if(!rows){rows=await comparisonRollup(rpcDim,y,mw,{stores:ids});if(!live(t))return;cache.set(key,rows);}itemRows[m-1]=dimension==='color'?colorRowsFromProducts(rows):rows;}}));if(!live(t))return;
-   const totalAt=(yy,i)=>{const rows=source[yy][i];if(!rows)return null;const total=movementTotal([...rows.values()]);total.days=comparisonMonthDays(movementMonthWindow(w,i+1),yy,i+1);if(activeProductBrands().length)total.tgt=brandComparisonTarget(yy,movementMonthWindow(w,i+1),ids);return movementDerived(total);};
+   const totalAt=(yy,i)=>{const rows=source[yy]?.[i];if(!rows)return null;const total=movementTotal([...rows.values()]);total.days=comparisonMonthDays(movementMonthWindow(w,i+1),yy,i+1);if(activeProductBrands().length)total.tgt=brandComparisonTarget(yy,movementMonthWindow(w,i+1),ids);return movementDerived(total);};
    const summary=MONTHS.map((_,i)=>{let o=totalAt(y,i);if(!o)return null;const items=itemRows[i]||[];o.qty=items.reduce((n,r)=>n+N(r.qty),0);o.refunded=items.reduce((n,r)=>n+N(r.refunded),0);o.itemSales=items.reduce((n,r)=>n+N(r.sales),0);o=movementDerived(o);const prev=totalAt(y-1,i),prev2=totalAt(y-2,i),last=i>0?totalAt(y,i-1):null;o.prev=prev?.sales??null;o.prev2=prev2?.sales??null;o.yoy=o.prev>0?(o.sales-o.prev)/o.prev:null;o.yoy2=o.prev2>0?(o.sales-o.prev2)/o.prev2:null;o.mom=last?.sales>0?(o.sales-last.sales)/last.sales:null;return o;});
    body.innerHTML='';note.textContent=`${y} · ${comparisonLabel(w)} · ${ids.length} toko${kind==='sssg'?' pembanding yang sama untuk tiga tahun':''} · — = di luar periode, bulan belum berjalan, atau rincian sumber belum tersedia. Total rasio dihitung ulang dari total pembilang/penyebut.`;
    const heads=[H(dimension==='summary'?'INDIKATOR':dimension.toUpperCase(),{s:1}),...MON3.map(m=>H(m.toUpperCase(),{r:1})),H('TOTAL / RASIO PERIODE',{r:1})];
@@ -6671,8 +6697,15 @@ function buildDemoExtras(){
 /* =====================================================================
    INIT
    ===================================================================== */
+/* One set of presentation preferences for every menu; data/filter state stays untouched. */
+function applyUiPreferences(value={}){const root=document.documentElement,preset=value.preset==='cmc'?'cmc':'minimal',density=value.density==='comfortable'?'comfortable':'compact';root.dataset.uiPreset=preset;root.dataset.uiDensity=density;save('ui_preset',preset);save('ui_density',density);document.querySelectorAll('.ui-preset-selector').forEach(e=>e.value=preset);document.querySelectorAll('.ui-density-selector').forEach(e=>e.value=density);if(value.theme!==undefined){const theme=['light','dark'].includes(value.theme)?value.theme:'';applyTheme(theme);save('theme',theme);}}
+function uiPreferencesCard(){const root=document.documentElement,preset=el('select',{'aria-label':'Preset tampilan',class:'ui-preset-selector'},[['minimal','Modern minimal'],['cmc','CMC berwarna']].map(([value,label])=>el('option',{value,selected:root.dataset.uiPreset===value?'':null},label))),density=el('select',{'aria-label':'Kepadatan tampilan',class:'ui-density-selector'},[['compact','Ringkas'],['comfortable','Nyaman / presentasi']].map(([value,label])=>el('option',{value,selected:root.dataset.uiDensity===value?'':null},label))),theme=el('select',{'aria-label':'Tema tampilan',class:'ui-theme-selector'},[['','Ikuti sistem'],['light','Terang'],['dark','Gelap']].map(([value,label])=>el('option',{value,selected:(root.getAttribute('data-theme')||'')===value?'':null},label)));const apply=()=>applyUiPreferences({preset:preset.value,density:density.value,theme:theme.value});preset.onchange=apply;density.onchange=apply;theme.onchange=apply;return card('Tampilan aplikasi','Berlaku langsung untuk seluruh menu · tersimpan pada browser/perangkat ini',el('div',{class:'rowline',style:'flex-wrap:wrap'},...[[preset,'Gaya UI'],[density,'Kepadatan'],[theme,'Tema']].map(([control,label])=>el('div',{class:'fld'},el('label',{},label),control))),el('p',{class:'note'},'Preset mengatur kartu, warna, tabel dan kontrol secara konsisten. Struktur menu dan angka data tetap sama. Ukuran kontrol sentuh dan checkbox tetap proporsional.'),el('button',{class:'btn sm',onclick:()=>{applyUiPreferences({preset:'minimal',density:'compact',theme:''});preset.value='minimal';density.value='compact';theme.value='';}},'Reset tampilan'));
+}
+function openUiPreferences(){const {box}=opsModal('Atur tampilan aplikasi');if(innerWidth<=900)$('#rail').classList.remove('open');box.append(uiPreferencesCard());}
+
 function applyTheme(t){ if(t) document.documentElement.setAttribute('data-theme',t);
-  else document.documentElement.removeAttribute('data-theme'); }
+  else document.documentElement.removeAttribute('data-theme');document.querySelectorAll('.ui-theme-selector').forEach(e=>e.value=t||''); }
+$('#uiprefsbtn').onclick=openUiPreferences;
 $('#themebtn').onclick=()=>{
   const cur=document.documentElement.getAttribute('data-theme');
   const next = cur==='dark'?'light':cur==='light'?'':'dark';
@@ -7086,6 +7119,7 @@ function renderUploadReset(){parkFilters();const host=$('#p-uploadreset');host.i
 
 (function init(){
   applyTheme(load('theme')||'');
+  applyUiPreferences({preset:load('ui_preset')||'minimal',density:load('ui_density')||'compact'});
   S.url = load('url') || S.url;
   S.key = load('key') || '';
   buildNav();
