@@ -3455,7 +3455,7 @@ function upCard(title,desc,kind){
   const c=el('div',{class:'card'});
   c.append(el('header',{},el('h2',{},title)));
   c.append(el('p',{style:'margin:0 0 12px;color:var(--ink-2);font-size:12.5px'},desc));
-  c.append(dropZone(kind));
+  if(kind==='target'){const year=el('input',{type:'number',id:'target-upload-year',min:'2000',max:'2100',step:'1',placeholder:'Otomatis dari file',value:S.targetUploadYear||'',style:'max-width:220px',oninput:e=>S.targetUploadYear=e.target.value});c.append(opsField('Tahun target (isi hanya jika file tidak mencantumkan tahun)',year),el('p',{class:'sub'},'Tahun filter aplikasi tidak digunakan untuk menyimpan target. Tahun yang bertentangan akan ditolak sebelum penyimpanan.'));}c.append(dropZone(kind));
   return c;
 }
 function dropZone(kind){
@@ -3608,10 +3608,10 @@ async function handleFiles(files,kind){
   if(!S.ready){ toast('Hubungkan database dulu.'); return; }
   if(!files.length) return;
   logLine(`\n=== ${files.length} file · jenis ${kind} · ${new Date().toLocaleTimeString('id-ID')} ===`);
-  let okN=0, failN=0;
+  let okN=0, failN=0;const targetYears=new Set();
   for(const f of files){
     try{
-      if(kind==='target'){ await ingestTarget(f); okN++; continue; }  // struktur sheet TARGET beda (bukan header-kolom biasa), ditangani sendiri
+      if(kind==='target'){const result=await ingestTarget(f);result.years.forEach(y=>targetYears.add(y));okN++;continue;}  // struktur sheet TARGET beda (bukan header-kolom biasa), ditangani sendiri
       const rows=await readSheet(f,NEED[kind]||[]);
       const inf=rows.info||{};
       logLine(`  ▸ ${f.name}: sheet “${inf.sheet}”, header di baris ${inf.headerRow}, ${int(rows.length)} baris data terbaca`);
@@ -3629,10 +3629,11 @@ async function handleFiles(files,kind){
     try{ await DB.rpc('rebuild_sales_actual',{}); logLine('  → sales_actual dihitung ulang dari mapping'); }
     catch(e){ logLine('  ! gagal hitung ulang: '+e.message); }
   }
+  if(kind==='target'&&targetYears.size===1){S.year=[...targetYears][0];S.years=[S.year];}
   // Sales Type updates the sales numerator; approved receipt counts remain unchanged.
   S.itemScope=''; S.rollCache.clear();
   await loadAll();
-  toast(`${okN} file diproses${failN?', '+failN+' gagal':''}.`);
+  toast(`${okN} file diproses${kind==='target'&&targetYears.size?' · target tahun '+[...targetYears].sort().join(', '):''}${failN?', '+failN+' gagal':''}.`);
 }
 
 /* Toko / bulan / tahun per baris bila ada kolomnya (file gabungan); kalau tidak, dari nama file. */
@@ -6527,57 +6528,40 @@ async function pullSheet(kind,btn){
   }catch(e){ logLine('  ✗ '+e.message); toast('Gagal: '+e.message); }
   btn.disabled=false; btn.textContent=old;
 }
-/* Parser inti sheet TARGET (dipakai baik untuk tarik Drive dulu maupun upload manual).
-   Struktur: row header bulan di baris pertama, lalu section "TOTAL TARGET NAMA TOKO" (section
-   pertama ini headernya ikut di row 0 makanya sec diawali 'TOTAL'), "TARGET KOMERSIAL",
-   "TARGET USER", lalu "TARGET BRAND". */
-function parseTargetAoa(aoa){
-  const hdr=aoa[0]||[]; const per=[];
-  for(let i=1;i<=12;i++){ const t=String(hdr[i]||''); const m=monthFromWord(t.split(/[\s-]+/)[0]); const ym=/(\d{2,4})\s*$/.exec(t);
-    per.push({m:m||i,y:ym?(ym[1].length===2?2000+Number(ym[1]):Number(ym[1])):S.year}); }
-  let sec='TOTAL'; const T=new Map(), BT=[];
-  for(const row of aoa.slice(1)){
-    const nm=String(row[0]||'').trim(), up=nm.toUpperCase(); if(!nm) continue;
-    if(/^TOTAL TARGET/.test(up)){ sec='TOTAL'; continue; } if(up==='TARGET KOMERSIAL'){ sec='KOM'; continue; }
-    if(up==='TARGET USER'){ sec='USER'; continue; } if(up==='TARGET BRAND'){ sec='BRAND'; continue; }
-    if(up==='NAMA TOKO'||up==='TOTAL') continue;
-    if(sec==='BRAND'){ per.forEach((pp,i)=>BT.push({brand:up,year:pp.y,month:pp.m,target:num(row[i+1])})); continue; }
-    if(!sec) continue;
-    const sid=findStore(nm); if(!sid) continue;
-    per.forEach((pp,i)=>{ const k=sid+'|'+pp.y+'|'+pp.m; const o=T.get(k)||{store_id:sid,year:pp.y,month:pp.m,target_total:0,target_komersial:0,target_user:0};
-      const v=num(row[i+1]); if(sec==='TOTAL')o.target_total=v; else if(sec==='KOM')o.target_komersial=v; else o.target_user=v; T.set(k,o); });
-  }
-  /* jaring pengaman: TOTAL TARGET = KOMERSIAL + USER selalu, jadi bila section TOTAL kosong/tidak
-     terbaca (misalnya file manual cuma punya 2 section), tetap hitung dari komersial+user */
-  for(const o of T.values()) if(!o.target_total) o.target_total=o.target_komersial+o.target_user;
-  return {T,BT};
+/* Target dates never fall back to the active application year. */
+function targetYearsIn(value){return [...new Set([...String(value??'').matchAll(/(?<!\d)(20\d{2}|2100)(?!\d)/g)].map(m=>Number(m[1])))];}
+function targetRequestedYear(){const value=String(S.targetUploadYear||'').trim();if(!value)return null;if(!/^\d{4}$/.test(value)||Number(value)<2000||Number(value)>2100)throw Error('Tahun target harus 2000–2100.');return Number(value);}
+function targetPeriodCell(value,numeric=false){
+ if(value instanceof Date&&!isNaN(value))return {m:value.getUTCMonth()+1,y:value.getUTCFullYear()};
+ if(typeof value==='number'&&numeric){if(Number.isInteger(value)&&value>=1&&value<=12)return {m:value,y:null};if(value>20000&&value<80000&&typeof XLSX!=='undefined'&&XLSX.SSF?.parse_date_code){const d=XLSX.SSF.parse_date_code(value);if(d)return {m:d.m,y:d.y};}}
+ const text=String(value??'').trim();if(!text)return null;if(numeric&&/^(?:0?[1-9]|1[0-2])$/.test(text))return {m:Number(text),y:null};const iso=/^(20\d{2})-(\d{1,2})(?:-\d{1,2}(?:T.*)?)?$/.exec(text),local=/^\d{1,2}[/-](\d{1,2})[/-](20\d{2})$/.exec(text);if(iso||local){const m=Number((iso||local)[iso?2:1]),y=Number((iso||local)[iso?1:2]);return m>=1&&m<=12?{m,y}:null;}
+ const months=[...new Set((text.match(/[A-Za-z]+/g)||[]).map(monthFromWord).filter(Boolean))];if(months.length!==1)return null;const years=targetYearsIn(text);if(years.length>1)throw Error('Header target mengandung lebih dari satu tahun: '+text);const short=!years.length?/(?:[^\d])(\d{2})\s*$/.exec(text):null;return {m:months[0],y:years[0]||(short?2000+Number(short[1]):null)};
 }
-async function pullTargets(){
-  const f=await sheetCsvFile('TARGET');
-  const wb=XLSX.read(await f.text(),{type:'string',raw:true});
-  const aoa=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:'',raw:true});
-  const {T,BT}=parseTargetAoa(aoa);
-  if(!T.size) throw new Error('tidak ada baris target yang dikenali');
-  await DB.write('targets',[...T.values()],'store_id,year,month');
-  if(BT.length) await DB.write('brand_targets',BT,'brand,year,month');
-  logLine(`  ✓ TARGET · ${T.size} baris target toko-bulan, ${BT.length} baris target brand`);
+function targetHeaders(aoa){const headers=[];aoa.forEach((row,index)=>{const label=String(row[0]??'').trim();if(findStore(label))return;const numeric=/TARGET|NAMA\s*TOKO|STORE|OUTLET|BULAN|MONTH|^$/i.test(label),columns=[];for(let col=1;col<row.length;col++){const period=targetPeriodCell(row[col],numeric);if(period)columns.push({col,...period});}if(columns.length>=2||(columns.length===1&&numeric))headers.push({index,columns});});return headers;}
+function targetPeriods(aoa,header,context){
+ const fileYears=targetYearsIn(context.fileName),sheetYears=targetYearsIn(context.sheetName),requested=context.year==null?[]:[Number(context.year)],above=aoa.slice(0,header.index+1),titleYears=[...new Set(above.flatMap((row,ri)=>row.flatMap((v,ci)=>{const t=String(v??'').trim();return (ci===0&&/TARGET|TAHUN|YEAR|PERIODE/i.test(t)||ri<header.index&&/TARGET|TAHUN|YEAR|PERIODE|NAMA\s*TOKO|^$/i.test(String(row[0]??'').trim())&&/^20\d{2}$/.test(t))?targetYearsIn(t):[];})))];
+ const constraints=[['nama file',fileYears],['nama sheet',sheetYears],['judul/tahun di sheet',titleYears],['Tahun target yang dipilih',requested]].filter(([,years])=>years.length);for(let a=0;a<constraints.length;a++)for(let b=a+1;b<constraints.length;b++)if(!constraints[a][1].some(y=>constraints[b][1].includes(y)))throw Error('Tahun target bertentangan antara '+constraints[a][0]+' ('+constraints[a][1].join(', ')+') dan '+constraints[b][0]+' ('+constraints[b][1].join(', ')+'). Tidak ada data yang disimpan.');
+ let grouped={};for(const row of aoa.slice(0,header.index)){if(!/TARGET|TAHUN|YEAR|PERIODE|NAMA\s*TOKO|^$/i.test(String(row[0]??'').trim())||findStore(String(row[0]??'').trim()))continue;if(!row.some((v,i)=>i>0&&/^20\d{2}$/.test(String(v??'').trim())))continue;if(row.slice(1).some(v=>String(v??'').trim()&&!/^20\d{2}$/.test(String(v).trim())))continue;let year=null;const next={};for(let col=1;col<=Math.max(...header.columns.map(c=>c.col));col++){const ys=targetYearsIn(row[col]);if(ys.length===1)year=ys[0];if(year)next[col]=year;}if(Object.keys(next).length)grouped=next;}
+ const explicit=header.columns.map(c=>c.y||grouped[c.col]).filter(Boolean),fallback=[...new Set([...explicit,...fileYears,...sheetYears,...titleYears,...requested])],seen=new Set();
+ return header.columns.map(column=>{const year=column.y||grouped[column.col]||(fallback.length===1?fallback[0]:null);if(!year)throw Error('Tahun target tidak jelas pada '+(context.sheetName||'sheet')+'. Cantumkan tahun pada header/nama file, atau isi Tahun target pada kartu upload. Tidak ada data yang disimpan.');if(!Number.isInteger(year)||year<2000||year>2100)throw Error('Tahun target tidak valid: '+year);for(const [label,years] of [['nama file',fileYears],['nama sheet',sheetYears],['judul/tahun di sheet',titleYears],['Tahun target yang dipilih',requested]])if(years.length&&!years.includes(year))throw Error('Tahun target '+year+' pada header bertentangan dengan '+label+' ('+years.join(', ')+'). Perbaiki sumber tahun; tidak ada data yang disimpan.');const key=year+'|'+column.m;if(seen.has(key))throw Error('Kolom bulan/tahun target berulang: '+key);seen.add(key);return {...column,y:year};});
 }
-/* Upload manual file TARGET (xlsx/csv dengan struktur sama seperti tab TARGET) */
-async function ingestTarget(file){
-  const isCsv=/\.csv$/i.test(file.name);
-  const wb=isCsv ? XLSX.read(await file.text(),{type:'string',raw:true}) : XLSX.read(await file.arrayBuffer(),{type:'array'});
-  let best=null;
-  for(const sn of wb.SheetNames){
-    const aoa=XLSX.utils.sheet_to_json(wb.Sheets[sn],{header:1,defval:'',raw:true});
-    if(!aoa.length) continue;
-    const {T,BT}=parseTargetAoa(aoa);
-    if(!best||T.size>best.T.size) best={T,BT,sheet:sn};
-  }
-  if(!best||!best.T.size) throw new Error('tidak ada baris target yang dikenali pada file ini');
-  await DB.write('targets',[...best.T.values()],'store_id,year,month');
-  if(best.BT.length) await DB.write('brand_targets',best.BT,'brand,year,month');
-  logLine(`  ▸ ${file.name}: sheet "${best.sheet}" · ${best.T.size} baris target toko-bulan, ${best.BT.length} baris target brand`);
+function parseTargetAoa(aoa,context={}){
+ const T=new Map(),brands=new Map(),seen=new Map();
+ const marker=aoa.some(r=>/^(?:TOTAL\s+)?TARGET(?:\s|$)/i.test(String(r[0]??'').trim()));if(!marker&&context.allowGeneric===false&&!/TARGET|^20\d{2}$/i.test(context.sheetName||''))return {T,BT:[]};let brandMode=false,potential=false;for(const row of aoa){const label=String(row[0]??'').trim();if(/^(?:TOTAL\s+)?TARGET/i.test(label)){brandMode=/^TARGET BRAND/i.test(label);continue;}if(!label||/^(NAMA TOKO|TOTAL|GRAND TOTAL|TAHUN|YEAR)$/i.test(label))continue;if((brandMode||findStore(label))&&row.slice(1).some(v=>v!=null&&String(v).trim()!==''&&!/^[—–-]$/.test(String(v).trim())))potential=true;}if(!potential)return {T,BT:[]};const headers=targetHeaders(aoa);if(!headers.length)return {T,BT:[]};
+ let sec='TOTAL',periods=[],hi=0;for(let ri=0;ri<aoa.length;ri++){const row=aoa[ri];if(headers[hi]?.index===ri){const label=String(row[0]??'').trim().toUpperCase();if(/^TOTAL TARGET/.test(label))sec='TOTAL';else if(/^TARGET KOMERSIAL(?:\s|$)/.test(label))sec='KOM';else if(/^TARGET USER(?:\s|$)/.test(label))sec='USER';else if(/^TARGET BRAND(?:\s|$)/.test(label))sec='BRAND';periods=targetPeriods(aoa,headers[hi],context);hi++;continue;}const nm=String(row[0]??'').trim(),up=nm.toUpperCase();if(!nm)continue;if(/^TOTAL TARGET/.test(up)){sec='TOTAL';continue;}if(/^TARGET KOMERSIAL(?:\s|$)/.test(up)){sec='KOM';continue;}if(/^TARGET USER(?:\s|$)/.test(up)){sec='USER';continue;}if(/^TARGET BRAND(?:\s|$)/.test(up)){sec='BRAND';continue;}if(!periods.length||/^(NAMA TOKO|TOTAL|GRAND TOTAL)$/.test(up))continue;const sid=sec==='BRAND'?null:findStore(nm);if(sec!=='BRAND'&&!sid)continue;
+ for(const pp of periods){const raw=row[pp.col];if(raw==null||String(raw).trim()===''||/^[—–-]$/.test(String(raw).trim()))continue;const value=num(raw);if(!Number.isFinite(value)||value<0||typeof raw==='string'&&!/^(?:Rp\.?\s*)?[\d\s.,]+$/i.test(raw.trim()))throw Error('Nilai target tidak valid di baris '+(ri+1)+', kolom '+(pp.col+1));const key=(sec==='BRAND'?up:sid)+'|'+pp.y+'|'+pp.m,sourceKey=sec+'|'+key;if(seen.has(sourceKey)&&seen.get(sourceKey)!==value)throw Error('Target ganda dengan nilai berbeda pada '+nm+' '+MONTHS[pp.m-1]+' '+pp.y);seen.set(sourceKey,value);if(sec==='BRAND'){brands.set(key,{brand:up,year:pp.y,month:pp.m,target:value});continue;}const o=T.get(key)||{store_id:sid,year:pp.y,month:pp.m,target_total:0,target_komersial:0,target_user:0};o[sec==='TOTAL'?'target_total':sec==='KOM'?'target_komersial':'target_user']=value;T.set(key,o);}}
+ for(const o of T.values())if(!o.target_total)o.target_total=o.target_komersial+o.target_user;return {T,BT:[...brands.values()]};
 }
+function targetWorkbookPlan(wb,fileName,year=null){
+ const T=new Map(),BT=new Map(),sheets=[];for(const sheetName of wb.SheetNames){const aoa=XLSX.utils.sheet_to_json(wb.Sheets[sheetName],{header:1,defval:'',raw:true}),parsed=parseTargetAoa(aoa,{fileName,sheetName,year,allowGeneric:wb.SheetNames.length===1});if(!parsed.T.size&&!parsed.BT.length)continue;sheets.push(sheetName);for(const [key,value] of parsed.T){if(T.has(key)&&JSON.stringify(T.get(key))!==JSON.stringify(value))throw Error('Beberapa sheet mengisi target toko/bulan/tahun yang sama dengan nilai berbeda. Sisakan sheet yang benar sebelum upload.');T.set(key,value);}for(const value of parsed.BT){const key=value.brand+'|'+value.year+'|'+value.month;if(BT.has(key)&&BT.get(key).target!==value.target)throw Error('Target brand ganda berbeda antar-sheet.');BT.set(key,value);}}
+ if(!T.size&&!BT.size)throw Error('Tidak ada baris target yang dikenali. Gunakan struktur TARGET dengan header bulan dan nama toko/alias yang sesuai.');return {T,BT:[...BT.values()],sheets,years:[...new Set([...T.values(),...BT.values()].map(r=>r.year))].sort()};
+}
+async function targetSavePlan(plan,fileName){
+ logLine('  ▸ '+fileName+' · sheet '+plan.sheets.join(', ')+' · TAHUN TARGET '+plan.years.join(', ')+' · '+plan.T.size+' baris toko-bulan, '+plan.BT.length+' baris brand');
+ if(plan.T.size)await DB.write('targets',[...plan.T.values()],'store_id,year,month');if(plan.BT.length)await DB.write('brand_targets',plan.BT,'brand,year,month');return plan;
+}
+async function pullTargets(){const f=await sheetCsvFile('TARGET'),wb=XLSX.read(await f.text(),{type:'string',raw:true}),plan=await targetSavePlan(targetWorkbookPlan(wb,f.name,targetRequestedYear()),f.name);if(plan.years.length===1){S.year=plan.years[0];S.years=[S.year];}return plan;}
+async function ingestTarget(file){const csv=/\.csv$/i.test(file.name),wb=csv?XLSX.read(await file.text(),{type:'string',raw:true}):XLSX.read(await file.arrayBuffer(),{type:'array'});return targetSavePlan(targetWorkbookPlan(wb,file.name,targetRequestedYear()),file.name);}
 async function pullSpv(){
   const f=await sheetCsvFile('MAPING SPV'); const rows=await readSheet(f,['SPV AREA','STORE NAME']);
   if(!rows.length) throw new Error('tab MAPING SPV kosong');
