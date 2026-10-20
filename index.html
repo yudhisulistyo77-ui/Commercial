@@ -4730,13 +4730,16 @@ function comparisonCutoffKey(y,m){return 'commercial-sales-through-v13|'+S.url+'
 function comparisonFileDates(name){const out=[];for(const match of String(name||'').matchAll(/(?<!\d)(?:(20\d{2})[-_](\d{2})[-_](\d{2})|(\d{2})[-_](\d{2})[-_](20\d{2}))(?!\d)/g)){const date=match[1]?match[1]+'-'+match[2]+'-'+match[3]:match[6]+'-'+match[5]+'-'+match[4];if(Number.isFinite(Date.parse(date+'T00:00Z'))&&new Date(date+'T00:00Z').toISOString().slice(0,10)===date)out.push(date);}return out;}
 let comparisonCoverageCache=null;
 function comparisonSalesThrough(y,m){
- if(!comparisonCurrentMonth(y,m))return null;const prefix=y+'-'+String(m).padStart(2,'0')+'-',yesterday=bazarDateShift(opsToday(),-1);let saved;try{saved=localStorage.getItem(comparisonCutoffKey(y,m));}catch{}if(saved!==null&&saved!==undefined)return saved&&saved.startsWith(prefix)&&saved<=yesterday?saved:null;
- const cacheKey=[S.url,S.brand,S.store,S.spv,opsToday()].join('|');if(comparisonCoverageCache?.key===cacheKey&&comparisonCoverageCache.logs===S.logs&&comparisonCoverageCache.dash===S.dashAll&&comparisonCoverageCache.stores===S.stores)return comparisonCoverageCache.value;const remember=value=>{comparisonCoverageCache={key:cacheKey,logs:S.logs,dash:S.dashAll,stores:S.stores,value};return value;};
+ if(!comparisonCurrentMonth(y,m))return null;
+ const today=opsToday(),prefix=y+'-'+String(m).padStart(2,'0')+'-',yesterday=bazarDateShift(today,-1);
+ const cacheKey=[S.url,S.brand,S.store,S.spv,today].join('|');if(comparisonCoverageCache?.key===cacheKey&&comparisonCoverageCache.logs===S.logs&&comparisonCoverageCache.dash===S.dashAll&&comparisonCoverageCache.stores===S.stores)return comparisonCoverageCache.value;const remember=value=>{comparisonCoverageCache={key:cacheKey,logs:S.logs,dash:S.dashAll,stores:S.stores,value};return value;};
+ let saved;try{saved=localStorage.getItem(comparisonCutoffKey(y,m));}catch{}if(saved!==null&&saved!==undefined)return remember(saved&&saved.startsWith(prefix)&&saved<=yesterday?saved:null);
  const ids=S.stores.filter(store=>storeOk(store.id)&&S.dashAll.some(r=>r.year===y&&r.month===m&&r.store_id===store.id)).map(store=>store.id),ends=[];let sawDated=false;for(const id of ids){const logs=(S.logs||[]).filter(r=>r.kind==='SALES_TYPE'&&r.status==='OK'&&Number(r.year)===y&&Number(r.month)===m&&Number(r.store_id)===id).sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||'')));const dates=[...new Set(comparisonFileDates(logs[0]?.file_name))].sort(),end=dates.length===2&&dates[0]===prefix+'01'&&dates[1].startsWith(prefix)&&dates[1]<=yesterday?dates[1]:null;if(dates.length)sawDated=true;ends.push(end||null);}if(ends.length&&ends.every(Boolean)&&new Set(ends).size===1)return remember(ends[0]);if(sawDated)return remember(null);
  /* Initial coverage explicitly supplied by the user; newer dated uploads take precedence. */
  return remember(y===2026&&m===10&&yesterday>='2026-10-18'?'2026-10-18':null);
 }
-function comparisonSetSalesThrough(value){const [y,m]=opsToday().split('-').map(Number);if(value&&(!/^\d{4}-\d{2}-\d{2}$/.test(value)||!value.startsWith(y+'-'+String(m).padStart(2,'0')+'-')||value>=opsToday()))throw Error('Tanggal data harus dalam bulan berjalan dan paling lambat kemarin.');try{localStorage.setItem(comparisonCutoffKey(y,m),value);}catch{throw Error('Tanggal data tidak dapat disimpan pada browser ini.');}S.rollCache.clear();}
+function comparisonSetSalesThrough(value){const [y,m]=opsToday().split('-').map(Number);if(value&&(!/^\d{4}-\d{2}-\d{2}$/.test(value)||!value.startsWith(y+'-'+String(m).padStart(2,'0')+'-')||value>=opsToday()))throw Error('Tanggal data harus dalam bulan berjalan dan paling lambat kemarin.');try{localStorage.setItem(comparisonCutoffKey(y,m),value);}catch{throw Error('Tanggal data tidak dapat disimpan pada browser ini.');}comparisonCoverageCache=null;S.rollCache.clear();}
+window.addEventListener('storage',e=>{if(e.key===null||e.key.startsWith('commercial-sales-through-v13|')){comparisonCoverageCache=null;S.rollCache.clear();}});
 function comparisonSourceDays(w,y,m){if(comparisonUsesCalendar(w)&&comparisonCurrentMonth(y,m)){const date=comparisonSalesThrough(y,m);return date?Number(date.slice(8)):null;}return comparisonAvailableDays(y,m);}
 function comparisonUsesCalendar(w){return w.calendarBase!==false;}
 function comparisonRoundUp(value){const n=N(value),a=Math.abs(n);return Math.sign(n)*Math.ceil(a-a*Number.EPSILON*4);}
@@ -4768,7 +4771,13 @@ function h2hData(years,m1,m2,window=null){
  if(!activeProductBrands().length)manualTrxRows().forEach(r=>{if(r.year!==y||!storeOk(r.store_id))return;const f=comparisonFraction(w,y,r.month);if(!f)return;const o=get(r.store_id);o.trx+=comparisonSalesValue(r.jumlah_transaksi,w,y,r.month);o.val+=comparisonSalesValue(r.nilai_transaksi,w,y,r.month);if(r.jumlah_transaksi==null||(r.jumlah_transaksi===0&&r.nilai_transaksi>0))o.missingTrx=true;if(r.nilai_transaksi==null)o.missingTrxSales=true;});map.forEach(o=>{o.tgtDays=o.tgt==null?null:comparisonTargetDays(w,y)>0?o.tgt/comparisonTargetDays(w,y):0;if(o.missingTrx)o.trx=null;if(o.missingTrxSales)o.val=null;});out[y]=map;}
  return out;
 }
-async function comparisonItemRows(dim,year,m1,m2,o={}){if(S.demo)return rollup(dim,year,m1,m2,o);const args={...productArgs(year,m1,m2,o.brand,o.category,o.stores),p_dim:dim},key='comparison-full-v10|'+JSON.stringify(args);if(S.rollCache.has(key))return S.rollCache.get(key);const rows=await DB.rpc('commercial_comparison_rollup_v10',args);if(!Array.isArray(rows))throw Error('Hasil rincian tidak valid; pasang SQL H2H-BAZAR-V10.sql.');const data=rows.map(r=>({k:String(r.k??'(Tanpa nama)'),qty:N(r.qty),refunded:N(r.refunded),sales:N(r.sales),n:N(r.n_stores)}));S.rollCache.set(key,data);return data;}
+/* Share pending requests as well as completed results. A cleared cache must stay cleared. */
+function comparisonCachedRows(key,load){
+ if(S.rollCache.has(key))return Promise.resolve(S.rollCache.get(key));
+ const cache=S.rollCache,pending=Promise.resolve().then(load).then(rows=>{if(cache===S.rollCache&&cache.get(key)===pending)cache.set(key,rows);return rows;},error=>{if(cache.get(key)===pending)cache.delete(key);throw error;});
+ cache.set(key,pending);return pending;
+}
+async function comparisonItemRows(dim,year,m1,m2,o={}){if(S.demo)return rollup(dim,year,m1,m2,o);const args={...productArgs(year,m1,m2,o.brand,o.category,o.stores),p_dim:dim},key='comparison-full-v10|'+JSON.stringify(args);return comparisonCachedRows(key,async()=>{const rows=await DB.rpc('commercial_comparison_rollup_v10',args);if(!Array.isArray(rows))throw Error('Hasil rincian tidak valid; pasang SQL H2H-BAZAR-V10.sql.');return rows.map(r=>({k:String(r.k??'(Tanpa nama)'),qty:N(r.qty),refunded:N(r.refunded),sales:N(r.sales),n:N(r.n_stores)}));});}
 function appendComparisonDetailTables(host,res,years,w,same=false){
  const current=years.at(-1),prefix=same?'sssg':'h2h',fullRows=dim=>[...mergeRoll(res[dim]).entries()].sort((a,b)=>N(b[1].at(-1)?.sales)-N(a[1].at(-1)?.sales)||a[0].localeCompare(b[0],'id'));
  function table(dim,arr,rankYear=current){const index=years.indexOf(rankYear),max=arr.reduce((n,[,v])=>Math.max(n,N(v[index]?.sales)),0),rows=arr.map(([key,values])=>{const n=values.map(v=>v?N(v.sales):0);return [dim==='color'?colorChip(key):key,...n.map((v,i)=>i===index?magCell(v,max,compact(v)):compact(v)),growthPill(n[2],n[1]),gapTxt(n[2],n[1]),growthPill(n[2],n[0]),gapTxt(n[2],n[0])];}),totals=years.map((_,i)=>arr.reduce((n,[,v])=>n+N(v[i]?.sales),0));return mkTable([H({store:'Toko',category:'Kategori',product:'Produk',color:'Warna',size:'Ukuran'}[dim],{s:1}),...years.map(y=>H('NET SALES '+y,{r:1})),H('Δ '+years[2]+'/'+years[1],{r:1}),H('GAP '+years[2]+'/'+years[1],{r:1}),H('Δ '+years[2]+'/'+years[0],{r:1}),H('GAP '+years[2]+'/'+years[0],{r:1})],rows,['TOTAL BARIS',...totals.map(v=>compact(v)),growthPill(totals[2],totals[1]),gapTxt(totals[2],totals[1]),growthPill(totals[2],totals[0]),gapTxt(totals[2],totals[0])]);}
@@ -4959,6 +4968,7 @@ function renderH2H(){
         const res=await Promise.all(st.y.map(y=>comparisonRollup('store',y,window,{limit:60})));
         st.y.forEach((y,i)=>{ units[y]=new Map(res[i].map(r=>[r.k,r.qty])); });
       }catch(e){ st.y.forEach(y=>units[y]=new Map()); }
+      if(!trxHost.isConnected||S.page!=='h2h')return;
       trxHost.innerHTML='';
       const aov=(y,id)=>{ const c=G(y,id,'trx'); const v=G(y,id,'val');return c>0&&v!=null?v/c:null; };
       const upt=(y,id)=>{ const c=G(y,id,'trx'), u=units[y].get(names.get(id)); return (c>0&&u!=null)?u/c:null; };
@@ -5038,10 +5048,11 @@ function renderH2H(){
          kolom product_master.warna (akar masalah "Top Color 0" utk MAMU). */
       const dims=['store','product','size','category'];
       const res={}; await Promise.all(dims.map(async d=>{ res[d]=await Promise.all(st.y.map(y=>comparisonRollup(d,y,window,{limit:d==='product'?400:200}))); }));
+      if(!host.isConnected||S.page!=='h2h')return;
       res.color=res.product.map(yearRows=>colorRowsFromProducts(yearRows,true));
       host.innerHTML='';
       if(host.isConnected&&S.page==='h2h')appendComparisonDetailTables(host,res,st.y,window);
-    }catch(e){ host.innerHTML=''; host.append(el('div',{class:'note warn'},'Gagal memuat item sales: '+e.message+' — jalankan migrasi database terbaru.')); }
+    }catch(e){ if(!host.isConnected||S.page!=='h2h')return;host.innerHTML=''; host.append(el('div',{class:'note warn'},'Gagal memuat item sales: '+e.message+' — jalankan migrasi database terbaru.')); }
   })();
 }
 
@@ -5145,6 +5156,7 @@ function renderSSSG(){
         const res=await Promise.all([y1,y2,y3].map(y=>comparisonRollup('store',y,window,{stores:idsAll.filter(id=>hasY(y,id)),limit:60})));
         [y1,y2,y3].forEach((y,i)=>{ units[y]=new Map(res[i].map(r=>[r.k,r.qty])); });
       }catch(e){ [y1,y2,y3].forEach(y=>units[y]=new Map()); }
+      if(!trxHost.isConnected||S.page!=='sssg')return;
       trxHost.innerHTML='';
       const aov=(y,id)=>{ const c=G(y,id,'trx'); const v=G(y,id,'val');return c>0&&v!=null?v/c:null; };
       const upt=(y,id)=>{ const c=G(y,id,'trx'), u=units[y].get(names.get(id)); return (c>0&&u!=null)?u/c:null; };
@@ -5251,10 +5263,11 @@ function renderSSSG(){
       /* round 22: dim 'color' dihitung client-side dari dim 'product' — lihat colorRowsFromProducts. */
       const dims=['store','category','product','size'];
       const res={}; await Promise.all(dims.map(async d=>{ res[d]=await Promise.all([y1,y2,y3].map(y=>comparisonRollup(d,y,window,{limit:d==='product'?400:d==='store'?60:40,stores:idsFull}))); }));
+      if(!host.isConnected||S.page!=='sssg')return;
       res.color=res.product.map(yearRows=>colorRowsFromProducts(yearRows,true));
       host.innerHTML='';
       if(host.isConnected&&S.page==='sssg')appendComparisonDetailTables(host,res,[y1,y2,y3],window,true);
-    }catch(e){ host.innerHTML=''; host.append(el('div',{class:'note warn'},'Gagal memuat item sales: '+e.message)); }
+    }catch(e){ if(!host.isConnected||S.page!=='sssg')return;host.innerHTML=''; host.append(el('div',{class:'note warn'},'Gagal memuat item sales: '+e.message)); }
   })();
 }
 
@@ -6546,7 +6559,10 @@ async function opsRemove(type,id){const key=OPS_PREFIX+type+'_'+id;if(S.demo){co
 async function dbInsertOne(table,body){const r=await fetch(S.url.replace(/\/$/,'')+'/rest/v1/'+table,{method:'POST',headers:DB.h({Prefer:'return=representation'}),body:JSON.stringify(body)});if(!r.ok)throw Error('['+r.status+'] '+(await r.text()).slice(0,200));const rows=await r.json();if(!rows[0]?.id)throw Error('Database tidak mengembalikan ID. Pastikan izin SELECT tabel tersedia.');return rows[0];}
 function picaProgress(x){const n=opsGet('pica',String(x.id))?.progress;return typeof n==='number'&&Number.isFinite(n)?Math.min(100,Math.max(0,n)):(x.status==='DONE'?100:null);}
 function isoWeek(value){if(!/^\d{4}-\d{2}-\d{2}$/.test(value||''))return '—';const d=new Date(value+'T00:00:00Z');if(isNaN(d))return '—';d.setUTCDate(d.getUTCDate()+4-(d.getUTCDay()||7));const y=d.getUTCFullYear(),w=Math.ceil((((d-new Date(Date.UTC(y,0,1)))/86400000)+1)/7);return y+' · WEEK '+String(w).padStart(2,'0');}
-function opsToday(){return new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Makassar',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());}
+/* Reuse the WITA formatter across calculations; refresh the date at each new second. */
+const OPS_DATE_FORMATTER=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Makassar',year:'numeric',month:'2-digit',day:'2-digit'});
+let opsDateSecond=-1,opsDateValue='';
+function opsToday(){const now=Date.now(),second=Math.floor(now/1000);if(second!==opsDateSecond){opsDateValue=OPS_DATE_FORMATTER.format(new Date(now));opsDateSecond=second;}return opsDateValue;}
 function addDate(d,n){const x=new Date(d+'T12:00:00Z');x.setUTCDate(x.getUTCDate()+n);return x.toISOString().slice(0,10);}
 function validUrl(value){try{const u=new URL(value);return ['https:','http:'].includes(u.protocol)?u.href:null;}catch{return null;}}
 function opsModal(title,onClose=null){const box=el('div',{class:'box ops-form'}),modal=el('div',{class:'modal'},box);box.append(el('div',{class:'rowline'},el('h2',{},title),el('span',{class:'spacer'}),el('button',{class:'btn',onclick:()=>onClose?onClose():modal.remove(),'aria-label':'Tutup'},'✕')));document.body.append(modal);return {box,modal};}
