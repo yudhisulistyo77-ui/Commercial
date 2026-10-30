@@ -2626,6 +2626,18 @@ function kpiTabs(active){
   return el('div',{class:'tbar',style:'margin-bottom:4px'},tabs.map(([k,t])=>
     el('button',{class:'btn sm'+(active===k?' pri':''),onclick:()=>{ S.kpiTab=k; renderKpi(); }},t)));
 }
+/* V17: manually declared KPI coverage date, independent of save time and other periods. */
+function kpiUpdateContext(year=S.year,month=null,scope=null){const spv=S.kpiTab==='spv',y=Number(year),m=Number(month||S.month||(spv||S.kpiTab==='weekly'?Number(opsToday().slice(5,7)):lastMonthWithData(y))),area=scope??(spv?(KPI_SPV.selected||'spv-all'):'dept');return {year:y,month:m,scope:area,key:'kpi_data_update_v17_'+y+'_'+m+'_'+encodeURIComponent(area)};}
+function kpiUpdateValue(context){const raw=S.demo?opsDemoSettings()[context.key]:S.settings[context.key];try{const value=typeof raw==='string'?JSON.parse(raw):raw;return typeof value?.date==='string'?value.date:'';}catch{return '';}}
+function kpiUpdateDateText(context){const value=kpiUpdateValue(context);if(!value)return 'Belum diisi';return new Intl.DateTimeFormat('id-ID',{timeZone:'UTC',day:'2-digit',month:'long',year:'numeric'}).format(new Date(value+'T00:00:00Z'));}
+function kpiValidateUpdateDate(value){if(value==='')return;if(!/^\d{4}-\d{2}-\d{2}$/.test(value)||!Number.isFinite(Date.parse(value+'T00:00:00Z'))||new Date(value+'T00:00:00Z').toISOString().slice(0,10)!==value||value>opsToday())throw Error('Isi tanggal data yang valid, paling lambat hari ini.');}
+async function kpiSaveUpdateDate(context,date){kpiValidateUpdateDate(date);const value=JSON.stringify({date,year:context.year,month:context.month,scope:context.scope,updated_at:new Date().toISOString()});if(S.demo){const settings=opsDemoSettings();settings[context.key]=value;localStorage.setItem('sc_ops_demo',JSON.stringify(settings));}else{await masterVerify();await DB.write('app_settings',[{key:context.key,value}],'key');S.settings[context.key]=value;}return date;}
+async function kpiEditUpdateDate(context){
+ if(!S.demo&&!MASTER.verified){try{await masterResume();}catch{}if(!MASTER.verified){const login=opsModal('Masuk PIN untuk mengubah tanggal update KPI');login.box.append(masterLoginForm(()=>{login.modal.remove();kpiEditUpdateDate(context);}).node);return;}}
+ const {box,modal}=opsModal('Tanggal data KPI'),form=el('form',{}),date=opsInput(kpiUpdateValue(context),'date',{'aria-label':'Tanggal update data KPI',max:opsToday()}),error=el('p',{class:'note warn',role:'alert'}),save=el('button',{type:'submit',class:'btn pri'},'Simpan tanggal update');form.append(el('p',{class:'note'},MONTHS[context.month-1]+' '+context.year+' · '+(context.scope==='dept'?'KPI Departemen':context.scope==='spv-all'?'Semua SPV':context.scope)+'. Tanggal diisi manual sesuai cakupan data; tidak mengubah perhitungan KPI.'),opsField('Data update per tanggal',date),el('p',{class:'sub'},'Kosongkan untuk menghapus keterangan tanggal pada periode ini.'),error,save);form.addEventListener('submit',async e=>{e.preventDefault();save.disabled=true;error.textContent='';try{await kpiSaveUpdateDate(context,date.value);modal.remove();renderKpi();toast('Tanggal update KPI tersimpan.');}catch(err){error.textContent=err.message;save.disabled=false;}});box.append(form);
+}
+function kpiUpdateBanner(context=kpiUpdateContext(),editable=true){const area=context.scope==='dept'?'KPI Departemen':context.scope==='spv-all'?'Semua SPV':context.scope;return el('div',{class:'note rowline kpi-data-update',style:'display:flex;align-items:center;gap:10px;flex-wrap:wrap','data-kpi-update-key':context.key},el('div',{},el('strong',{'data-kpi-update-label':''},'Data update per tanggal: '+kpiUpdateDateText(context)),el('div',{class:'sub'},MONTHS[context.month-1]+' '+context.year+' · '+area)),editable?el('button',{class:'btn sm',type:'button',onclick:()=>kpiEditUpdateDate(context)},'Edit tanggal update'):null);}
+
 function renderKpi(){
   parkFilters();
   const p=$('#p-kpi'); p.innerHTML='';
@@ -2633,7 +2645,7 @@ function renderKpi(){
     el('p',{},(S.kpiTab==='spv'?'Evaluasi bulanan dan YTD berdasarkan KPI turunan untuk masing-masing SPV. ':'Replikasi template Scorecard KPI Commercial — Input KPI, Weekly, Dashboard dan Pengaturan saling terhubung. ')+periodLabel()))));
   const pf_kpi=pageFilterBar(S.kpiTab==='spv'?'kpi_spv':'kpi'); if(pf_kpi) p.append(pf_kpi);
   if(S.demo) p.append(demoBanner());
-  p.append(kpiTabs(S.kpiTab));
+  p.append(kpiUpdateBanner(),kpiTabs(S.kpiTab));
   if(S.kpiTab==='spv'){renderKpiSpv(p);return;}
   if(!S.metrics.length && S.kpiTab!=='settings'){
     p.append(el('div',{class:'empty'},el('b',{},'Belum ada metrik KPI'),
@@ -2733,8 +2745,8 @@ function renderKpiInput(p){
       el('td',{class:'sticky1'},cells[1], r.autoRevenue?el('span',{class:'pill ok',style:'margin-left:5px'},'otomatis · Sales'):(r.auto?el('span',{class:'pill neu',style:'margin-left:5px'},'auto'):null)),
       el('td',{},cells[2]), el('td',{},cells[3]), el('td',{},cells[4]),
       el('td',{class:'r'},cells[5]), el('td',{},cells[6]), el('td',{},cells[7]), el('td',{},cells[8]),
-      el('td',{class:'r'},r.target==null?'—':fmtKpi(r.target,mt.unit)),
-      el('td',{class:'r'},r.actual==null?'—':fmtKpi(r.actual,mt.unit)),
+      el('td',{class:'r'},r.target==null?'—':fmtKpi(r.target,mt.unit,mt)),
+      el('td',{class:'r'},r.actual==null?'—':fmtKpi(r.actual,mt.unit,mt)),
       el('td',{},cells[9]),
       el('td',{},cells[10]),
       el('td',{class:'r'},pillCell(r.capaian)),
@@ -2794,7 +2806,7 @@ function renderKpiWeekly(p){
          dikosongkan (Simpan tanpa isi) = ikut otomatis lagi. Placeholder menampilkan angka otomatis yang
          sedang berlaku supaya kelihatan apa yang akan dipakai kalau tidak diisi. */
       const autoTgtHint=autoTargetForMonth(mt.code,S.year,month);
-      const targetInp=num_('target'); if(autoRev) targetInp.placeholder=autoTgtHint!=null?fmtKpi(autoTgtHint,mt.unit)+' (otomatis)':'(otomatis)';
+      const targetInp=num_('target'); if(autoRev) targetInp.placeholder=autoTgtHint!=null?fmtKpi(autoTgtHint,mt.unit,mt)+' (otomatis)':'(otomatis)';
       cells=autoRev
         ? [targetInp,el('span',{class:'sub'},'otomatis'),el('span',{class:'sub'},'otomatis'),el('span',{class:'sub'},'otomatis'),el('span',{class:'sub'},'otomatis'),el('span',{class:'sub'},'otomatis'),el('span',{class:'sub'},'otomatis'),el('span',{class:'sub'},'—'),
             el('span',{style:'display:flex;gap:5px'},
@@ -2815,14 +2827,14 @@ function renderKpiWeekly(p){
           }},'Simpan'),
           el('button',{class:'btn sm',onclick:()=>{ window.S_kpiWeekEditing.delete(key); renderKpi(); }},'Batal'))];
     } else {
-      const f=v=>v==null?'—':fmtKpi(v,mt.unit);
+      const f=v=>v==null?'—':fmtKpi(v,mt.unit,mt);
       const hasEntry=[w.target,w.w1,w.w2,w.w3,w.w4,w.w5,w.bulanan_override].some(v=>v!=null);
       const autoTag=el('span',{class:'pill ok'},'otomatis · Sales');
       /* Round 21b: Target untuk KPI auto-revenue DITAMPILKAN dari calc.target (hasil kpiMonthCalc, yang
          otomatis dari Sales & Target bila tidak ada override manual) — bukan w.target mentah, supaya
          kolom ini tidak tampil "—" padahal sebenarnya sudah otomatis terisi. */
       cells=autoRev
-        ? [calc.target==null?'—':fmtKpi(calc.target,mt.unit), w.target!=null?el('span',{class:'pill neu'},'override manual') : autoTag,'','','','','','',
+        ? [calc.target==null?'—':fmtKpi(calc.target,mt.unit,mt), w.target!=null?el('span',{class:'pill neu'},'override manual') : autoTag,'','','','','','',
             el('span',{style:'display:flex;gap:5px'},
               el('button',{class:'btn sm',onclick:()=>{ window.S_kpiWeekEditing.add(key); renderKpi(); }},'Edit'),
               w.target!=null?el('button',{class:'btn sm',onclick:async()=>{
@@ -2844,7 +2856,7 @@ function renderKpiWeekly(p){
       el('td',{class:'r'},cells[0]),el('td',{class:'r'},cells[1]),el('td',{class:'r'},cells[2]),
       el('td',{class:'r'},cells[3]),el('td',{class:'r'},cells[4]),el('td',{class:'r'},cells[5]),
       el('td',{class:'r'},cells[6]),el('td',{},cells[7]),
-      el('td',{class:'r'},calc.realisasi==null?'—':fmtKpi(calc.realisasi,mt.unit)),
+      el('td',{class:'r'},calc.realisasi==null?'—':fmtKpi(calc.realisasi,mt.unit,mt)),
       el('td',{},calc.indikator==='Belum ada data'?el('span',{class:'pill neu'},'—'):el('span',{class:'pill '+(calc.indikator==='Tercapai'?'ok':calc.indikator==='Kritis'?'bad':calc.indikator==='Mendekati target'?'soft':'mid')},calc.indikator)),
       el('td',{},cells[8])));
   });
@@ -2908,7 +2920,7 @@ function renderKpiDashboard(p){
   const detTb=el('tbody');
   monthRows.forEach(r=>detTb.append(el('tr',{},
     el('td',{class:'sticky1'},r.mt.name), el('td',{},r.mt.perspektif||''), el('td',{class:'r'},int(r.bobot)),
-    el('td',{class:'r'},r.target==null?'—':fmtKpi(r.target,r.mt.unit)), el('td',{class:'r'},r.realisasi==null?'—':fmtKpi(r.realisasi,r.mt.unit)),
+    el('td',{class:'r'},r.target==null?'—':fmtKpi(r.target,r.mt.unit,r.mt)), el('td',{class:'r'},r.realisasi==null?'—':fmtKpi(r.realisasi,r.mt.unit,r.mt)),
     el('td',{class:'r'},pillCell(r.capaian)), el('td',{class:'r'},pct(r.skor)),
     el('td',{},r.indikator==='Belum ada data'?el('span',{class:'pill neu'},'—'):el('span',{class:'pill '+(r.indikator==='Tercapai'?'ok':r.indikator==='Kritis'?'bad':r.indikator==='Mendekati target'?'soft':'mid')},r.indikator)))));
   detTb.append(el('tr',{class:'tot'},el('td',{class:'sticky1'},'TOTAL / SKOR MTD'),el('td',{},''),el('td',{class:'r'},int(totMtd.wsum)),
@@ -2945,11 +2957,11 @@ function renderKpiDashboard(p){
       if(v==null||v==='') return el('td',{class:'r'},'—');
       const t=w.target; let cls='';
       if(t){ const lower=String(mt.direction||'').toLowerCase()==='lower'; const c=lower?t/v:v/t; cls=achClass(c); }
-      return el('td',{class:'r'},el('span',{class:'pill '+(cls||'neu')},fmtKpi(v,mt.unit)));
+      return el('td',{class:'r'},el('span',{class:'pill '+(cls||'neu')},fmtKpi(v,mt.unit,mt)));
     };
-    wkDetTb.append(el('tr',{},el('td',{class:'sticky1'},mt.name),el('td',{class:'r'},w.target==null?'—':fmtKpi(w.target,mt.unit)),
+    wkDetTb.append(el('tr',{},el('td',{class:'sticky1'},mt.name),el('td',{class:'r'},w.target==null?'—':fmtKpi(w.target,mt.unit,mt)),
       cellFor(w.w1),cellFor(w.w2),cellFor(w.w3),cellFor(w.w4),cellFor(w.w5),
-      el('td',{class:'r'},calc.realisasi==null?'—':fmtKpi(calc.realisasi,mt.unit)),
+      el('td',{class:'r'},calc.realisasi==null?'—':fmtKpi(calc.realisasi,mt.unit,mt)),
       el('td',{},calc.indikator==='Belum ada data'?el('span',{class:'pill neu'},'—'):el('span',{class:'pill '+(calc.indikator==='Tercapai'?'ok':calc.indikator==='Kritis'?'bad':calc.indikator==='Mendekati target'?'soft':'mid')},calc.indikator))));
   });
   p.append(el('div',{class:'card'},el('header',{},el('h2',{},'Monitoring Mingguan — per KPI'),el('span',{class:'sub'},'Merah <80% · kuning 80–<90% · hijau redup 90–<100% · hijau terang ≥100%')),
@@ -3103,10 +3115,13 @@ function kpiTemplateSeedCard(){
    dibaca/dirawat) dirapikan jadi SATU di sini, sekalian diperluas: fmtKpi() sekarang mengenali lebih
    banyak variasi penulisan satuan (Rp/Rp./IDR, Score/Rating dengan 2 desimal) supaya KPI "Revenue" dan
    KPI jenis skor (mis. Customer Satisfaction) tampil wajar tanpa harus mengetik satuan persis 'IDR'. */
-function fmtKpi(v,unit){ if(v==null)return '—';
+function kpiIsSatisfaction(metric){const text=[metric?.code,metric?.name].filter(Boolean).join(' ').toLowerCase().replace(/[_-]+/g,' ');return /\b(csl|csat)\b|customer\s+satisfaction|kepuasan\s+(customer|pelanggan)/.test(text);}
+function kpiDecimalText(value){return Number(value).toLocaleString('id-ID',{maximumSignificantDigits:15});}
+function fmtKpi(v,unit,metric=null){ if(v==null)return '—';
   const u=String(unit||'').toLowerCase();
   if(u==='%'||u.includes('persen')) return pct(v>2?v/100:v);
   if(u==='idr'||u.includes('rp')) return compact(v);
+  if(kpiIsSatisfaction(metric))return kpiDecimalText(v);
   if(u.includes('score')||u.includes('rating')||u.includes('skor')) return (Math.round(N(v)*100)/100).toLocaleString('id-ID',{minimumFractionDigits:2,maximumFractionDigits:2});
   return int(v); }
 /* KPI yang bisa dihitung langsung dari data sales (jalur lama, dipakai bila KPI belum punya data Weekly
@@ -6926,12 +6941,12 @@ function renderKpiSpv(p){
  if(KPI_SPV.view==='assignment'){
   const draft=defs.map(m=>({...m}));for(const m of S.metrics)if(!draft.some(x=>x.id===m.id))draft.push({...m,parent_id:m.id,enabled:false});const table=mkTable([H('DINILAI'),H('KPI DEPARTEMEN'),H('PERSPEKTIF'),H('UOM'),H('BOBOT SPV %',{r:1}),H('POLARITAS'),H('METODE YTD')],draft.map(m=>{const cb=el('input',{type:'checkbox',checked:m.enabled!==false?'':null,onchange:e=>m.enabled=e.target.checked}),weight=opsInput(m.weight??0,'number',{step:'any',min:0,max:100,oninput:e=>m.weight=Number(e.target.value)}),method=opsSelect([['Akumulasi','Akumulasi'],['Rata-rata','Rata-rata']],m.metode_ytd||'Akumulasi',{onchange:e=>m.metode_ytd=e.target.value});return [cb,m.name,m.perspektif||'—',m.unit||'—',weight,m.direction||'higher',method];})),refresh=el('input',{type:'checkbox'}),msg=el('p',{class:'note warn',style:'display:none'}),save=el('button',{class:'btn pri',onclick:async()=>{save.disabled=true;try{await kpiSpvSaveProfile(spv,year,draft,refresh.checked);toast('Turunan KPI SPV tersimpan.');renderKpi();}catch(e){msg.textContent=e.message;msg.style.display='block';save.disabled=false;}}},'Simpan turunan KPI SPV');p.append(card('Turunan KPI — '+spvLabel(spv),'Pilih KPI yang menjadi tanggung jawab SPV; jumlah bobot Running wajib 100%. Nama, satuan, polaritas dan sumber berasal dari KPI departemen saat konfigurasi disimpan.',table,el('label',{class:'rowline',style:'margin-top:12px'},refresh,'Gunakan pemetaan toko terbaru untuk input periode berikutnya (catatan yang sudah tersimpan mempertahankan cakupannya).'),msg,save));return;
  }
- const rows=defs.filter(m=>m.enabled!==false).map(m=>kpiSpvMonth(spv,m,year,month));p.append(card('Input KPI — '+spvLabel(spv),MONTHS[month-1]+' '+year+' · kosong berarti belum diinput, angka 0 merupakan realisasi nol.',mkTable([H('KPI',{s:1}),H('SUMBER'),H('BOBOT'),H('TARGET',{r:1}),H('W1'),H('W2'),H('W3'),H('W4'),H('W5'),H('REALISASI MTD',{r:1}),H('ACH'),H('CATATAN'),H('AKSI')],rows.map(r=>{const w=r.w,f=v=>v==null?'—':fmtKpi(v,r.mt.unit);return [r.mt.name,isAutoRevenueCode(r.mt.code)?'Sales toko SPV':'Manual SPV',r.bobot+'%',f(r.target),...['w1','w2','w3','w4','w5'].map(k=>isAutoRevenueCode(r.mt.code)?'—':f(w[k])),f(r.realisasi),pillCell(r.capaian),w.note||'—',el('div',{class:'rowline'},el('button',{class:'btn sm',onclick:()=>kpiSpvForm(spv,r.mt,year,month)},'Input / Edit'),w.id?el('button',{class:'btn sm',onclick:async()=>{if(!confirm('Hapus input '+r.mt.name+' untuk '+spvLabel(spv)+' pada '+MONTHS[month-1]+' '+year+'?'))return;try{await opsRemove('kpi_spv_week',kpiSpvWeekId(spv,r.mt.id,year,month));renderKpi();toast('Input SPV dihapus.');}catch(e){toast(e.message);}}},'Hapus'):null)];}))));
+ const rows=defs.filter(m=>m.enabled!==false).map(m=>kpiSpvMonth(spv,m,year,month));p.append(card('Input KPI — '+spvLabel(spv),MONTHS[month-1]+' '+year+' · kosong berarti belum diinput, angka 0 merupakan realisasi nol.',mkTable([H('KPI',{s:1}),H('SUMBER'),H('BOBOT'),H('TARGET',{r:1}),H('W1'),H('W2'),H('W3'),H('W4'),H('W5'),H('REALISASI MTD',{r:1}),H('ACH'),H('CATATAN'),H('AKSI')],rows.map(r=>{const w=r.w,f=v=>v==null?'—':fmtKpi(v,r.mt.unit,r.mt);return [r.mt.name,isAutoRevenueCode(r.mt.code)?'Sales toko SPV':'Manual SPV',r.bobot+'%',f(r.target),...['w1','w2','w3','w4','w5'].map(k=>isAutoRevenueCode(r.mt.code)?'—':f(w[k])),f(r.realisasi),pillCell(r.capaian),w.note||'—',el('div',{class:'rowline'},el('button',{class:'btn sm',onclick:()=>kpiSpvForm(spv,r.mt,year,month)},'Input / Edit'),w.id?el('button',{class:'btn sm',onclick:async()=>{if(!confirm('Hapus input '+r.mt.name+' untuk '+spvLabel(spv)+' pada '+MONTHS[month-1]+' '+year+'?'))return;try{await opsRemove('kpi_spv_week',kpiSpvWeekId(spv,r.mt.id,year,month));renderKpi();toast('Input SPV dihapus.');}catch(e){toast(e.message);}}},'Hapus'):null)];}))));
 }
 function renderKpiSpvDashboard(p,names,year,month){
  const summaries=names.map(n=>kpiSpvSummary(n,year,month)).sort((a,b)=>(b.complete-a.complete)||((b.score??-1)-(a.score??-1))),label=(KPI_SPV.period==='ytd'?'YTD s/d ':'')+MONTHS[month-1]+' '+year;
  p.append(card('Perbandingan kinerja SPV',label+' · Skor belum lengkap diberi label sementara; data kosong bukan pencapaian 0%.',mkTable([H('SPV'),H('SKOR'),H('GRADE'),H('KPI TERISI'),H('BOBOT RUNNING'),H('STATUS'),H('AKSI')],summaries.map(s=>[spvLabel(s.spv),s.score==null?'—':pillCell(s.score),s.complete?gradeOf(s.score):'—',s.filled+' / '+s.running.length,s.wsum+'%',s.complete?'Lengkap':s.filled?'Sementara':'Belum ada data',el('button',{class:'btn sm',onclick:()=>{KPI_SPV.selected=s.spv;renderKpi();}},'Detail')]))));
- const selected=summaries.filter(s=>!KPI_SPV.selected||s.spv===KPI_SPV.selected);for(const s of selected){const valid=s.rows.filter(r=>r.running&&r.adj!=null),crit=valid.filter(r=>r.capaian<.8).length;p.append(card('Scorecard — '+spvLabel(s.spv),label,el('div',{class:'grid g4 ops-stats'},tile('Skor '+(s.complete?'evaluasi':'sementara'),s.score==null?'—':pct(s.score),s.filled+' dari '+s.running.length+' KPI terisi',s.score),tile('KPI tercapai',int(valid.filter(r=>r.capaian>=1).length),'Achievement ≥100%',null),tile('KPI kritis',int(crit),'Achievement <80%',null),tile('Cakupan toko',int(kpiSpvStores(s.spv,year).length),'Pemetaan SPV tahun '+year,null)),mkTable([H('KPI DEPARTEMEN',{s:1}),H('UOM'),H('BOBOT'),H('TARGET',{r:1}),H('REALISASI',{r:1}),H('ACH'),H('SKOR BOBOT'),H('INDIKATOR')],s.rows.map(r=>[r.mt.name,r.mt.unit,r.bobot+'%',fmtKpi(r.target,r.mt.unit),fmtKpi(r.realisasi,r.mt.unit),pillCell(r.capaian),r.adj==null?'—':pct(r.skor),el('span',{class:'pill '+(r.adj==null?'neu':achClass(r.capaian))},r.indikator)]))));if(valid.length)p.append(chartCard('Achievement KPI — '+spvLabel(s.spv),label,hBars(valid.map(r=>({label:r.mt.name,v:Number.isFinite(r.capaian)?r.capaian:kpiCapMax()})),{mode:'ach',fmt:v=>pct(v,0),name:'Achievement',min:1,lw:180})));}
+ const selected=summaries.filter(s=>!KPI_SPV.selected||s.spv===KPI_SPV.selected);for(const s of selected){const valid=s.rows.filter(r=>r.running&&r.adj!=null),crit=valid.filter(r=>r.capaian<.8).length;p.append(card('Scorecard — '+spvLabel(s.spv),label,el('div',{class:'grid g4 ops-stats'},tile('Skor '+(s.complete?'evaluasi':'sementara'),s.score==null?'—':pct(s.score),s.filled+' dari '+s.running.length+' KPI terisi',s.score),tile('KPI tercapai',int(valid.filter(r=>r.capaian>=1).length),'Achievement ≥100%',null),tile('KPI kritis',int(crit),'Achievement <80%',null),tile('Cakupan toko',int(kpiSpvStores(s.spv,year).length),'Pemetaan SPV tahun '+year,null)),mkTable([H('KPI DEPARTEMEN',{s:1}),H('UOM'),H('BOBOT'),H('TARGET',{r:1}),H('REALISASI',{r:1}),H('ACH'),H('SKOR BOBOT'),H('INDIKATOR')],s.rows.map(r=>[r.mt.name,r.mt.unit,r.bobot+'%',fmtKpi(r.target,r.mt.unit,r.mt),fmtKpi(r.realisasi,r.mt.unit,r.mt),pillCell(r.capaian),r.adj==null?'—':pct(r.skor),el('span',{class:'pill '+(r.adj==null?'neu':achClass(r.capaian))},r.indikator)]))));if(valid.length)p.append(chartCard('Achievement KPI — '+spvLabel(s.spv),label,hBars(valid.map(r=>({label:r.mt.name,v:Number.isFinite(r.capaian)?r.capaian:kpiCapMax()})),{mode:'ach',fmt:v=>pct(v,0),name:'Achievement',min:1,lw:180})));}
 }
 
 /* Reset only a selected store/month. The login mechanism remains unchanged. */
@@ -6990,7 +7005,7 @@ async function presentV16Rows(slide){
  }
  if(source==='trx_store'&&f.brands.length)return [];
  if(source==='trx_store')return presentScope(f,()=>{const map=new Map();for(const r of trxScope()){const list=map.get(r.store_id)||[];list.push(r);map.set(r.store_id,list);}return [...map].map(([id,rows])=>{const t=trxSummary(rows),k=S.stores.find(s=>s.id===id)?.name||String(id);return {k,...t,value:f.metric==='aov'?t.aov:f.metric==='count'?t.count:t.value};});});
- if(source==='kpi_spv')return presentScope(f,()=>kpiSpvNames().filter(spv=>!f.spvs.length||f.spvs.includes(spv)).flatMap(spv=>kpiSpvSummary(spv,Number(f.year),Number(f.m2),f.kpiPeriod||'ytd').rows.map(r=>({k:spv+' · '+r.mt.name,spv,metric:r.mt.name,target:r.target??r.targetYtd,actual:r.realisasi??r.realisasiYtd,value:r.capaian}))));
+ if(source==='kpi_spv')return presentScope(f,()=>kpiSpvNames().filter(spv=>!f.spvs.length||f.spvs.includes(spv)).flatMap(spv=>kpiSpvSummary(spv,Number(f.year),Number(f.m2),f.kpiPeriod||'ytd').rows.map(r=>({k:spv+' · '+r.mt.name,spv,metric:r.mt.name,definition:r.mt,target:r.target??r.targetYtd,actual:r.realisasi??r.realisasiYtd,value:r.capaian}))));
  if(source==='links')return opsRecords('link').filter(r=>!f.query||[r.title,r.url,r.description,r.category].join(' ').toLocaleLowerCase('id').includes(f.query.toLocaleLowerCase('id'))).map(r=>({k:r.title,...r,value:0}));
  if(source==='tracking')return (S.logs||[]).filter(r=>Number(r.year)===Number(f.year)&&r.month>=f.m1&&r.month<=f.m2&&(!ids||ids.includes(Number(r.store_id)))&&(!f.status||r.status===f.status)).map(r=>({k:(S.stores.find(s=>s.id===Number(r.store_id))?.name||r.store_id)+' · '+r.kind+' · '+r.month,...r,value:N(r.rows_count??r.row_count)}));
  if(source==='program_aov'&&f.brands.length)return [];
@@ -7004,7 +7019,7 @@ async function presentExtendedData(slide){
  if(f.source==='links')return presentPageRows(f,ranked,page=>presentTable(['Link','Alamat'],page.map(r=>[r.k,el('a',{href:validUrl(r.url)||'#',target:'_blank',rel:'noopener noreferrer'},r.url||'—')])));
  if(f.source==='program_aov')return presentPageRows(f,ranked,page=>presentTable(['Program','Transaksi','AOV','Target AOV','Gap','Achievement'],page.map(r=>[r.k,String(int(r.count)),r.value==null?'—':String(rp(r.value)),r.target==null?'—':String(rp(r.target)),r.gap==null?'—':String(rp(r.gap)),String(achPct(r.achievement))])));
  if(f.source==='tracking')return presentPageRows(f,ranked,page=>presentTable(['Toko / Jenis / Bulan','File','Status','Baris'],page.map(r=>[r.k,r.file_name||'—',r.status||'—',int(r.value)])));
- if(f.source==='kpi_spv')return presentPageRows(f,ranked,page=>presentTable(['SPV / KPI','Target','Realisasi','Achievement'],page.map(r=>[r.k,r.target==null?'—':String(r.target),r.actual==null?'—':String(r.actual),String(achPct(r.value))])));
+ if(f.source==='kpi_spv')return presentPageRows(f,ranked,page=>presentTable(['SPV / KPI','Target','Realisasi','Achievement'],page.map(r=>[r.k,r.target==null?'—':String(fmtKpi(r.target,r.definition?.unit,r.definition)),r.actual==null?'—':String(fmtKpi(r.actual,r.definition?.unit,r.definition)),String(achPct(r.value))])));
  const unit=['count','qty','refunded'].includes(f.metric)?'Jumlah':f.metric==='aov'||f.source==='program_aov'?'AOV (Rp)':'Net sales (Rp)',fmt=v=>v==null?'—':['count','qty','refunded'].includes(f.metric)?String(int(v)):String(rp(v)),note=PRESENT_BAZAR_SOURCES.includes(f.source)&&!['bazar','bazar_payment'].includes(f.source)?'Subtotal item sebelum refund / penyesuaian invoice.':f.source==='lowproduct'?'Low dari seluruh item dengan catatan penjualan pada periode. Produk tanpa catatan penjualan tidak termasuk.':'';
  return el('div',{},presentPageRows(f,ranked,page=>el('div',{},hBars(page.map(r=>({label:r.k,v:r.value??0})),{name:unit}),presentTable(['Rincian',unit],page.map(r=>[r.k,fmt(r.value)])))),note?el('p',{class:'present-data-caption'},note):null);
 }
@@ -7027,7 +7042,7 @@ async function presentData(slide){
   if(source==='segment'){const parts=[{name:'Komersial Tigalapan',v:a.sales_komersial_tigalapan,color:'var(--s1)'},{name:'User Tigalapan',v:a.sales_user_tigalapan,color:'var(--s3)'},{name:'User MAMU',v:a.sales_user_mamu,color:'var(--s4)'}];return donutChart(parts,parts.reduce((n,p)=>n+N(p.v),0),{size:210});}
   if(source==='trx'){const t=trxScope(),summary=trxSummary(t),count=summary.count,value=summary.value;return el('div',{},presentMetrics([['Transaksi',activeProductBrands().length?'—':String(int(count))],['Nilai transaksi',activeProductBrands().length?'—':fmt(value)],['AOV',summary.aov!=null?String(rp(summary.aov)):'—']]),el('p',{class:'present-data-caption'},activeProductBrands().length?brandMetricNote():'Sales: Total Collected pada Sales Type · jumlah transaksi: input manual / upload khusus.'));}
   if(source==='review'){const month=Number(filter.m2),list=reviewAllStores().filter(s=>s.active!==false&&reviewPhysicalStore(s)&&(!filter.brands.length||filter.brands.includes(s.brand))&&(!filter.stores.length||filter.stores.includes(String(s.id)))&&(!filter.spvs.length||filter.spvs.includes(s.spv))).map(s=>({store:s,...reviewMetrics(s.id,Number(filter.year),month,filter.to||null)}));return presentPageRows(filter,list,page=>presentTable(['Toko','Total review','Tambahan','Achievement','Rating'],page.map(r=>[r.store.name,r.total??'—',r.actual,String(achPct(r.reviewAchievement)),r.rating==null?'—':'★ '+r.rating.toFixed(1)+' / 5'])));}
-  if(source==='kpi'){const list=S.metrics.map(mt=>kpiYtdCalc(mt,Number(filter.year),Number(filter.m2)));return presentPageRows(filter,list,page=>presentTable(['KPI','Target YTD','Realisasi YTD','Achievement'],page.map(r=>[r.mt.name,String(fmtKpi(r.targetYtd,r.mt.unit)),String(fmtKpi(r.realisasiYtd,r.mt.unit)),String(achPct(r.capaian))])));}
+  if(source==='kpi'){const list=S.metrics.map(mt=>kpiYtdCalc(mt,Number(filter.year),Number(filter.m2)));return el('div',{},kpiUpdateBanner(kpiUpdateContext(Number(filter.year),Number(filter.m2),'dept'),false),presentPageRows(filter,list,page=>presentTable(['KPI','Target YTD','Realisasi YTD','Achievement'],page.map(r=>[r.mt.name,String(fmtKpi(r.targetYtd,r.mt.unit,r.mt)),String(fmtKpi(r.realisasiYtd,r.mt.unit,r.mt)),String(achPct(r.capaian))]))));}
   if(['task','schedule'].includes(source)){const list=opsFilter(opsRecords(source),{query:'',pic:filter.pic,status:filter.status,from:filter.from||`${filter.year}-${String(filter.m1).padStart(2,'0')}-01`,to:filter.to||`${filter.year}-${String(filter.m2).padStart(2,'0')}-${daysInMonth(filter.year,filter.m2)}`}).filter(r=>(!filter.stores.length||filter.stores.includes(String(r.store_id)))&&(!filter.spvs.length||filter.spvs.includes(S.stores.find(s=>s.id===r.store_id)?.spv)));return presentPageRows(filter,list,page=>presentTable(['Tanggal','Kegiatan','PIC','Status','Progress'],page.map(r=>[r.date,r.title,r.pic||'—',OPS_STATUS[r.status]||r.status,r.progress+'%'])));}
   if(source==='pdca'||source==='pica'){const list=(source==='pdca'?S.pdca:S.pica).filter(r=>(!r.year||r.year===Number(filter.year))&&(!r.month||r.month>=filter.m1&&r.month<=filter.m2)&&(!filter.stores.length||r.store_id==null||filter.stores.includes(String(r.store_id)))&&(!filter.spvs.length||r.store_id==null||filter.spvs.includes(S.stores.find(s=>s.id===r.store_id)?.spv))&&(!filter.status||r.status===filter.status)&&(!filter.pic||opsPersonKey(r.pic||r.owner)===opsPersonKey(filter.pic))&&(!filter.from||!r.due_date||r.due_date>=filter.from)&&(!filter.to||!r.due_date||r.due_date<=filter.to));return presentPageRows(filter,list,page=>presentTable(['Kegiatan','PIC','Status','Tenggat'],page.map(r=>[r.title,r.pic||r.owner||'—',(source==='pdca'?{OPEN:'Belum jalan',ON_PROGRESS:'Berjalan',DONE:'Selesai',DROPPED:'Dibatalkan'}:PICA_STATUS)[r.status]||r.status,r.due_date||'—'])));}
   return el('div',{class:'empty'},'Sumber data belum tersedia.');
