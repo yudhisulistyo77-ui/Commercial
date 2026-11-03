@@ -737,6 +737,24 @@ th[data-col-role="money"],td[data-col-role="money"],th[data-col-role="numeric"],
 .member-tw-v27 th[data-col-role="date"],.member-tw-v27 td[data-col-role="date"]{white-space:nowrap!important;font-variant-numeric:tabular-nums;font-size:10px}
 @media(max-width:1100px){.member-filters-v27{grid-template-columns:repeat(3,minmax(0,1fr))}}@media(max-width:700px){.member-filters-v27{grid-template-columns:repeat(2,minmax(0,1fr))}.member-rank-controls-v33{grid-template-columns:1fr 1fr}.member-rank-controls-v33 .sub{grid-column:1/-1}}@media(max-width:420px){.member-filters-v27{grid-template-columns:1fr}}
 </style>
+<style>
+/* V34: uniform cell gutters and compact ranking controls. */
+.member-tw-v27 th:nth-child(n),.member-tw-v27 td:nth-child(n){padding:10px 9px!important;line-height:1.5;vertical-align:middle}
+.member-tw-v27 th[data-col-role="date"],.member-tw-v27 td[data-col-role="date"]{text-align:center!important}
+.member-ranking-v29 th:nth-child(2),.member-ranking-v29 td:nth-child(2),.member-ranking-v29 th:nth-child(4),.member-ranking-v29 td:nth-child(4){text-align:center!important}
+.member-tw-v27 th[data-col-role="percent"],.member-tw-v27 td[data-col-role="percent"]{text-align:right!important}
+.member-fit-control-v32{margin:3px 0;padding:0;min-height:26px}.member-fit-control-v32>span{display:none}
+.member-rank-limit-v34{width:240px;max-width:100%;margin:14px 0 10px}.member-rank-limit-v34 label{font-size:10px;line-height:1.5}.member-rank-limit-v34 select{width:100%;min-height:36px;font-size:12px;padding:7px 10px}
+.member-all-data-v34{margin:16px 0;border:1px solid var(--ring);border-radius:12px;background:var(--surface)}.member-all-data-v34>summary{cursor:pointer;padding:13px 15px;font-weight:650;font-size:12px}.member-all-data-v34>.member-tw-v27,.member-all-data-v34>.item-pager,.member-all-data-v34>p{margin:10px}
+@media(max-width:1200px){.member-tw-v27 th:nth-child(n),.member-tw-v27 td:nth-child(n){padding:9px 6px!important}}
+@media(max-width:700px){.member-tw-v27 th:nth-child(n),.member-tw-v27 td:nth-child(n){padding:8px 4px!important}.member-rank-limit-v34{width:100%}}
+/* Keep full values intact when the available card width is narrow. */
+.member-tw-v27{overflow-x:auto}
+.member-tw-v27 td[data-col-role="money"],.member-tw-v27 td[data-col-role="percent"],.member-tw-v27 td[data-col-role="number"],.member-tw-v27 .member-trend-v30[data-member-gap],.member-tw-v27 .member-trend-v30[data-member-growth]{white-space:nowrap!important;overflow-wrap:normal!important;word-break:normal}
+.member-ranking-v29 table{min-width:1160px!important}
+html[data-number-mode="full"] .member-ranking-v29 table{min-width:1560px!important}
+.member-tw-v27 .member-sort-v31{overflow-wrap:normal;word-break:normal}
+</style>
 </head>
 <body>
 
@@ -7202,7 +7220,7 @@ setInterval(masterRevisionCheck,45000);window.addEventListener('focus',masterRev
 <script src="price-list-v24.js?v=26"></script>
 <script src="price-list-catalog-v26.js?v=26"></script>
 <script src="price-list-ui-v24.js?v=26"></script>
-<script src="member-v27.js?v=33"></script>
-<script src="member-ui-v27.js?v=33"></script>
+<script src="member-v27.js?v=34"></script>
+<script src="member-ui-v27.js?v=34"></script>
 </body>
 </html>
