@@ -726,6 +726,17 @@ th[data-col-role="money"],td[data-col-role="money"],th[data-col-role="numeric"],
 .member-followup-v32 .grid{gap:10px}.member-followup-v32 .tile{min-height:105px;padding:13px}.member-followup-v32 .v{font-size:24px!important}.member-followup-v32 .member-tw-v27{margin:12px 0}.member-followup-v32 .note{margin:10px 0 0}
 @media(max-width:700px){.member-tw-v27 th,.member-tw-v27 td{padding:7px 3px!important;font-size:10px}.member-followup-v32 .grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 </style>
+<style>
+/* Member spacing and unboxed signed values. */
+.member-trend-v30,.member-trend-v30.positive,.member-trend-v30.negative,.member-trend-v30.neutral{background:transparent!important;border:0!important;border-radius:0!important;box-shadow:none!important;padding:0!important}
+.member-tw-v27 .member-trend-v30[data-member-gap],.member-tw-v27 .member-trend-v30[data-member-growth]{display:inline!important;white-space:normal!important;letter-spacing:0;font-weight:600}
+.member-filters-v27{grid-template-columns:.8fr .8fr 1.4fr 1fr 1.25fr 1.35fr;gap:8px;padding:10px 0;margin:8px 0;align-items:end}
+.member-filters-v27>*{min-width:0}.member-filters-v27 label{font-size:10px;line-height:1.35;min-height:16px}.member-filters-v27 input,.member-filters-v27 select,.member-filters-v27 .msd-btn{min-height:35px;font-size:11px;padding:7px 9px}
+.member-rank-controls-v33{display:grid;grid-template-columns:minmax(170px,240px) minmax(120px,170px) minmax(120px,1fr);gap:10px;align-items:end;padding:10px 0;margin:8px 0}.member-rank-controls-v33 select{width:100%;min-height:35px;font-size:12px}.member-rank-controls-v33 .sub{font-size:11px;line-height:1.5}
+.member-tw-v27 th[data-t^="Kontribusi"] .member-sort-v31{font-size:9px;overflow-wrap:normal}
+.member-tw-v27 th[data-col-role="date"],.member-tw-v27 td[data-col-role="date"]{white-space:nowrap!important;font-variant-numeric:tabular-nums;font-size:10px}
+@media(max-width:1100px){.member-filters-v27{grid-template-columns:repeat(3,minmax(0,1fr))}}@media(max-width:700px){.member-filters-v27{grid-template-columns:repeat(2,minmax(0,1fr))}.member-rank-controls-v33{grid-template-columns:1fr 1fr}.member-rank-controls-v33 .sub{grid-column:1/-1}}@media(max-width:420px){.member-filters-v27{grid-template-columns:1fr}}
+</style>
 </head>
 <body>
 
@@ -2005,6 +2016,8 @@ function bakeSvgPaint(orig,clone){
    sebelum capture supaya tidak ikut kefoto. Kalau html2canvas gagal dimuat (mis. CDN diblokir) atau
    melempar error, fallback ke copyNodeRich() (tabel HTML) supaya pengguna tetap dapat sesuatu yang bisa
    ditempel, bukan error polos. */
+/* V33: freeze visual column geometry and remove sticky offsets only in the export clone. */
+function freezeCopyTablesV33(original,clone){const originals=[...original.querySelectorAll('table')],copies=[...clone.querySelectorAll('table')];if(original.matches?.('table')){originals.unshift(original);copies.unshift(clone);}originals.forEach((table,ti)=>{const copy=copies[ti];if(!copy)return;const sourceNodes=[table,...table.querySelectorAll('*')],copyNodes=[copy,...copy.querySelectorAll('*')];sourceNodes.forEach((o,i)=>{const c=copyNodes[i];if(!c)return;const cs=getComputedStyle(o);for(const p of ['font-size','font-family','font-weight','line-height','letter-spacing','text-align','vertical-align','white-space','word-break','overflow-wrap'])c.style.setProperty(p,cs.getPropertyValue(p),'important');if(o.matches('th,td,thead,tbody,tfoot,tr'))for(const [p,v]of Object.entries({position:'static',left:'auto',right:'auto',top:'auto',bottom:'auto',transform:'none','z-index':'auto'}))c.style.setProperty(p,v,'important');});const row=[...table.tBodies].flatMap(b=>[...b.rows]).find(r=>r.cells.length&&[...r.cells].every(c=>c.colSpan===1&&c.rowSpan===1)),widths=row?[...row.cells].map(c=>c.getBoundingClientRect().width):[],width=table.getBoundingClientRect().width;if(width>0){copy.style.setProperty('width',width+'px','important');copy.style.setProperty('min-width',width+'px','important');copy.style.setProperty('max-width','none','important');copy.style.setProperty('table-layout','fixed','important');}if(widths.length&&widths.every(w=>w>0)){copy.querySelectorAll(':scope > colgroup').forEach(n=>n.remove());copy.prepend(el('colgroup',{'data-export-columns':'true'},widths.map(w=>el('col',{style:'width:'+w+'px!important'}))));}copy.querySelectorAll('th,td').forEach(c=>{c.style.setProperty('min-width','0','important');c.style.setProperty('max-width','none','important');});});}
 async function capturePngOfNode(node){
   if(typeof html2canvas!=='function') throw new Error('html2canvas tidak tersedia (CDN mungkin diblokir)');
   const hideEls=[...node.querySelectorAll('button:not(.rank-row)')].filter(b=>!b.closest('th')); // Sortable headers are data, not export controls.
@@ -2026,6 +2039,7 @@ async function capturePngOfNode(node){
     clone.style.width=captureWidth+'px';clone.style.maxWidth='none';
     for(const n of [clone,...clone.querySelectorAll('*')]){n.style.setProperty('animation','none','important');n.style.setProperty('transition','none','important');}
     bakeColorFunctions(node,clone);
+    freezeCopyTablesV33(node,clone);
     clone.querySelectorAll('.tw,.number-chart-scroll').forEach(n=>{n.style.setProperty('overflow','visible','important');n.style.setProperty('max-height','none','important');n.style.setProperty('height','auto','important');n.scrollTop=0;n.scrollLeft=0;});
     clone.querySelectorAll('thead,thead tr,thead th').forEach(n=>{n.style.setProperty('position','static','important');n.style.setProperty('transform','none','important');n.style.setProperty('visibility','visible','important');});
     clone.querySelectorAll('th button').forEach(n=>n.style.setProperty('visibility','visible','important'));
@@ -7188,7 +7202,7 @@ setInterval(masterRevisionCheck,45000);window.addEventListener('focus',masterRev
 <script src="price-list-v24.js?v=26"></script>
 <script src="price-list-catalog-v26.js?v=26"></script>
 <script src="price-list-ui-v24.js?v=26"></script>
-<script src="member-v27.js?v=32"></script>
-<script src="member-ui-v27.js?v=32"></script>
+<script src="member-v27.js?v=33"></script>
+<script src="member-ui-v27.js?v=33"></script>
 </body>
 </html>
