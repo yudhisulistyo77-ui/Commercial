@@ -1,7 +1,11 @@
 {
-  "version": "V25",
-  "passed": 33,
+  "version": "V26",
+  "passed": 34,
   "checks": [
+    {
+      "name": "Member catalog opens by default",
+      "pass": true
+    },
     {
       "name": "Price List menu added to navigation",
       "pass": true

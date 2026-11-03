@@ -1,5 +1,5 @@
 {
-  "version": "V25",
+  "version": "V26",
   "passed": 26,
   "checks": [
     {
@@ -108,18 +108,18 @@
     }
   ],
   "local_doc_save_ms": [
-    169,
-    136,
-    122,
-    85,
-    87,
-    99,
-    82,
-    75,
-    77,
-    83,
+    218,
+    162,
+    153,
+    106,
+    95,
+    137,
+    90,
+    98,
+    111,
     89,
-    50
+    94,
+    40
   ],
   "production_writes": false,
   "scope": "PostgreSQL PGlite with all 12 real seed docs; mocked PIN role, RLS, atomic CAS save, idempotent installation, isolated sales table"

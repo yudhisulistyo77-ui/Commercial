@@ -1,5 +1,5 @@
 {
-  "version": "V25",
+  "version": "V26",
   "checks": [
     {
       "name": "HITAM 24S PDK L",
@@ -46,7 +46,7 @@
       "pass": true
     },
     {
-      "name": "Only one Makassar COMBED 24S PDK L row across colors and outlets",
+      "name": "Makassar Combed grouped by size and exact prices, not SKU",
       "pass": true
     },
     {
@@ -219,9 +219,9 @@
     }
   ],
   "passed": 54,
-  "display_rows": 4537,
+  "display_rows": 7573,
   "source_items": 81610,
   "before_bytes": 8613417,
-  "after_bytes": 4014453,
+  "after_bytes": 4047358,
   "production_writes": false
 }

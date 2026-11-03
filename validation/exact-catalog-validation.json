@@ -1,0 +1,83 @@
+{
+  "version": "V26",
+  "passed": 19,
+  "checks": [
+    {
+      "name": "Every visible price has exactly one source value: new 0",
+      "pass": true
+    },
+    {
+      "name": "All source items retained: new 0",
+      "pass": true
+    },
+    {
+      "name": "Every visible price has exactly one source value: new 83",
+      "pass": true
+    },
+    {
+      "name": "All source items retained: new 83",
+      "pass": true
+    },
+    {
+      "name": "Every visible price has exactly one source value: existing V25 0",
+      "pass": true
+    },
+    {
+      "name": "All source items retained: existing V25 0",
+      "pass": true
+    },
+    {
+      "name": "Every visible price has exactly one source value: existing V25 83",
+      "pass": true
+    },
+    {
+      "name": "All source items retained: existing V25 83",
+      "pass": true
+    },
+    {
+      "name": "Bone hoodie 199000 and 229000 are separate exact prices",
+      "pass": true
+    },
+    {
+      "name": "Hoodie BT and FL are retained",
+      "pass": true
+    },
+    {
+      "name": "Catalog pairs sleeve columns without duplicating standard sizes",
+      "pass": true
+    },
+    {
+      "name": "Big size surcharge calculated from exact matching standard prices",
+      "pass": true
+    },
+    {
+      "name": "Retail has three source tiers",
+      "pass": true
+    },
+    {
+      "name": "Zero retained without inventing sleeve pairing",
+      "pass": true
+    },
+    {
+      "name": "Ambiguous base never used to estimate big-size surcharges",
+      "pass": true
+    },
+    {
+      "name": "All member catalog values are exact numbers or blanks",
+      "pass": true
+    },
+    {
+      "name": "Every member big-size delta reconstructs actual source price",
+      "pass": true
+    },
+    {
+      "name": "All retail catalog values are exact numbers or blanks",
+      "pass": true
+    },
+    {
+      "name": "Every retail big-size delta reconstructs actual source price",
+      "pass": true
+    }
+  ],
+  "production_writes": false
+}

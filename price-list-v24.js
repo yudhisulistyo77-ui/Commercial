@@ -30,6 +30,7 @@ if(clothing){
  const size=n.match(/(?:^|\s)((?:XXS|XS|S|M|L|[2-9]?XL)(?:\s*[-/]\s*(?:XXS|XS|S|M|L|[2-9]?XL))?|\d{2}\s*[-/]\s*\d{2}|\d{1,2}\s*(?:THN|TAHUN|Y)|ALL\s*SIZE|ALLSIZE|ONE\s*SIZE|FREE\s*SIZE|\d{2})\s*$/);
  // Retain construction/product types within broad categories, not print-series names.
  if(/\bMYNO\b/.test(n)&&!cat.includes('MYNO'))parts.push('MYNO');
+ if(/HOODIE|BOMBER/.test(cat)){if(/\bBT\b/.test(n))parts.push('BT');else if(/\bFL\b/.test(n))parts.push('FL');}
  if(/KEMEJA|TSHIRT/.test(cat)){for(const token of ['AIRWEAVE','FORMAL','SHANGHAI','SHANGHAI','BASIC'])if(new RegExp('\\b'+token+'\\b').test(n)&&!cat.includes(token)&&!parts.includes(token))parts.push(token);}
  if(/DEFECT|REJECT/.test(cat)){const quality=n.match(/\bDEFECT\s+([A-D])\b/);if(quality)parts.push('GRADE '+quality[1]);if(/\bKIDS?\b/.test(n)&&!/KIDS?/.test(cat))parts.push('KIDS');if(/\b(?:WK|WANGK[IY])\b/.test(n))parts.push('WANGKI');}
  if(/\b(?:PDK|PENDEK|SS|SHORT(?:S)?)\b/.test(n))parts.push('PDK');else if(/\b(?:PJG|PANJANG|LS|LONG)\b/.test(n))parts.push('PJG');else if(/\b3\s*\/\s*4\b/.test(n))parts.push('3/4');
@@ -42,9 +43,10 @@ else if(/TOTEBAG/.test(cat)){for(const token of ['KANVAS','BLACU','VELCRO','POLO
 else if(/MASKER/.test(cat))parts.push('STANDAR');
 const result=parts.join(' · ')||item(n).name;descriptorCache.set(cacheKey,result);return result;
 }
-function summary(docs,filter={}){const map=new Map(),q=norm(filter.query);for(const d of docs){if(filter.cities?.length&&!filter.cities.includes(d.city))continue;for(const g of d.data.groups){if(filter.categories?.length&&!filter.categories.includes(g.category)||filter.brands?.length&&!filter.brands.includes(g.brand))continue;
+const canonicalPrice=c=>norm(c).replace(/^MK01\s*-\s*PRICE$/,'MK-01 - PRICE');
+function summary(docs,filter={}){const map=new Map(),q=norm(filter.query),columns=[...new Set([...main,'RETAIL SATUAN MAMU - Price',...(filter.columns||[])].map(canonicalPrice))].sort();for(const d of docs){if(filter.cities?.length&&!filter.cities.includes(d.city))continue;const index=new Map(d.data.columns.map((c,i)=>[canonicalPrice(c),i])),indices=columns.map(c=>index.get(c));for(const g of d.data.groups){if(filter.categories?.length&&!filter.categories.includes(g.category)||filter.brands?.length&&!filter.brands.includes(g.brand))continue;
  const buckets=new Map();if(g.origin==='manual'||g.descriptor_override){buckets.set(norm(g.item),g.variants);}else for(const v of g.variants){const label=descriptor(v[0],g.category);if(!buckets.has(label))buckets.set(label,[]);buckets.get(label).push(v);}
- for(const [label,variants] of buckets){if(q&&!norm([label,g.item,g.category,g.brand,d.city,d.outlet,...variants.map(v=>v[0]+' '+v[1])].join(' ')).includes(q))continue;const key=JSON.stringify([d.city,norm(g.category),norm(g.brand),label]);let r=map.get(key);if(!r){r={key,city:d.city,category:g.category,brand:g.brand,item:label,profiles:[],source_rows:0};map.set(key,r);}r.profiles.push({d,g,variants});r.source_rows+=g.source_count??variants.length;}
+ for(const [label,variants] of buckets){if(q&&!norm([label,g.item,g.category,g.brand,d.city,d.outlet,...variants.map(v=>v[0]+' '+v[1])].join(' ')).includes(q))continue;const key=JSON.stringify([d.city,norm(g.category),norm(g.brand),label,indices.map(i=>i===undefined?null:g.prices[i]??null)]);let r=map.get(key);if(!r){r={key,city:d.city,category:g.category,brand:g.brand,item:label,profiles:[],source_rows:0};map.set(key,r);}r.profiles.push({d,g,variants});r.source_rows+=g.source_count??variants.length;}
  }}return [...map.values()];}
 function compactDoc(doc){if(doc.data.compact===25)return doc;const next={...doc,data:{...doc.data,compact:25,groups:[]}},map=new Map();
  for(const g of doc.data.groups){if(g.origin==='manual'){next.data.groups.push({...g,source_count:g.source_count??g.variants.length});continue;}
