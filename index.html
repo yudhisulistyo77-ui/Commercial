@@ -691,6 +691,23 @@ nav{padding:12px 10px;gap:3px}nav button{min-height:40px;border-radius:10px;tran
 .member-gap-note-v29{margin:10px 0 4px;font-size:11px;line-height:1.5}
 @media(max-width:700px){.member-ranking-v29 th:first-child,.member-ranking-v29 td:first-child{min-width:180px!important;max-width:230px}}
 </style>
+<style>
+/* V31: one alignment rule for both header and data, including existing app tables. */
+th[data-col-role="money"],td[data-col-role="money"],th[data-col-role="numeric"],td[data-col-role="numeric"],th[data-col-role="percent"],td[data-col-role="percent"]{text-align:right}
+.member-tw-v27 table{table-layout:auto;min-width:720px;border-collapse:collapse;font-variant-numeric:tabular-nums}
+.member-tw-v27 th,.member-tw-v27 td{padding:10px 12px!important;vertical-align:middle;line-height:1.45;font-size:12px}
+.member-tw-v27 th{font-size:11px}
+.member-tw-v27 th.member-number-v31,.member-tw-v27 td.member-number-v31{text-align:right!important;white-space:nowrap;min-width:90px!important}
+.member-tw-v27 th.member-label-v31,.member-tw-v27 td.member-label-v31{text-align:left!important;white-space:normal;min-width:100px!important}
+.member-tw-v27 th:first-child,.member-tw-v27 td:first-child{min-width:200px!important;max-width:300px;overflow-wrap:anywhere}
+.member-tw-v27 th[data-col-role="money"],.member-tw-v27 td[data-col-role="money"]{min-width:130px!important}
+.member-tw-v27 th[data-col-role="percent"],.member-tw-v27 td[data-col-role="percent"]{min-width:112px!important}
+.member-tw-v27 tbody tr:hover td{background:var(--surface-2)}
+.member-sort-v31{display:inline-flex;align-items:center;justify-content:inherit;gap:5px;max-width:100%;border:0;background:transparent;color:inherit;font:inherit;font-weight:700;text-transform:inherit;letter-spacing:inherit;line-height:1.45;text-align:inherit;white-space:normal;padding:0;cursor:pointer}
+.member-sort-v31 .sortar{flex-shrink:0;font-size:10px;opacity:.7}.member-sort-v31:hover{color:var(--accent)}.member-sort-v31:focus-visible{outline:2px solid var(--accent);outline-offset:4px;border-radius:3px}
+.member-tw-v27 tfoot td{font-weight:700;border-top:2px solid var(--ring)}
+@media(max-width:700px){.member-tw-v27 th:first-child,.member-tw-v27 td:first-child{min-width:180px!important;max-width:230px}}
+</style>
 </head>
 <body>
 
@@ -7145,7 +7162,7 @@ setInterval(masterRevisionCheck,45000);window.addEventListener('focus',masterRev
 <script src="price-list-v24.js?v=26"></script>
 <script src="price-list-catalog-v26.js?v=26"></script>
 <script src="price-list-ui-v24.js?v=26"></script>
-<script src="member-v27.js?v=30"></script>
-<script src="member-ui-v27.js?v=30"></script>
+<script src="member-v27.js?v=31"></script>
+<script src="member-ui-v27.js?v=31"></script>
 </body>
 </html>
