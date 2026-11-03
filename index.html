@@ -1063,8 +1063,11 @@ const DB = {
         {headers:this.h({Range:`${from}-${from+pageSize-1}`,'Range-Unit':'items'})});
       if(!r.ok) throw new Error('['+r.status+'] '+(await r.text()).slice(0,220));
       const b = await r.json(); out.push(...b);
-      if(b.length<pageSize || out.length>=cap) break;
-      from += pageSize;
+      if(out.length>cap) throw Error('Hasil '+path.split('?')[0]+' melebihi batas '+cap+' baris. Persempit filter agar data tidak terpotong.');
+      const range=r.headers?.get?.('content-range')||'',match=/^(\d+)-(\d+)\/(\d+|\*)$/.exec(range),more=match&&match[3]!=='*'?Number(match[2])+1<Number(match[3]):b.length===pageSize;
+      if(!more||!b.length)break;
+      if(out.length>=cap)throw Error('Hasil '+path.split('?')[0]+' mencapai batas '+cap+' baris; pemuatan dihentikan agar total tidak parsial.');
+      from += b.length;
     }
     return out;
   },
@@ -1381,7 +1384,7 @@ async function loadAll(){
   _busyPush();   // round 8 item 5: progress bar global menyala selama loadAll() berjalan (dipanggil
                  // oleh tombol Muat ulang, ganti filter Tahun/Brand/Toko, simpan target, dll)
   try{
-    const opt = p=>p.catch(()=>[]);       // tabel baru: jangan gagalkan seluruh muat bila belum ada
+    const readWarnings=[];const opt = p=>p.catch(e=>{readWarnings.push(e.message);return [];});       // tabel baru: jangan gagalkan seluruh muat bila belum ada
     let trxSalesError='';
     const [stores,aliases,dashAll,growth,trxRows,map,unmapped,metrics,entries,pdca,settings,logs,
            people,brandTargets,chanTargets,mkt,pica,kpiWeekly,trxSales] = await Promise.all([
@@ -1420,7 +1423,7 @@ async function loadAll(){
     (chanTargets||[]).forEach(t=>{ if(t.channel) t.channel=normCh(t.channel); });
     (mkt||[]).forEach(r=>{ if(r.channel) r.channel=normCh(r.channel); });
     Object.assign(S,{stores,aliases,dash,dashAll,growth,trx,trxAll,map,unmapped,metrics,entries,pdca,logs,
-      people,brandTargets,chanTargets,mkt,pica,kpiWeekly,trxSales,trxSalesError,ready:true,demo:false});
+      people,brandTargets,chanTargets,mkt,pica,kpiWeekly,trxSales,trxSalesError,readWarnings,ready:true,demo:false});
     S.rollCache.clear();_catListCache=null;
     if(typeof BAZAR!=='undefined')BAZAR.loaded=false;
     S.lastError='';
@@ -1438,7 +1441,7 @@ async function loadAll(){
       ? 'Permintaan jaringan diblokir — halaman ini kemungkinan versi pratinjau.'
       : 'Gagal memuat — buka Pengaturan lalu tekan Tes koneksi.');
     console.error(e);
-    if(!S.dash.length) buildDemo();   // tetap ada yang bisa dilihat
+    if(S.demo){S.ready=false;S.demo=false;S.dash=[];S.dashAll=[];} // failed production reads must never display generated sales
   }
   _busyPop();
   render();
@@ -2023,9 +2026,14 @@ function parkFilters(){
   const cl=$('#f-clear'); if(cl) pool.append(cl);
 }
 async function refreshSalesTypeMapping(){S.rollCache.clear();S.itemScope='';S.catBrand=null;_catListCache=null;try{await DB.rpc('rebuild_sales_actual',{});}catch(e){throw Error('Aturan tersimpan, tetapi hitung ulang sales gagal: '+e.message);}await loadAll();if(S.lastError)throw Error('Aturan tersimpan, tetapi pemuatan ulang data gagal: '+S.lastError);}
+/* V23: report source mismatches instead of hiding or coercing them. */
+function salesIntegrityV23(){const issues=[],n=v=>Number.isFinite(Number(v))?Number(v):null;for(const r of dashAllRows()){const vals=['sales_komersial','sales_user','sales_komersial_tigalapan','sales_user_tigalapan','sales_user_mamu','total_sales','target_total','target_komersial','target_user'];if(vals.some(k=>r[k]==null||n(r[k])==null)){issues.push({r,kind:'Nilai sales/target kosong atau tidak valid',delta:null});continue;}for(const [kind,delta]of [['Komersial vs rincian',n(r.sales_komersial)-n(r.sales_komersial_tigalapan)],['User vs rincian',n(r.sales_user)-n(r.sales_user_tigalapan)-n(r.sales_user_mamu)],['Total sales vs Komersial + User',n(r.total_sales)-n(r.sales_komersial)-n(r.sales_user)],['Target total vs rincian',n(r.target_total)-n(r.target_komersial)-n(r.target_user)]])if(Math.abs(delta)>0.005)issues.push({r,kind,delta});}return issues;}
+function mappingConflictsV23(){return (S.map||[]).filter(m=>m.keterangan&&m.segmen&&String(m.keterangan).trim().toUpperCase()!==String(m.segmen).trim().toUpperCase().split(/\s+/)[0]);}
+function salesIntegrityDetailV23(){const {box}=opsModal('Pemeriksaan konsistensi data'),issues=salesIntegrityV23(),maps=mappingConflictsV23();box.append(el('p',{class:'note'},'Mencakup seluruh toko, bulan, dan tahun yang berhasil dimuat. Tidak mengubah angka sumber. Selisih Komersial dapat berarti segmen Komersial lain atau pemetaan tidak selaras; cek sumber sebelum mengubahnya.'),mkTable([H('SALES TYPE'),H('KETERANGAN'),H('SEGMEN')],maps.map(m=>[m.sales_type,m.keterangan,m.segmen])),mkTable([H('TOKO'),H('TAHUN'),H('BULAN'),H('PEMERIKSAAN'),H('SELISIH',{r:1})],issues.map(({r,kind,delta})=>[r.store_name||String(r.store_id),String(r.year),MONTHS[r.month-1]||String(r.month),kind,delta==null?'Tidak valid':compact(delta)])));}
+function renderConsistencyNoticeV23(){document.querySelectorAll('.consistency-notice-v23').forEach(e=>e.remove());if(S.demo)return;const host=$('#filters');if(!host)return;const issues=S.ready?salesIntegrityV23():[],conflicts=mappingConflictsV23(),warnings=S.readWarnings||[];if(!issues.length&&!conflicts.length&&!S.lastError&&!warnings.length)return;const box=el('div',{class:'note warn consistency-notice-v23',role:'status',style:'flex:1 1 100%;margin:0'},el('b',{},S.lastError?'Pemuatan data belum berhasil':'Konsistensi sumber perlu diperiksa'),el('div',{},S.lastError?'Data terbaru belum berhasil dimuat. '+S.lastError:issues.length+' perbedaan rincian · '+conflicts.length+' pemetaan tidak selaras'+(warnings.length?' · '+warnings.length+' sumber tambahan gagal dimuat':'')),el('button',{class:'btn sm',onclick:salesIntegrityDetailV23},'Lihat pemeriksaan'));if(warnings.length)box.append(el('details',{},el('summary',{},'Sumber tambahan belum terbaca'),...warnings.map(message=>el('p',{},message))));host.append(box);}
 function renderMappingNotice(){document.querySelectorAll('.sales-mapping-notice').forEach(e=>e.remove());if(!S.ready||S.demo||!S.unmapped?.length||S.page==='set')return;const page=$('#filters');if(!page)return;const count=S.unmapped.length,total=S.unmapped.reduce((n,r)=>n+N(r.total_amount),0),box=el('div',{class:'note warn sales-mapping-notice',role:'status',style:'display:flex;align-items:center;gap:12px;flex-wrap:wrap;flex:1 1 100%;margin:0'},el('div',{style:'flex:1;min-width:180px'},el('b',{},count+' Sales Type perlu dipetakan'),el('div',{},'Nilai '+String(compact(total))+' dari seluruh data upload belum masuk perhitungan sales. Pilih klasifikasinya di Pengaturan.')),el('button',{class:'btn sm',onclick:()=>{go('set');requestAnimationFrame(()=>$('#sales-type-pending')?.scrollIntoView({block:'start',behavior:'smooth'}));}},'Buka pemetaan'));page.append(box);}
 function render(){
-  parkFilters();
+  parkFilters();renderConsistencyNoticeV23();
   if(['masterinput','bazar'].includes(S.page)){({masterinput:renderMasterInput,bazar:renderBazar})[S.page]();return;}
   if(['links','schedule','tasks','review'].includes(S.page)){({review:renderReview,links:renderLinks,schedule:()=>renderOps('schedule'),tasks:()=>renderOps('task')})[S.page]();renderMappingNotice();return;}
   if(!S.ready){ document.querySelectorAll('.page').forEach(p=>{ if(p.id!=='p-set') p.innerHTML=''; });
@@ -3906,13 +3914,14 @@ async function ingestMap(file,rows){
     if(!t||/^sales type$/i.test(t)) continue;
     const k=String(r[kK]??'').trim().toUpperCase();
     const g=String(r[kG]??'').trim().toUpperCase().replace(/\s+/g,' ');
-    if(!['KOMERSIAL','USER'].includes(k) || !SEGMENS.includes(g)){ bad++; continue; }
+    if(!['KOMERSIAL','USER'].includes(k)||!SEGMENS.includes(g)||!g.startsWith(k+' '))throw Error('Pemetaan '+t+': Keterangan dan Segmen harus satu kelompok (KOMERSIAL atau USER). Tidak ada aturan dari file ini yang disimpan.');
     const o={sales_type:t,keterangan:k,segmen:g,brand:kB?String(r[kB]??'').trim()||null:null};
     if(kCh) o.channel=String(r[kCh]??'').trim().toUpperCase()||null;
     out.push(o);
   }
   if(!out.length) throw new Error('tidak ada baris mapping yang valid');
   await DB.write('sales_type_map',out,'sales_type');
+  await refreshSalesTypeMapping();
   await DB.write('ingest_log',[{kind:'MAPPING',file_name:file.name,rows_total:out.length,
     rows_mapped:out.length,rows_unmapped:bad,status:'OK'}]);
   logLine(`  ✓ ${file.name} · ${out.length} aturan mapping${bad?` · ${bad} baris dilewati`:''}`);
@@ -4161,7 +4170,7 @@ function renderSetReal(){
      ada channel baru sungguhan (lihat `CHANNEL_OPTS` di bawah, satu-satunya tempat daftar ini didefinisikan). */
   const CHANNEL_OPTS=[['','—'],['SHOPEE','Shopee'],['TIKTOK','TikTok'],['TOKOPEDIA','Tokopedia'],['LAZADA','Lazada']];
   const tb3=el('tbody');
-  S.map.slice(0,400).forEach(m=>{
+  S.map.forEach(m=>{
     const kSel=el('select',{},['KOMERSIAL','USER'].map(v=>el('option',{value:v,selected:m.keterangan===v?'':null},v)));
     const gSel=el('select',{},SEGMENS.map(v=>el('option',{value:v,selected:m.segmen===v?'':null},v)));
     const bIn=el('input',{type:'text',value:m.brand||'',list:'sc-brand-opts',style:'width:130px'});
@@ -4804,6 +4813,8 @@ function comparisonMonthDays(w,y,m){if(m<w.m1||m>w.m2)return 0;const dim=daysInM
 function comparisonFraction(w,y,m){if(comparisonUsesCalendar(w)&&comparisonCurrentMonth(y,m)){if(m<w.m1||m>w.m2||comparisonMonthDays(w,y,m)<=0)return 0;const source=comparisonSourceDays(w,y,m);return source>0?comparisonMonthDays(w,y,m)/source:1;}const source=comparisonUsesCalendar(w)?daysInMonth(y,m):comparisonAvailableDays(y,m);return source>0?comparisonMonthDays(w,y,m)/source:0;}
 function comparisonSalesValue(value,w,y,m){const f=comparisonFraction(w,y,m),scaled=N(value)*f;return comparisonUsesCalendar(w)&&f!==1?comparisonRoundUp(scaled):scaled;}
 function comparisonTargetFraction(w,y,m){if(comparisonUsesCalendar(w))return comparisonMonthDays(w,y,m)/daysInMonth(y,m);if(m<w.m1||m>w.m2)return 0;const dim=daysInMonth(y,m),a=w.mode==='range'&&m===w.m1?Math.min(w.d1,dim):1,b=w.mode==='range'&&m===w.m2?Math.min(w.d2,dim):dim;return Math.max(0,b-a+1)/dim;}
+/* V23: calculate rounded parent amounts once; use residuals for exact child totals. */
+function comparisonSalesMetricsV23(r,w,y,m){const raw={sales:N(r.total_sales),kom:N(r.sales_komersial),usr:N(r.sales_user),kt:N(r.sales_komersial_tigalapan),ut:N(r.sales_user_tigalapan),um:N(r.sales_user_mamu)},v=Object.fromEntries(Object.entries(raw).map(([k,n])=>[k,comparisonSalesValue(n,w,y,m)])),same=(a,b)=>Math.abs(a-b)<0.005;if(same(raw.sales,raw.kom+raw.usr))v.usr=v.sales-v.kom;if(same(raw.kom,raw.kt))v.kt=v.kom;if(same(raw.usr,raw.ut+raw.um))v.um=v.usr-v.ut;return v;}
 function comparisonTargetValue(value,w,y,m){const scaled=N(value)*comparisonTargetFraction(w,y,m);return comparisonUsesCalendar(w)?comparisonRoundUp(scaled):scaled;}
 function comparisonTargetDays(w,y){let total=0;for(let m=w.m1;m<=w.m2;m++)total+=comparisonTargetFraction(w,y,m)*daysInMonth(y,m);return total;}
 function comparisonDays(w,y){let n=0;for(let m=w.m1;m<=w.m2;m++)n+=comparisonUsesCalendar(w)&&comparisonCurrentMonth(y,m)&&comparisonSourceDays(w,y,m)==null?0:comparisonMonthDays(w,y,m);return n;}
@@ -4824,7 +4835,7 @@ function comparisonPanel(pf,controls){const grid=controls.querySelector('.compar
 function h2hData(years,m1,m2,window=null){
  const w=window&&typeof window==='object'?window:{mode:'month',m1,m2,d1:1,d2:31},out={};
  for(const y of years){const map=new Map(),get=id=>{if(!map.has(id))map.set(id,{name:(S.stores.find(s=>s.id===id)||{}).name||String(id),sales:0,kom:0,usr:0,kt:0,ut:0,um:0,tgt:0,tgtDays:0,trx:activeProductBrands().length?null:0,val:activeProductBrands().length?null:0,days:comparisonDays(w,y),targetDays:comparisonTargetDays(w,y)});return map.get(id);};
- S.dashAll.forEach(raw=>{const r=brandSalesRow(raw);if(r.year!==y||!storeOk(r.store_id))return;const f=comparisonFraction(w,y,r.month);const tf=comparisonTargetFraction(w,y,r.month);if(!f&&!tf)return;const o=get(r.store_id);for(const [key,col] of Object.entries({sales:'total_sales',kom:'sales_komersial',usr:'sales_user',kt:'sales_komersial_tigalapan',ut:'sales_user_tigalapan',um:'sales_user_mamu',tgt:'target_total'})){if(key==='tgt'&&activeProductBrands().length&&r[col]==null){if(tf)o.missingTarget=true;continue;}o[key]+=key==='tgt'?comparisonTargetValue(r[col],w,y,r.month):comparisonSalesValue(r[col],w,y,r.month);}});
+ S.dashAll.forEach(raw=>{const r=brandSalesRow(raw);if(r.year!==y||!storeOk(r.store_id))return;const f=comparisonFraction(w,y,r.month);const tf=comparisonTargetFraction(w,y,r.month);if(!f&&!tf)return;const o=get(r.store_id),metrics=comparisonSalesMetricsV23(r,w,y,r.month);for(const [key,col] of Object.entries({sales:'total_sales',kom:'sales_komersial',usr:'sales_user',kt:'sales_komersial_tigalapan',ut:'sales_user_tigalapan',um:'sales_user_mamu',tgt:'target_total'})){if(key==='tgt'&&activeProductBrands().length&&r[col]==null){if(tf)o.missingTarget=true;continue;}o[key]+=key==='tgt'?comparisonTargetValue(r[col],w,y,r.month):metrics[key];}});
  if(!activeProductBrands().length)manualTrxRows().forEach(r=>{if(r.year!==y||!storeOk(r.store_id))return;const f=comparisonFraction(w,y,r.month);if(!f)return;const o=get(r.store_id);o.trx+=comparisonSalesValue(r.jumlah_transaksi,w,y,r.month);o.val+=comparisonSalesValue(r.nilai_transaksi,w,y,r.month);if(r.jumlah_transaksi==null||(r.jumlah_transaksi===0&&r.nilai_transaksi>0))o.missingTrx=true;if(r.nilai_transaksi==null)o.missingTrxSales=true;});map.forEach(o=>{if(o.missingTarget)o.tgt=null;o.tgtDays=o.tgt==null?null:comparisonTargetDays(w,y)>0?o.tgt/comparisonTargetDays(w,y):0;if(o.missingTrx)o.trx=null;if(o.missingTrxSales)o.val=null;});out[y]=map;}
  return out;
 }
