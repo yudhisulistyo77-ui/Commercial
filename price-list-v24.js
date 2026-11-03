@@ -20,5 +20,38 @@ if(!count)throw Error('Tidak ada baris item.');return {outlet:store,city:locatio
 function get(doc,g,column){let i=doc.data.columns.indexOf(column);if(i<0)i=doc.data.columns.findIndex(c=>norm(c)===norm(column));if(i<0&&norm(column)==='MK-01 - PRICE')i=doc.data.columns.findIndex(c=>norm(c)==='MK01 - PRICE');return i<0?null:g.prices[i]??null;}
 function range(values){const a=values.filter(v=>v!==null&&v!==undefined);return {min:a.length?Math.min(...a):null,max:a.length?Math.max(...a):null,missing:values.length-a.length};}
 function validate(doc){if(!doc||!cities.includes(doc.city)||!doc.outlet||!doc.data||doc.data.schema!==24||!Array.isArray(doc.data.columns)||!Array.isArray(doc.data.groups))throw Error('Format data Price List tidak valid.');const ids=new Set();for(const g of doc.data.groups){if(!g.id||ids.has(g.id)||!g.item||!g.category||!g.brand||g.prices?.length!==doc.data.columns.length||!Array.isArray(g.variants))throw Error('Rincian Price List tidak valid.');ids.add(g.id);g.prices.forEach(v=>money(v));g.variants.forEach(v=>{if(!Array.isArray(v)||v.length!==3||!v[0])throw Error('Varian sumber tidak valid.');money(v[2]);});}return doc;}
-const api={cities,main,norm,city,outlet,csv,money,item,setColors,build,get,range,validate};if(typeof module!=='undefined'&&module.exports)module.exports=api;root.PRICE_ENGINE=api;
+// Display grouping is independent of SKU, color dictionary, cost and price vector.
+// Keep the lossless source documents unchanged, including documents saved by V24.
+const descriptorCache=new Map();
+function descriptor(name,category){const cacheKey=JSON.stringify([name,category]);if(descriptorCache.has(cacheKey))return descriptorCache.get(cacheKey);let n=norm(name).replace(/\bXXXL\b/g,'3XL').replace(/\bXXL\b/g,'2XL').replace(/\b([2-9])\s*XL\b/g,'$1XL'),cat=norm(category);const parts=[];
+const clothing=/COMBED|KIDS?|MAMU|WANGK|TUNIK|RIB|TSHIRT|T.SHIRT|HOODIE|DRESS|KEMEJA|CARGO|CHINOS|JEANS|POLO|KURTA|CREWNECK|BOMBER|OVERS|DEFECT|REJECT/.test(cat)&&!/PLASTIK|TOTEBAG|GOODIE|INK|NEOPLAST|UNIMATE|ALAT|STICKER/.test(cat);
+if(clothing){
+ // Numeric size ranges are retained, never confused with fabric counts (24S/30S).
+ const size=n.match(/(?:^|\s)((?:XXS|XS|S|M|L|[2-9]?XL)(?:\s*[-/]\s*(?:XXS|XS|S|M|L|[2-9]?XL))?|\d{2}\s*[-/]\s*\d{2}|\d{1,2}\s*(?:THN|TAHUN|Y)|ALL\s*SIZE|ALLSIZE|ONE\s*SIZE|FREE\s*SIZE|\d{2})\s*$/);
+ // Retain construction/product types within broad categories, not print-series names.
+ if(/\bMYNO\b/.test(n)&&!cat.includes('MYNO'))parts.push('MYNO');
+ if(/KEMEJA|TSHIRT/.test(cat)){for(const token of ['AIRWEAVE','FORMAL','SHANGHAI','SHANGHAI','BASIC'])if(new RegExp('\\b'+token+'\\b').test(n)&&!cat.includes(token)&&!parts.includes(token))parts.push(token);}
+ if(/DEFECT|REJECT/.test(cat)){const quality=n.match(/\bDEFECT\s+([A-D])\b/);if(quality)parts.push('GRADE '+quality[1]);if(/\bKIDS?\b/.test(n)&&!/KIDS?/.test(cat))parts.push('KIDS');if(/\b(?:WK|WANGK[IY])\b/.test(n))parts.push('WANGKI');}
+ if(/\b(?:PDK|PENDEK|SS|SHORT(?:S)?)\b/.test(n))parts.push('PDK');else if(/\b(?:PJG|PANJANG|LS|LONG)\b/.test(n))parts.push('PJG');else if(/\b3\s*\/\s*4\b/.test(n))parts.push('3/4');
+ if(/\bRIB\b/.test(n)||/\bRIB\b/.test(cat))parts.push('RIB');
+ if(size)parts.push(size[1].replace(/\s+/g,'').replace(/-/g,'/'));
+ const result=parts.join(' · ')||'STANDAR';descriptorCache.set(cacheKey,result);return result;
+}
+if(/GOODIE BAG/.test(cat)){const kind=n.match(/\b(HANDLE|OVAL)\b/),dim=n.match(/\b\d+(?:[.,]\d+)?\s*[X×]\s*\d+(?:[.,]\d+)?\b/);if(kind)parts.push(kind[1]);if(dim)parts.push(dim[0].replace(/\s/g,'').replace('×','X'));}
+else if(/TOTEBAG/.test(cat)){for(const token of ['KANVAS','BLACU','VELCRO','POLOS'])if(new RegExp('\\b'+token+'\\b').test(n))parts.push(token);const dim=n.match(/\b\d+\s*[X×]\s*\d+\b/);if(dim)parts.push(dim[0].replace(/\s/g,'').replace('×','X'));}
+else if(/MASKER/.test(cat))parts.push('STANDAR');
+const result=parts.join(' · ')||item(n).name;descriptorCache.set(cacheKey,result);return result;
+}
+function summary(docs,filter={}){const map=new Map(),q=norm(filter.query);for(const d of docs){if(filter.cities?.length&&!filter.cities.includes(d.city))continue;for(const g of d.data.groups){if(filter.categories?.length&&!filter.categories.includes(g.category)||filter.brands?.length&&!filter.brands.includes(g.brand))continue;
+ const buckets=new Map();if(g.origin==='manual'||g.descriptor_override){buckets.set(norm(g.item),g.variants);}else for(const v of g.variants){const label=descriptor(v[0],g.category);if(!buckets.has(label))buckets.set(label,[]);buckets.get(label).push(v);}
+ for(const [label,variants] of buckets){if(q&&!norm([label,g.item,g.category,g.brand,d.city,d.outlet,...variants.map(v=>v[0]+' '+v[1])].join(' ')).includes(q))continue;const key=JSON.stringify([d.city,norm(g.category),norm(g.brand),label]);let r=map.get(key);if(!r){r={key,city:d.city,category:g.category,brand:g.brand,item:label,profiles:[],source_rows:0};map.set(key,r);}r.profiles.push({d,g,variants});r.source_rows+=g.source_count??variants.length;}
+ }}return [...map.values()];}
+function compactDoc(doc){if(doc.data.compact===25)return doc;const next={...doc,data:{...doc.data,compact:25,groups:[]}},map=new Map();
+ for(const g of doc.data.groups){if(g.origin==='manual'){next.data.groups.push({...g,source_count:g.source_count??g.variants.length});continue;}
+  const buckets=new Map();for(const v of g.variants){const label=g.descriptor_override?norm(g.item):descriptor(v[0],g.category);if(!buckets.has(label))buckets.set(label,[]);buckets.get(label).push(v);}
+  for(const [label,vs]of buckets){const costOverride=Object.hasOwn(g,'cost_override'),key=JSON.stringify([norm(g.category),norm(g.brand),label,g.prices,costOverride,g.cost_override]);let record=map.get(key);if(!record){record={id:'c25-'+map.size,category:g.category,brand:g.brand,item:label,prices:g.prices.slice(),variants:[],origin:'upload',source_count:0,review:false,descriptor_override:true};if(costOverride)record.cost_override=g.cost_override;map.set(key,record);next.data.groups.push(record);}record.source_count+=vs.length;const costs=new Set(record.variants.map(v=>v[2]));for(const v of vs)if(!costs.has(v[2])){costs.add(v[2]);record.variants.push([label,'',v[2]]);}}
+ }next.data.source_rows=next.data.groups.reduce((n,g)=>n+(g.source_count??g.variants.length),0);return next;}
+function packDoc(doc){const next=compactDoc(doc),vectors=[],refs=new Map();return {...next,data:{...next.data,price_vectors:vectors,groups:next.data.groups.map(g=>{const key=JSON.stringify(g.prices);if(!refs.has(key)){refs.set(key,vectors.length);vectors.push(g.prices);}const {prices,...rest}=g;return {...rest,price_ref:refs.get(key)};})}};}
+function unpackDoc(doc){if(!doc.data?.price_vectors)return doc;const {price_vectors,...data}=doc.data;return {...doc,data:{...data,groups:data.groups.map(g=>{if(!Number.isInteger(g.price_ref)||!Array.isArray(price_vectors[g.price_ref]))throw Error('Referensi harga Price List tidak valid.');const {price_ref,...rest}=g;return {...rest,prices:price_vectors[price_ref].slice()};})}};}
+const api={cities,main,norm,city,outlet,csv,money,item,setColors,build,get,range,validate,descriptor,summary,compactDoc,packDoc,unpackDoc};if(typeof module!=='undefined'&&module.exports)module.exports=api;root.PRICE_ENGINE=api;
 })(typeof window==='undefined'?globalThis:window);

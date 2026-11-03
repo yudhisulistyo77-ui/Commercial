@@ -1,6 +1,6 @@
 {
-  "version": "V24",
-  "passed": 23,
+  "version": "V25",
+  "passed": 26,
   "checks": [
     {
       "name": "Save rejected without valid PIN role",
@@ -83,6 +83,18 @@
       "pass": true
     },
     {
+      "name": "V25 SQL still accepts existing V24 document format",
+      "pass": true
+    },
+    {
+      "name": "Existing V24 format replaced by packed data in same row",
+      "pass": true
+    },
+    {
+      "name": "Invalid packed price reference is rejected",
+      "pass": true
+    },
+    {
       "name": "Installer rerun preserves 12 saved documents",
       "pass": true
     },
@@ -96,18 +108,18 @@
     }
   ],
   "local_doc_save_ms": [
-    238,
-    195,
-    163,
-    129,
-    128,
-    145,
-    151,
-    129,
-    119,
-    127,
-    147,
-    60
+    169,
+    136,
+    122,
+    85,
+    87,
+    99,
+    82,
+    75,
+    77,
+    83,
+    89,
+    50
   ],
   "production_writes": false,
   "scope": "PostgreSQL PGlite with all 12 real seed docs; mocked PIN role, RLS, atomic CAS save, idempotent installation, isolated sales table"

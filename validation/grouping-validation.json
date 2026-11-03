@@ -1,0 +1,227 @@
+{
+  "version": "V25",
+  "checks": [
+    {
+      "name": "HITAM 24S PDK L",
+      "pass": true
+    },
+    {
+      "name": "WARNA BARU YANG BELUM DIKENAL 24S PDK L",
+      "pass": true
+    },
+    {
+      "name": "ABU TUA + RIB 3XL",
+      "pass": true
+    },
+    {
+      "name": "NAVY WK MYNO PJG M",
+      "pass": true
+    },
+    {
+      "name": "BIRU BCA HANDLE 30x40",
+      "pass": true
+    },
+    {
+      "name": "MERAH OVAL 20x25",
+      "pass": true
+    },
+    {
+      "name": "CARGO SHORT DARK ARMY XL",
+      "pass": true
+    },
+    {
+      "name": "CARGO LONG BLACK XL",
+      "pass": true
+    },
+    {
+      "name": "STRAIGHT JEANS GREY 27-28",
+      "pass": true
+    },
+    {
+      "name": "KRT NAVY 3/4 L",
+      "pass": true
+    },
+    {
+      "name": "All 81610 original source items accounted for",
+      "pass": true
+    },
+    {
+      "name": "Only one Makassar COMBED 24S PDK L row across colors and outlets",
+      "pass": true
+    },
+    {
+      "name": "Nine cities retained",
+      "pass": true
+    },
+    {
+      "name": "Four Makassar outlets retained",
+      "pass": true
+    },
+    {
+      "name": "Exact prices, costs and source counts preserved: MAMU BTP",
+      "pass": true
+    },
+    {
+      "name": "Compact payload validates: MAMU BTP",
+      "pass": true
+    },
+    {
+      "name": "Idempotent compaction: MAMU BTP",
+      "pass": true
+    },
+    {
+      "name": "Exact prices, costs and source counts preserved: MAMU MAKASSAR",
+      "pass": true
+    },
+    {
+      "name": "Compact payload validates: MAMU MAKASSAR",
+      "pass": true
+    },
+    {
+      "name": "Idempotent compaction: MAMU MAKASSAR",
+      "pass": true
+    },
+    {
+      "name": "Exact prices, costs and source counts preserved: TIGALAPANKAOS MAKASSAR",
+      "pass": true
+    },
+    {
+      "name": "Compact payload validates: TIGALAPANKAOS MAKASSAR",
+      "pass": true
+    },
+    {
+      "name": "Idempotent compaction: TIGALAPANKAOS MAKASSAR",
+      "pass": true
+    },
+    {
+      "name": "Exact prices, costs and source counts preserved: MAMU GOWA",
+      "pass": true
+    },
+    {
+      "name": "Compact payload validates: MAMU GOWA",
+      "pass": true
+    },
+    {
+      "name": "Idempotent compaction: MAMU GOWA",
+      "pass": true
+    },
+    {
+      "name": "Exact prices, costs and source counts preserved: MAMU PALOPO",
+      "pass": true
+    },
+    {
+      "name": "Compact payload validates: MAMU PALOPO",
+      "pass": true
+    },
+    {
+      "name": "Idempotent compaction: MAMU PALOPO",
+      "pass": true
+    },
+    {
+      "name": "Exact prices, costs and source counts preserved: TIGALAPANKAOS TORAJA",
+      "pass": true
+    },
+    {
+      "name": "Compact payload validates: TIGALAPANKAOS TORAJA",
+      "pass": true
+    },
+    {
+      "name": "Idempotent compaction: TIGALAPANKAOS TORAJA",
+      "pass": true
+    },
+    {
+      "name": "Exact prices, costs and source counts preserved: TIGALAPANKAOS SAMARINDA",
+      "pass": true
+    },
+    {
+      "name": "Compact payload validates: TIGALAPANKAOS SAMARINDA",
+      "pass": true
+    },
+    {
+      "name": "Idempotent compaction: TIGALAPANKAOS SAMARINDA",
+      "pass": true
+    },
+    {
+      "name": "Exact prices, costs and source counts preserved: TIGALAPANKAOS BONE",
+      "pass": true
+    },
+    {
+      "name": "Compact payload validates: TIGALAPANKAOS BONE",
+      "pass": true
+    },
+    {
+      "name": "Idempotent compaction: TIGALAPANKAOS BONE",
+      "pass": true
+    },
+    {
+      "name": "Exact prices, costs and source counts preserved: TIGALAPANKAOS POLMAN",
+      "pass": true
+    },
+    {
+      "name": "Compact payload validates: TIGALAPANKAOS POLMAN",
+      "pass": true
+    },
+    {
+      "name": "Idempotent compaction: TIGALAPANKAOS POLMAN",
+      "pass": true
+    },
+    {
+      "name": "Exact prices, costs and source counts preserved: TIGALAPANKAOS PALU",
+      "pass": true
+    },
+    {
+      "name": "Compact payload validates: TIGALAPANKAOS PALU",
+      "pass": true
+    },
+    {
+      "name": "Idempotent compaction: TIGALAPANKAOS PALU",
+      "pass": true
+    },
+    {
+      "name": "Exact prices, costs and source counts preserved: TIGALAPANKAOS MANADO",
+      "pass": true
+    },
+    {
+      "name": "Compact payload validates: TIGALAPANKAOS MANADO",
+      "pass": true
+    },
+    {
+      "name": "Idempotent compaction: TIGALAPANKAOS MANADO",
+      "pass": true
+    },
+    {
+      "name": "Exact prices, costs and source counts preserved: MAMU KENDARI",
+      "pass": true
+    },
+    {
+      "name": "Compact payload validates: MAMU KENDARI",
+      "pass": true
+    },
+    {
+      "name": "Idempotent compaction: MAMU KENDARI",
+      "pass": true
+    },
+    {
+      "name": "No original SKU retained in imported seed",
+      "pass": true
+    },
+    {
+      "name": "Every profile has actual readable price vector",
+      "pass": true
+    },
+    {
+      "name": "Storage reduced by over half",
+      "pass": true
+    },
+    {
+      "name": "Manual records preserved",
+      "pass": true
+    }
+  ],
+  "passed": 54,
+  "display_rows": 4537,
+  "source_items": 81610,
+  "before_bytes": 8613417,
+  "after_bytes": 4014453,
+  "production_writes": false
+}

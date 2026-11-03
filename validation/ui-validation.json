@@ -1,6 +1,6 @@
 {
-  "version": "V24",
-  "passed": 28,
+  "version": "V25",
+  "passed": 33,
   "checks": [
     {
       "name": "Price List menu added to navigation",
@@ -43,7 +43,7 @@
       "pass": true
     },
     {
-      "name": "Source names remain searchable even when colors removed",
+      "name": "Handle model searchable after removing SKU detail",
       "pass": true
     },
     {
@@ -95,11 +95,31 @@
       "pass": true
     },
     {
-      "name": "Export includes all current source variants, not one display page",
+      "name": "Export contains compact profiles for all results, beyond one page",
       "pass": true
     },
     {
       "name": "Export retains original program columns and cost",
+      "pass": true
+    },
+    {
+      "name": "Main prices cannot disappear when extra program selection is empty",
+      "pass": true
+    },
+    {
+      "name": "Actual prices rendered on summary rows",
+      "pass": true
+    },
+    {
+      "name": "Existing V24 data regrouped without production write",
+      "pass": true
+    },
+    {
+      "name": "Migration saves all twelve compact documents",
+      "pass": true
+    },
+    {
+      "name": "Migration sends packed vectors without raw source SKUs",
       "pass": true
     },
     {
@@ -117,5 +137,5 @@
   ],
   "errors": [],
   "production_writes": false,
-  "scope": "Full 81610-row seed in JSDOM, page/filters/search/number modes, details, PIN RPC mocks, manual CRUD, upload preview/replacement, full export and read failure"
+  "scope": "Compact seed representing 81610 source items in JSDOM, page/filters/search/number modes, details, PIN RPC mocks, manual CRUD, upload preview/replacement, full export and read failure"
 }
