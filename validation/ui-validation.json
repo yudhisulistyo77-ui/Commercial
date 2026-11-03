@@ -1,0 +1,121 @@
+{
+  "version": "V24",
+  "passed": 28,
+  "checks": [
+    {
+      "name": "Price List menu added to navigation",
+      "pass": true
+    },
+    {
+      "name": "Initial assets load all 81610 source rows",
+      "pass": true
+    },
+    {
+      "name": "Nine city scopes available",
+      "pass": true
+    },
+    {
+      "name": "Only 50 table rows mounted",
+      "pass": true
+    },
+    {
+      "name": "Prices have a count footer, not a misleading sum",
+      "pass": true
+    },
+    {
+      "name": "Four main retail/member columns present",
+      "pass": true
+    },
+    {
+      "name": "Next page changes paging state",
+      "pass": true
+    },
+    {
+      "name": "City filter restricts all rows",
+      "pass": true
+    },
+    {
+      "name": "City includes all four Makassar outlets",
+      "pass": true
+    },
+    {
+      "name": "Category filter changes results",
+      "pass": true
+    },
+    {
+      "name": "Source names remain searchable even when colors removed",
+      "pass": true
+    },
+    {
+      "name": "Search refreshes summary cards",
+      "pass": true
+    },
+    {
+      "name": "Full/compact toggles preserve raw prices",
+      "pass": true
+    },
+    {
+      "name": "Details include original variants and program panel",
+      "pass": true
+    },
+    {
+      "name": "Manual add saved via PIN RPC",
+      "pass": true
+    },
+    {
+      "name": "Manual row preserves blank/zero values",
+      "pass": true
+    },
+    {
+      "name": "Manual edit changes current record",
+      "pass": true
+    },
+    {
+      "name": "Upload preview accounts for both rows",
+      "pass": true
+    },
+    {
+      "name": "Upload replaces only chosen outlet",
+      "pass": true
+    },
+    {
+      "name": "Upload retains manually added profiles",
+      "pass": true
+    },
+    {
+      "name": "Other outlet data remains intact",
+      "pass": true
+    },
+    {
+      "name": "Delete removes only selected profile",
+      "pass": true
+    },
+    {
+      "name": "Upload source variants still retained after manual delete",
+      "pass": true
+    },
+    {
+      "name": "Export includes all current source variants, not one display page",
+      "pass": true
+    },
+    {
+      "name": "Export retains original program columns and cost",
+      "pass": true
+    },
+    {
+      "name": "Unavailable DB is explicit rather than hidden by seed",
+      "pass": true
+    },
+    {
+      "name": "Saving disabled after failed read",
+      "pass": true
+    },
+    {
+      "name": "No unhandled application errors",
+      "pass": true
+    }
+  ],
+  "errors": [],
+  "production_writes": false,
+  "scope": "Full 81610-row seed in JSDOM, page/filters/search/number modes, details, PIN RPC mocks, manual CRUD, upload preview/replacement, full export and read failure"
+}

@@ -1,0 +1,605 @@
+{
+  "version": "V24",
+  "passed": 149,
+  "checks": [
+    {
+      "name": "Boots into Dashboard",
+      "pass": true
+    },
+    {
+      "name": "No database calls for layout update",
+      "pass": true
+    },
+    {
+      "name": "Existing calculation/storage unchanged: pct",
+      "pass": true
+    },
+    {
+      "name": "Existing calculation/storage unchanged: achPct",
+      "pass": true
+    },
+    {
+      "name": "Existing calculation/storage unchanged: comparisonSalesValue",
+      "pass": true
+    },
+    {
+      "name": "Existing calculation/storage unchanged: comparisonTargetValue",
+      "pass": true
+    },
+    {
+      "name": "Existing calculation/storage unchanged: kpiMonthFromWeekly",
+      "pass": true
+    },
+    {
+      "name": "Existing calculation/storage unchanged: kpiYtdCalc",
+      "pass": true
+    },
+    {
+      "name": "Existing calculation/storage unchanged: reviewSaveConfig",
+      "pass": true
+    },
+    {
+      "name": "Existing calculation/storage unchanged: reviewMetrics",
+      "pass": true
+    },
+    {
+      "name": "Existing calculation/storage unchanged: reviewSyncAugustSeptember",
+      "pass": true
+    },
+    {
+      "name": "Existing calculation/storage unchanged: trxSummary",
+      "pass": true
+    },
+    {
+      "name": "Existing calculation/storage unchanged: saveSegmentTargets",
+      "pass": true
+    },
+    {
+      "name": "Existing calculation/storage unchanged: appSaveUpdateDate",
+      "pass": true
+    },
+    {
+      "name": "Menu renders: dash",
+      "pass": true
+    },
+    {
+      "name": "Compact mode retains page and numeric values: dash",
+      "pass": true
+    },
+    {
+      "name": "Full mode retains page and numeric values: dash",
+      "pass": true
+    },
+    {
+      "name": "Full currency cells have no abbreviation: dash",
+      "pass": true
+    },
+    {
+      "name": "Table footers retained: dash",
+      "pass": true
+    },
+    {
+      "name": "Menu renders: pdca",
+      "pass": true
+    },
+    {
+      "name": "Compact mode retains page and numeric values: pdca",
+      "pass": true
+    },
+    {
+      "name": "Full mode retains page and numeric values: pdca",
+      "pass": true
+    },
+    {
+      "name": "Full currency cells have no abbreviation: pdca",
+      "pass": true
+    },
+    {
+      "name": "Table footers retained: pdca",
+      "pass": true
+    },
+    {
+      "name": "Menu renders: pica",
+      "pass": true
+    },
+    {
+      "name": "Compact mode retains page and numeric values: pica",
+      "pass": true
+    },
+    {
+      "name": "Full mode retains page and numeric values: pica",
+      "pass": true
+    },
+    {
+      "name": "Full currency cells have no abbreviation: pica",
+      "pass": true
+    },
+    {
+      "name": "Table footers retained: pica",
+      "pass": true
+    },
+    {
+      "name": "Menu renders: h2h",
+      "pass": true
+    },
+    {
+      "name": "Compact mode retains page and numeric values: h2h",
+      "pass": true
+    },
+    {
+      "name": "Full mode retains page and numeric values: h2h",
+      "pass": true
+    },
+    {
+      "name": "Full currency cells have no abbreviation: h2h",
+      "pass": true
+    },
+    {
+      "name": "Table footers retained: h2h",
+      "pass": true
+    },
+    {
+      "name": "Menu renders: sssg",
+      "pass": true
+    },
+    {
+      "name": "Compact mode retains page and numeric values: sssg",
+      "pass": true
+    },
+    {
+      "name": "Full mode retains page and numeric values: sssg",
+      "pass": true
+    },
+    {
+      "name": "Full currency cells have no abbreviation: sssg",
+      "pass": true
+    },
+    {
+      "name": "Table footers retained: sssg",
+      "pass": true
+    },
+    {
+      "name": "Menu renders: program",
+      "pass": true
+    },
+    {
+      "name": "Compact mode retains page and numeric values: program",
+      "pass": true
+    },
+    {
+      "name": "Full mode retains page and numeric values: program",
+      "pass": true
+    },
+    {
+      "name": "Full currency cells have no abbreviation: program",
+      "pass": true
+    },
+    {
+      "name": "Table footers retained: program",
+      "pass": true
+    },
+    {
+      "name": "Menu renders: review",
+      "pass": true
+    },
+    {
+      "name": "Compact mode retains page and numeric values: review",
+      "pass": true
+    },
+    {
+      "name": "Full mode retains page and numeric values: review",
+      "pass": true
+    },
+    {
+      "name": "Full currency cells have no abbreviation: review",
+      "pass": true
+    },
+    {
+      "name": "Table footers retained: review",
+      "pass": true
+    },
+    {
+      "name": "Menu renders: bazar",
+      "pass": true
+    },
+    {
+      "name": "Compact mode retains page and numeric values: bazar",
+      "pass": true
+    },
+    {
+      "name": "Full mode retains page and numeric values: bazar",
+      "pass": true
+    },
+    {
+      "name": "Full currency cells have no abbreviation: bazar",
+      "pass": true
+    },
+    {
+      "name": "Table footers retained: bazar",
+      "pass": true
+    },
+    {
+      "name": "Menu renders: mkt",
+      "pass": true
+    },
+    {
+      "name": "Compact mode retains page and numeric values: mkt",
+      "pass": true
+    },
+    {
+      "name": "Full mode retains page and numeric values: mkt",
+      "pass": true
+    },
+    {
+      "name": "Full currency cells have no abbreviation: mkt",
+      "pass": true
+    },
+    {
+      "name": "Table footers retained: mkt",
+      "pass": true
+    },
+    {
+      "name": "Menu renders: brand",
+      "pass": true
+    },
+    {
+      "name": "Compact mode retains page and numeric values: brand",
+      "pass": true
+    },
+    {
+      "name": "Full mode retains page and numeric values: brand",
+      "pass": true
+    },
+    {
+      "name": "Full currency cells have no abbreviation: brand",
+      "pass": true
+    },
+    {
+      "name": "Table footers retained: brand",
+      "pass": true
+    },
+    {
+      "name": "Menu renders: top",
+      "pass": true
+    },
+    {
+      "name": "Compact mode retains page and numeric values: top",
+      "pass": true
+    },
+    {
+      "name": "Full mode retains page and numeric values: top",
+      "pass": true
+    },
+    {
+      "name": "Full currency cells have no abbreviation: top",
+      "pass": true
+    },
+    {
+      "name": "Table footers retained: top",
+      "pass": true
+    },
+    {
+      "name": "Menu renders: sales",
+      "pass": true
+    },
+    {
+      "name": "Compact mode retains page and numeric values: sales",
+      "pass": true
+    },
+    {
+      "name": "Full mode retains page and numeric values: sales",
+      "pass": true
+    },
+    {
+      "name": "Full currency cells have no abbreviation: sales",
+      "pass": true
+    },
+    {
+      "name": "Table footers retained: sales",
+      "pass": true
+    },
+    {
+      "name": "Menu renders: item",
+      "pass": true
+    },
+    {
+      "name": "Compact mode retains page and numeric values: item",
+      "pass": true
+    },
+    {
+      "name": "Full mode retains page and numeric values: item",
+      "pass": true
+    },
+    {
+      "name": "Full currency cells have no abbreviation: item",
+      "pass": true
+    },
+    {
+      "name": "Table footers retained: item",
+      "pass": true
+    },
+    {
+      "name": "Menu renders: pricelist",
+      "pass": true
+    },
+    {
+      "name": "Compact mode retains page and numeric values: pricelist",
+      "pass": true
+    },
+    {
+      "name": "Full mode retains page and numeric values: pricelist",
+      "pass": true
+    },
+    {
+      "name": "Full currency cells have no abbreviation: pricelist",
+      "pass": true
+    },
+    {
+      "name": "Table footers retained: pricelist",
+      "pass": true
+    },
+    {
+      "name": "Menu renders: trx",
+      "pass": true
+    },
+    {
+      "name": "Compact mode retains page and numeric values: trx",
+      "pass": true
+    },
+    {
+      "name": "Full mode retains page and numeric values: trx",
+      "pass": true
+    },
+    {
+      "name": "Full currency cells have no abbreviation: trx",
+      "pass": true
+    },
+    {
+      "name": "Table footers retained: trx",
+      "pass": true
+    },
+    {
+      "name": "Menu renders: kpi",
+      "pass": true
+    },
+    {
+      "name": "Compact mode retains page and numeric values: kpi",
+      "pass": true
+    },
+    {
+      "name": "Full mode retains page and numeric values: kpi",
+      "pass": true
+    },
+    {
+      "name": "Full currency cells have no abbreviation: kpi",
+      "pass": true
+    },
+    {
+      "name": "Table footers retained: kpi",
+      "pass": true
+    },
+    {
+      "name": "Menu renders: datatrack",
+      "pass": true
+    },
+    {
+      "name": "Compact mode retains page and numeric values: datatrack",
+      "pass": true
+    },
+    {
+      "name": "Full mode retains page and numeric values: datatrack",
+      "pass": true
+    },
+    {
+      "name": "Full currency cells have no abbreviation: datatrack",
+      "pass": true
+    },
+    {
+      "name": "Table footers retained: datatrack",
+      "pass": true
+    },
+    {
+      "name": "Menu renders: links",
+      "pass": true
+    },
+    {
+      "name": "Compact mode retains page and numeric values: links",
+      "pass": true
+    },
+    {
+      "name": "Full mode retains page and numeric values: links",
+      "pass": true
+    },
+    {
+      "name": "Full currency cells have no abbreviation: links",
+      "pass": true
+    },
+    {
+      "name": "Table footers retained: links",
+      "pass": true
+    },
+    {
+      "name": "Menu renders: schedule",
+      "pass": true
+    },
+    {
+      "name": "Compact mode retains page and numeric values: schedule",
+      "pass": true
+    },
+    {
+      "name": "Full mode retains page and numeric values: schedule",
+      "pass": true
+    },
+    {
+      "name": "Full currency cells have no abbreviation: schedule",
+      "pass": true
+    },
+    {
+      "name": "Table footers retained: schedule",
+      "pass": true
+    },
+    {
+      "name": "Menu renders: tasks",
+      "pass": true
+    },
+    {
+      "name": "Compact mode retains page and numeric values: tasks",
+      "pass": true
+    },
+    {
+      "name": "Full mode retains page and numeric values: tasks",
+      "pass": true
+    },
+    {
+      "name": "Full currency cells have no abbreviation: tasks",
+      "pass": true
+    },
+    {
+      "name": "Table footers retained: tasks",
+      "pass": true
+    },
+    {
+      "name": "Menu renders: masterinput",
+      "pass": true
+    },
+    {
+      "name": "Compact mode retains page and numeric values: masterinput",
+      "pass": true
+    },
+    {
+      "name": "Full mode retains page and numeric values: masterinput",
+      "pass": true
+    },
+    {
+      "name": "Full currency cells have no abbreviation: masterinput",
+      "pass": true
+    },
+    {
+      "name": "Table footers retained: masterinput",
+      "pass": true
+    },
+    {
+      "name": "Menu renders: upload",
+      "pass": true
+    },
+    {
+      "name": "Compact mode retains page and numeric values: upload",
+      "pass": true
+    },
+    {
+      "name": "Full mode retains page and numeric values: upload",
+      "pass": true
+    },
+    {
+      "name": "Full currency cells have no abbreviation: upload",
+      "pass": true
+    },
+    {
+      "name": "Table footers retained: upload",
+      "pass": true
+    },
+    {
+      "name": "Menu renders: uploadreset",
+      "pass": true
+    },
+    {
+      "name": "Compact mode retains page and numeric values: uploadreset",
+      "pass": true
+    },
+    {
+      "name": "Full mode retains page and numeric values: uploadreset",
+      "pass": true
+    },
+    {
+      "name": "Full currency cells have no abbreviation: uploadreset",
+      "pass": true
+    },
+    {
+      "name": "Table footers retained: uploadreset",
+      "pass": true
+    },
+    {
+      "name": "Menu renders: set",
+      "pass": true
+    },
+    {
+      "name": "Compact mode retains page and numeric values: set",
+      "pass": true
+    },
+    {
+      "name": "Full mode retains page and numeric values: set",
+      "pass": true
+    },
+    {
+      "name": "Full currency cells have no abbreviation: set",
+      "pass": true
+    },
+    {
+      "name": "Table footers retained: set",
+      "pass": true
+    },
+    {
+      "name": "Ranking table uses measured column group",
+      "pass": true
+    },
+    {
+      "name": "Rank width limited to 44px",
+      "pass": true
+    },
+    {
+      "name": "Footer cannot inflate rank with long text",
+      "pass": true
+    },
+    {
+      "name": "Visible row count retained as accessible footer information",
+      "pass": true
+    },
+    {
+      "name": "No footer label in sortable body",
+      "pass": true
+    },
+    {
+      "name": "Table search survives full-to-compact mode",
+      "pass": true
+    },
+    {
+      "name": "Sort order survives full-to-compact mode",
+      "pass": true
+    },
+    {
+      "name": "Filtered total unchanged by mode switch",
+      "pass": true
+    },
+    {
+      "name": "Total still remains outside sortable body",
+      "pass": true
+    },
+    {
+      "name": "Full mode widens money column",
+      "pass": true
+    },
+    {
+      "name": "Search survives return to full mode",
+      "pass": true
+    },
+    {
+      "name": "No duplicated toolbar/colgroups",
+      "pass": true
+    },
+    {
+      "name": "CSL precision unaffected",
+      "pass": true
+    },
+    {
+      "name": "No new database table or setting required",
+      "pass": true
+    },
+    {
+      "name": "No unhandled JS errors",
+      "pass": true
+    }
+  ],
+  "errors": [],
+  "production_writes": false,
+  "scope": "JSDOM all 23 menus in both modes, search/sort/footer restoration, and unchanged business functions against V21; item loader and paging checked separately. Visual geometry checked separately in cloud browser."
+}

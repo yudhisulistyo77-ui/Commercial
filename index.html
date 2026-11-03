@@ -672,7 +672,9 @@ nav{padding:12px 10px;gap:3px}nav button{min-height:40px;border-radius:10px;tran
 @media(max-width:600px){.tbar .tsearch{flex-basis:100%;width:100%;max-width:100%}.tbar .spacer{min-width:0}.number-mode-control{max-width:100%}.number-mode-control label{font-size:10px;gap:6px}.number-mode-control select{max-width:140px}.card>header{column-gap:8px;row-gap:8px}}
 </style>
 <style>.item-pager{display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:flex-end;margin:10px 0}.item-pager>span:first-child{margin-right:auto}.item-pager .btn{flex-shrink:0}</style>
-</head>
+<style>
+.price-filters-v24{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}.price-program-grid-v24{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;padding:14px 0}.price-program-grid-v24 strong{display:block}.price-tw-v24{max-width:100%;overflow:auto}.price-table-v24{width:100%;min-width:850px}.price-table-v24 th,.price-table-v24 td{white-space:normal;min-width:135px;vertical-align:top}.price-table-v24 th:nth-child(4),.price-table-v24 td:nth-child(4){min-width:220px}.price-money-v24{font-variant-numeric:tabular-nums;overflow-wrap:anywhere}.price-filters-v24 .msd,.price-filters-v24 .msd-btn{width:100%}.price-filters-v24 input[type=search]{width:100%;min-height:38px;padding:8px 12px;border:1px solid var(--ring);border-radius:10px;background:var(--surface);color:var(--ink)}.price-profile-v24{padding:16px 0;border-bottom:1px solid var(--ring)}.price-table-v24 tfoot{position:static}.price-table-v24 tfoot td{font-size:12px;color:var(--ink-2)}
+</style></head>
 <body>
 
 <div id="shell">
@@ -731,6 +733,7 @@ nav{padding:12px 10px;gap:3px}nav button{min-height:40px;border-radius:10px;tran
     <section class="page on" id="p-dash"></section>
     <section class="page" id="p-sales"></section>
     <section class="page" id="p-item"></section>
+    <section class="page" id="p-pricelist"></section>
     <section class="page" id="p-top"></section>
     <section class="page" id="p-brand"></section>
     <section class="page" id="p-mkt"></section>
@@ -1145,6 +1148,7 @@ const PAGES = [
   {g:'Data'},
   {id:'sales', t:'Sales & Target',  ic:'sales'},
   {id:'item',  t:'Item Sales',      ic:'item'},
+  {id:'pricelist',t:'Price List',ic:'sales'},
   {id:'trx',   t:'Transaksi & AOV', ic:'trx'},
   {id:'kpi',   t:'KPI',             ic:'kpi'},
   {id:'datatrack', t:'Tracking Data', ic:'datatrack'},
@@ -1379,7 +1383,7 @@ function syncStoreOptions(){
 
 async function loadAll(){
   if(!S.key){ buildDemo(); render(); return; }
-  cancelItemLoadV22();
+  cancelItemLoadV22();if(typeof PL24!=='undefined')PL24.docs=null;
   setConn('Memuat…','neu');
   _busyPush();   // round 8 item 5: progress bar global menyala selama loadAll() berjalan (dipanggil
                  // oleh tombol Muat ulang, ganti filter Tahun/Brand/Toko, simpan target, dll)
@@ -2034,6 +2038,7 @@ function renderConsistencyNoticeV23(){document.querySelectorAll('.consistency-no
 function renderMappingNotice(){document.querySelectorAll('.sales-mapping-notice').forEach(e=>e.remove());if(!S.ready||S.demo||!S.unmapped?.length||S.page==='set')return;const page=$('#filters');if(!page)return;const count=S.unmapped.length,total=S.unmapped.reduce((n,r)=>n+N(r.total_amount),0),box=el('div',{class:'note warn sales-mapping-notice',role:'status',style:'display:flex;align-items:center;gap:12px;flex-wrap:wrap;flex:1 1 100%;margin:0'},el('div',{style:'flex:1;min-width:180px'},el('b',{},count+' Sales Type perlu dipetakan'),el('div',{},'Nilai '+String(compact(total))+' dari seluruh data upload belum masuk perhitungan sales. Pilih klasifikasinya di Pengaturan.')),el('button',{class:'btn sm',onclick:()=>{go('set');requestAnimationFrame(()=>$('#sales-type-pending')?.scrollIntoView({block:'start',behavior:'smooth'}));}},'Buka pemetaan'));page.append(box);}
 function render(){
   parkFilters();renderConsistencyNoticeV23();
+  if(S.page==='pricelist'){renderPriceListV24();return;}
   if(['masterinput','bazar'].includes(S.page)){({masterinput:renderMasterInput,bazar:renderBazar})[S.page]();return;}
   if(['links','schedule','tasks','review'].includes(S.page)){({review:renderReview,links:renderLinks,schedule:()=>renderOps('schedule'),tasks:()=>renderOps('task')})[S.page]();renderMappingNotice();return;}
   if(!S.ready){ document.querySelectorAll('.page').forEach(p=>{ if(p.id!=='p-set') p.innerHTML=''; });
@@ -3474,6 +3479,7 @@ function renderUpload(){
     'File gabungan (banyak toko/bulan dalam satu file) juga bisa: cukup ada kolom NAMA TOKO, BULAN dan TAHUN, maka tiap baris masuk ke periodenya sendiri. '+
     'Nama toko dicocokkan lewat daftar alias di Pengaturan, jadi “TIGALAPANKAOS MAKASSAR” tetap masuk ke toko yang benar.'));
 
+  p.append(card('Price List · Item Library','Upload dan perbarui harga seluruh kota, kategori, brand, program, dan Cost Amount.',el('button',{class:'btn pri',onclick:()=>{go('pricelist');priceLoadV24().then(()=>priceUploadV24()).catch(e=>toast(e.message));}},'Upload Price List')));
   const g=el('div',{class:'grid g2'});
   g.append(upCard('Sales Type per toko','Kolom: Sales Type · Count · Total Collected. Dari folder Drive “Sales Type By Store”. Total Collected mengisi sales otomatis Transaksi & AOV; Count tidak mengubah jumlah transaksi manual.','sales'));
   g.append(upCard('Item Sales','Kolom: Item Name · Item Variant Name · Category Name · SKU · Item Sold · Item Refunded · Net Sales. Dari folder Drive “Item Sales”.','item'));
@@ -7116,5 +7122,7 @@ setInterval(masterRevisionCheck,45000);window.addEventListener('focus',masterRev
 })();
 </script>
 
+<script src="price-list-v24.js"></script>
+<script src="price-list-ui-v24.js"></script>
 </body>
 </html>

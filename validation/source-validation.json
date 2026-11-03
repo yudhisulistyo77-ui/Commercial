@@ -1,0 +1,216 @@
+{
+  "version": "V24",
+  "passed": 52,
+  "checks": [
+    {
+      "name": "Source columns retained: TORAJA",
+      "pass": true
+    },
+    {
+      "name": "Every source row and requested value preserved: TORAJA",
+      "pass": true
+    },
+    {
+      "name": "Source count matches represented variants: TORAJA",
+      "pass": true
+    },
+    {
+      "name": "Source columns retained: SAMARINDA",
+      "pass": true
+    },
+    {
+      "name": "Every source row and requested value preserved: SAMARINDA",
+      "pass": true
+    },
+    {
+      "name": "Source count matches represented variants: SAMARINDA",
+      "pass": true
+    },
+    {
+      "name": "Source columns retained: POLMAN",
+      "pass": true
+    },
+    {
+      "name": "Every source row and requested value preserved: POLMAN",
+      "pass": true
+    },
+    {
+      "name": "Source count matches represented variants: POLMAN",
+      "pass": true
+    },
+    {
+      "name": "Source columns retained: PALU",
+      "pass": true
+    },
+    {
+      "name": "Every source row and requested value preserved: PALU",
+      "pass": true
+    },
+    {
+      "name": "Source count matches represented variants: PALU",
+      "pass": true
+    },
+    {
+      "name": "Source columns retained: MANADO",
+      "pass": true
+    },
+    {
+      "name": "Every source row and requested value preserved: MANADO",
+      "pass": true
+    },
+    {
+      "name": "Source count matches represented variants: MANADO",
+      "pass": true
+    },
+    {
+      "name": "Source columns retained: TIGALAPAN_MAKASSAR",
+      "pass": true
+    },
+    {
+      "name": "Every source row and requested value preserved: TIGALAPAN_MAKASSAR",
+      "pass": true
+    },
+    {
+      "name": "Source count matches represented variants: TIGALAPAN_MAKASSAR",
+      "pass": true
+    },
+    {
+      "name": "Source columns retained: BONE",
+      "pass": true
+    },
+    {
+      "name": "Every source row and requested value preserved: BONE",
+      "pass": true
+    },
+    {
+      "name": "Source count matches represented variants: BONE",
+      "pass": true
+    },
+    {
+      "name": "Source columns retained: PALOPO",
+      "pass": true
+    },
+    {
+      "name": "Every source row and requested value preserved: PALOPO",
+      "pass": true
+    },
+    {
+      "name": "Source count matches represented variants: PALOPO",
+      "pass": true
+    },
+    {
+      "name": "Source columns retained: MAMU_MAKASSAR",
+      "pass": true
+    },
+    {
+      "name": "Every source row and requested value preserved: MAMU_MAKASSAR",
+      "pass": true
+    },
+    {
+      "name": "Source count matches represented variants: MAMU_MAKASSAR",
+      "pass": true
+    },
+    {
+      "name": "Source columns retained: KENDARI",
+      "pass": true
+    },
+    {
+      "name": "Every source row and requested value preserved: KENDARI",
+      "pass": true
+    },
+    {
+      "name": "Source count matches represented variants: KENDARI",
+      "pass": true
+    },
+    {
+      "name": "Source columns retained: MAMU_GOWA",
+      "pass": true
+    },
+    {
+      "name": "Every source row and requested value preserved: MAMU_GOWA",
+      "pass": true
+    },
+    {
+      "name": "Source count matches represented variants: MAMU_GOWA",
+      "pass": true
+    },
+    {
+      "name": "Source columns retained: MAMU_BTP",
+      "pass": true
+    },
+    {
+      "name": "Every source row and requested value preserved: MAMU_BTP",
+      "pass": true
+    },
+    {
+      "name": "Source count matches represented variants: MAMU_BTP",
+      "pass": true
+    },
+    {
+      "name": "All 81610 source rows accounted for",
+      "pass": true
+    },
+    {
+      "name": "All 12 outlet files represented",
+      "pass": true
+    },
+    {
+      "name": "All 9 cities represented",
+      "pass": true
+    },
+    {
+      "name": "Makassar contains all four requested outlets",
+      "pass": true
+    },
+    {
+      "name": "Samarinda MK01 alias exactly preserves positive source price",
+      "pass": true
+    },
+    {
+      "name": "Two-word colors removed; size/model retained",
+      "pass": true
+    },
+    {
+      "name": "RIB MYNO HANDLE OVAL retained",
+      "pass": true
+    },
+    {
+      "name": "Size ranges retained",
+      "pass": true
+    },
+    {
+      "name": "Empty and zero remain distinct",
+      "pass": true
+    },
+    {
+      "name": "ID and US formatted prices parsed",
+      "pass": true
+    },
+    {
+      "name": "Quoted CSV commas/newlines escaped",
+      "pass": true
+    },
+    {
+      "name": "Blank and zero cost ranges kept",
+      "pass": true
+    },
+    {
+      "name": "Same-price colors merged but all costs retained",
+      "pass": true
+    },
+    {
+      "name": "Invalid price aborts file",
+      "pass": true
+    },
+    {
+      "name": "Unknown city rejected",
+      "pass": true
+    },
+    {
+      "name": "Missing brand rejected",
+      "pass": true
+    }
+  ],
+  "source_rows": 81610,
+  "scope": "Every original requested price/cost/category/brand/name/SKU tuple compared to grouped seed, including duplicates, blanks and zeros"
+}

@@ -1,0 +1,189 @@
+{
+  "version": "V24",
+  "passed": 45,
+  "checks": [
+    {
+      "name": "Boots into Dashboard",
+      "pass": true
+    },
+    {
+      "name": "No database calls for layout update",
+      "pass": true
+    },
+    {
+      "name": "Existing calculation/storage unchanged: pct",
+      "pass": true
+    },
+    {
+      "name": "Existing calculation/storage unchanged: achPct",
+      "pass": true
+    },
+    {
+      "name": "Existing calculation/storage unchanged: comparisonSalesValue",
+      "pass": true
+    },
+    {
+      "name": "Existing calculation/storage unchanged: comparisonTargetValue",
+      "pass": true
+    },
+    {
+      "name": "Existing calculation/storage unchanged: kpiMonthFromWeekly",
+      "pass": true
+    },
+    {
+      "name": "Existing calculation/storage unchanged: kpiYtdCalc",
+      "pass": true
+    },
+    {
+      "name": "Existing calculation/storage unchanged: reviewSaveConfig",
+      "pass": true
+    },
+    {
+      "name": "Existing calculation/storage unchanged: reviewMetrics",
+      "pass": true
+    },
+    {
+      "name": "Existing calculation/storage unchanged: reviewSyncAugustSeptember",
+      "pass": true
+    },
+    {
+      "name": "Existing calculation/storage unchanged: trxSummary",
+      "pass": true
+    },
+    {
+      "name": "Existing calculation/storage unchanged: saveSegmentTargets",
+      "pass": true
+    },
+    {
+      "name": "Existing calculation/storage unchanged: appSaveUpdateDate",
+      "pass": true
+    },
+    {
+      "name": "Identical pending item loads share one result",
+      "pass": true
+    },
+    {
+      "name": "Monthly calls never request a multi-month range",
+      "pass": true
+    },
+    {
+      "name": "Timeout falls back to non-overlapping stores",
+      "pass": true
+    },
+    {
+      "name": "All 12 months accounted for",
+      "pass": true
+    },
+    {
+      "name": "Item loading uses at most two workers",
+      "pass": true
+    },
+    {
+      "name": "No filters dropped by partitioning",
+      "pass": true
+    },
+    {
+      "name": "Variants with same SKU remain distinct",
+      "pass": true
+    },
+    {
+      "name": "Monthly/store subtotals merged without double counting",
+      "pass": true
+    },
+    {
+      "name": "Progress only finishes after all months",
+      "pass": true
+    },
+    {
+      "name": "Successful item cache prevents refetch",
+      "pass": true
+    },
+    {
+      "name": "Permission error is not retried as timeout",
+      "pass": true
+    },
+    {
+      "name": "Failed query never leaves partial cached result",
+      "pass": true
+    },
+    {
+      "name": "Timeout message does not misdiagnose missing Present SQL",
+      "pass": true
+    },
+    {
+      "name": "Missing function has different recovery advice",
+      "pass": true
+    },
+    {
+      "name": "Leaving Item Sales cancels active reads",
+      "pass": true
+    },
+    {
+      "name": "Cancelled read queue drains",
+      "pass": true
+    },
+    {
+      "name": "Aggregate requests deduplicate while pending",
+      "pass": true
+    },
+    {
+      "name": "Global item-driven reads limited to three concurrent RPCs",
+      "pass": true
+    },
+    {
+      "name": "Large table mounts only one page",
+      "pass": true
+    },
+    {
+      "name": "Full filter total includes off-page data",
+      "pass": true
+    },
+    {
+      "name": "All-result export available",
+      "pass": true
+    },
+    {
+      "name": "Next page has different records",
+      "pass": true
+    },
+    {
+      "name": "Header sort covers all results, not just page",
+      "pass": true
+    },
+    {
+      "name": "Export contains all 1001 matches plus header",
+      "pass": true
+    },
+    {
+      "name": "CSV export preserves raw numeric amounts",
+      "pass": true
+    },
+    {
+      "name": "Page size changes without dropping total",
+      "pass": true
+    },
+    {
+      "name": "Global Item search reaches off-page records",
+      "pass": true
+    },
+    {
+      "name": "Global search updates full total",
+      "pass": true
+    },
+    {
+      "name": "Member dropdown mounts a bounded option list",
+      "pass": true
+    },
+    {
+      "name": "Off-page dropdown options remain searchable",
+      "pass": true
+    },
+    {
+      "name": "No unhandled JS errors",
+      "pass": true
+    }
+  ],
+  "errors": [],
+  "production_writes": false,
+  "scope": "Simulated read RPC timeouts, cancellation, concurrency, exact totals/merge, 1001-row paging and full-result export; not production latency"
+}

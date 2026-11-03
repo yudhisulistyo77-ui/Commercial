@@ -1,0 +1,114 @@
+{
+  "version": "V24",
+  "passed": 23,
+  "checks": [
+    {
+      "name": "Save rejected without valid PIN role",
+      "pass": true
+    },
+    {
+      "name": "Direct anonymous write rejected",
+      "pass": true
+    },
+    {
+      "name": "Seed document saved atomically: MAMU BTP",
+      "pass": true
+    },
+    {
+      "name": "Seed document saved atomically: MAMU MAKASSAR",
+      "pass": true
+    },
+    {
+      "name": "Seed document saved atomically: TIGALAPANKAOS MAKASSAR",
+      "pass": true
+    },
+    {
+      "name": "Seed document saved atomically: MAMU GOWA",
+      "pass": true
+    },
+    {
+      "name": "Seed document saved atomically: MAMU PALOPO",
+      "pass": true
+    },
+    {
+      "name": "Seed document saved atomically: TIGALAPANKAOS TORAJA",
+      "pass": true
+    },
+    {
+      "name": "Seed document saved atomically: TIGALAPANKAOS SAMARINDA",
+      "pass": true
+    },
+    {
+      "name": "Seed document saved atomically: TIGALAPANKAOS BONE",
+      "pass": true
+    },
+    {
+      "name": "Seed document saved atomically: TIGALAPANKAOS POLMAN",
+      "pass": true
+    },
+    {
+      "name": "Seed document saved atomically: TIGALAPANKAOS PALU",
+      "pass": true
+    },
+    {
+      "name": "Seed document saved atomically: TIGALAPANKAOS MANADO",
+      "pass": true
+    },
+    {
+      "name": "Seed document saved atomically: MAMU KENDARI",
+      "pass": true
+    },
+    {
+      "name": "All 12 docs readable through RLS",
+      "pass": true
+    },
+    {
+      "name": "Stale document version cannot overwrite changes",
+      "pass": true
+    },
+    {
+      "name": "Failed save leaves prior data unchanged",
+      "pass": true
+    },
+    {
+      "name": "Editor can update price and version",
+      "pass": true
+    },
+    {
+      "name": "Only one outlet updated",
+      "pass": true
+    },
+    {
+      "name": "Server validates negative prices",
+      "pass": true
+    },
+    {
+      "name": "Installer rerun preserves 12 saved documents",
+      "pass": true
+    },
+    {
+      "name": "Unrelated sales unchanged",
+      "pass": true
+    },
+    {
+      "name": "RLS remains enabled",
+      "pass": true
+    }
+  ],
+  "local_doc_save_ms": [
+    238,
+    195,
+    163,
+    129,
+    128,
+    145,
+    151,
+    129,
+    119,
+    127,
+    147,
+    60
+  ],
+  "production_writes": false,
+  "scope": "PostgreSQL PGlite with all 12 real seed docs; mocked PIN role, RLS, atomic CAS save, idempotent installation, isolated sales table"
+}
