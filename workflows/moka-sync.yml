@@ -1,0 +1,64 @@
+name: Sinkron Moka POS
+
+# Menarik data penjualan Moka (Sales Type, Item Sales, Transaksi) ke Supabase
+# yang dipakai Dashboard Commercial. Token tidak pernah disimpan di repo:
+# semua kunci dibaca dari GitHub Secrets.
+
+on:
+  schedule:
+    # Setiap hari 04:37 WITA (20:37 UTC) — data sampai kemarin.
+    - cron: "37 20 * * *"
+  workflow_dispatch:
+    inputs:
+      months:
+        description: "Bulan (YYYY-MM, pisahkan koma, atau rentang 2026-01..2026-10). Kosong = bulan berjalan s.d. kemarin"
+        required: false
+        default: ""
+      outlets:
+        description: "Batasi ke outlet Moka tertentu (nama, pisahkan koma). Kosong = semua"
+        required: false
+        default: ""
+      dry_run:
+        description: "Uji coba saja (tidak menulis ke database)"
+        type: boolean
+        default: false
+
+concurrency:
+  group: moka-sync
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Tarik data Moka → Supabase
+        env:
+          MOKA_ACCESS_TOKEN: ${{ secrets.MOKA_ACCESS_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          SYNC_MONTHS: ${{ inputs.months }}
+          ONLY_OUTLETS: ${{ inputs.outlets }}
+          DRY_RUN: ${{ inputs.dry_run && '1' || '0' }}
+          WORKERS: "3"
+          MOKA_TZ_OFFSET: "7"
+          MOKA_TOKEN_EXPIRES: "2027-05-04"
+        run: python3 moka-sync/moka_sync.py
+
+      - name: Simpan hasil uji coba
+        if: always() && inputs.dry_run
+        uses: actions/upload-artifact@v4
+        with:
+          name: moka-sync-output
+          path: moka-sync-output/
+          if-no-files-found: ignore
+          retention-days: 7
