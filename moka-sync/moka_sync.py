@@ -290,10 +290,38 @@ def month_list():
 
 
 # -------------------------------------------------------------------- kerja
+LAG_RETRY_WAIT = int(env("LAG_RETRY_WAIT", "180"))   # detik
+LAG_MAX_SHARE = float(env("LAG_MAX_SHARE", "0.02"))    # selisih maks. 2% dari net
+
+
 def fetch_one(moka, outlet, period):
+    """Tarik satu toko-bulan. Kalau Sales Summary Moka lebih dulu memuat transaksi yang
+    baru tersinkron (kasir offline), laporan item & feed transaksi Moka sering tertinggal
+    beberapa menit/jam. Skrip menunggu lalu mencoba lagi; kalau masih tertinggal tetapi
+    Item Sales dan Sales Type saling cocok dan selisihnya kecil, data tetap ditulis
+    dengan status WARN dan akan terkoreksi otomatis pada sinkron berikutnya."""
+    t0 = time.time()
+    res = _fetch_once(moka, outlet, period)
+    if res["status"] == "ERROR" and res.get("lag"):
+        time.sleep(LAG_RETRY_WAIT)
+        res = _fetch_once(moka, outlet, period)
+    if res["status"] == "ERROR" and res.get("lag"):
+        net = float(res["summary"].get("net_sales") or 0)
+        st, it = res.get("sales_type_total"), res.get("item_total")
+        consistent = st is None or it is None or abs(st - it) <= max(TOLERANCE, 0.5 * len(res.get("items") or []))
+        basis = st if st is not None else it
+        if consistent and basis is not None and abs(net - basis) <= LAG_MAX_SHARE * max(abs(net), 1):
+            res["status"] = "WARN"
+            res["errors"] = [f"Moka belum selesai memproses transaksi yang telat tersinkron: "
+                             f"Summary {net:,.0f} vs detail {basis:,.0f} (selisih {net - basis:,.0f}); "
+                             f"terkoreksi di sinkron berikutnya"]
+    res["seconds"] = round(time.time() - t0, 1)
+    return res
+
+
+def _fetch_once(moka, outlet, period):
     y, m, d1, d2 = period
     oid, name = outlet["id"], outlet["name"]
-    t0 = time.time()
     res = {"outlet": name, "outlet_id": oid, "year": y, "month": m, "start": d1.isoformat(),
            "end": d2.isoformat(), "errors": [], "status": "OK"}
     try:
@@ -326,7 +354,11 @@ def fetch_one(moka, outlet, period):
             res["errors"].append(str(e))
     if res["errors"] and res["status"] != "SKIP":
         res["status"] = "ERROR"
-    res["seconds"] = round(time.time() - t0, 1)
+        # Summary lebih besar dari detail = pola transaksi telat tersinkron
+        net = float((res.get("summary") or {}).get("net_sales") or 0)
+        details = [v for v in (res.get("item_total"), res.get("sales_type_total")) if v is not None]
+        res["lag"] = bool(details) and all(net > v for v in details) and \
+            all("!=" in e for e in res["errors"])
     return res
 
 
@@ -346,7 +378,7 @@ def write_one(db, res, store_id, known_types, stamp):
             "kind": "SALES_TYPE", "file_name": src, "store_id": store_id, "year": y, "month": m,
             "rows_total": len(rows), "rows_mapped": len(rows) - len(unmapped), "rows_unmapped": len(unmapped),
             "total_amount": res["sales_type_total"], "status": "OK",
-            "message": f"Moka {period_note}" + (f"; belum termapping: {', '.join(unmapped[:8])}" if unmapped else "")}])
+            "message": f"Moka {period_note}" + (f"; {res['errors'][0]}" if res.get("status") == "WARN" else "") + (f"; belum termapping: {', '.join(unmapped[:8])}" if unmapped else "")}])
         res["unmapped"] = unmapped
     if "item" in PARTS and "items" in res:
         rows = [{"store_id": store_id, "year": y, "month": m, "item_name": (r.get("name") or "").strip(),
@@ -429,7 +461,7 @@ def main():
             o, sid = futs[f]
             res = f.result()
             res["store_id"] = sid
-            if res["status"] == "OK" and db and not DRY_RUN:
+            if res["status"] in ("OK", "WARN") and db and not DRY_RUN:
                 try:
                     write_one(db, res, sid, known_types, stamp)
                 except HttpError as e:
@@ -444,14 +476,14 @@ def main():
                 except HttpError:
                     pass
             net = float((res.get("summary") or {}).get("net_sales") or 0)
-            log(f"  {'✓' if res['status'] == 'OK' else '·' if res['status'] == 'SKIP' else '✗'} "
+            log(f"  {'✓' if res['status'] == 'OK' else '!' if res['status'] == 'WARN' else '·' if res['status'] == 'SKIP' else '✗'} "
                 f"{res['outlet']:<26} {res['year']}-{res['month']:02d}  net {rp(net):>17}  "
                 f"trx {int((res.get('summary') or {}).get('number_of_transactions') or 0):>6}  "
                 f"{len(res.get('sales_types') or {}):>3} sales type  {len(res.get('items') or []):>5} item  "
                 f"{res['seconds']:>6}s {'; '.join(res['errors'])}")
             results.append(res)
 
-    if db and not DRY_RUN and "sales_type" in PARTS and any(r["status"] == "OK" for r in results):
+    if db and not DRY_RUN and "sales_type" in PARTS and any(r["status"] in ("OK", "WARN") for r in results):
         try:
             db.rpc("rebuild_sales_actual")
             log("✓ rebuild_sales_actual selesai")
@@ -466,7 +498,7 @@ def main():
             json.dump(slim, fh, ensure_ascii=False, indent=1, default=str)
         log(f"Hasil uji coba disimpan di {OUT_DIR}/hasil.json")
 
-    ok = [r for r in results if r["status"] == "OK"]
+    ok = [r for r in results if r["status"] in ("OK", "WARN")]
     bad = [r for r in results if r["status"] == "ERROR"]
     if STEP_SUMMARY:
         with open(STEP_SUMMARY, "a", encoding="utf-8") as fh:
@@ -480,6 +512,9 @@ def main():
             unm = sorted({t for r in results for t in r.get("unmapped") or []})
             if unm:
                 fh.write(f"\n**Sales Type belum termapping:** {', '.join(unm)} — atur di Upload Data → Mapping.\n")
+    for r in results:
+        if r["status"] == "WARN":
+            warn(f"{r['outlet']} {r['year']}-{r['month']:02d}: {r['errors'][0]}")
     log(f"Selesai: {len(ok)} OK, {len(bad)} gagal, {len(results) - len(ok) - len(bad)} dilewati")
     if bad:
         sys.exit(1)
