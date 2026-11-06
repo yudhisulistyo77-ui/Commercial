@@ -1,0 +1,81 @@
+name: Sinkron Moka POS
+
+# Menarik data Moka ke Supabase untuk Dashboard Commercial.
+# - Jadwal harian (mode full): bulan berjalan s.d. kemarin + item & stok.
+# - Tombol "Sinkron Moka" di dashboard / Run workflow manual (mode live): data s.d. menit ini.
+# Semua kunci dibaca dari GitHub Secrets, tidak ada token di repo.
+
+on:
+  schedule:
+    - cron: "37 20 * * *"   # 04:37 WITA setiap hari
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "live = sampai menit ini (cepat) · full = sebulan penuh s.d. kemarin"
+        type: choice
+        options: [live, full]
+        default: live
+      months:
+        description: "Khusus mode full: bulan (YYYY-MM, pisahkan koma, atau 2026-01..2026-10). Kosong = bulan berjalan"
+        required: false
+        default: ""
+      include_stock:
+        description: "Ikut perbarui item & stok (menambah ±5–10 menit)"
+        type: boolean
+        default: false
+      outlets:
+        description: "Batasi ke outlet Moka tertentu (nama, pisahkan koma). Kosong = semua"
+        required: false
+        default: ""
+      dry_run:
+        description: "Uji coba saja (tidak menulis ke database)"
+        type: boolean
+        default: false
+      run_id:
+        description: "Diisi otomatis oleh tombol Sinkron di dashboard"
+        required: false
+        default: ""
+
+concurrency:
+  group: moka-sync
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Tarik data Moka → Supabase
+        env:
+          MOKA_ACCESS_TOKEN: ${{ secrets.MOKA_ACCESS_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          SYNC_MODE: ${{ github.event_name == 'schedule' && 'full' || inputs.mode }}
+          SYNC_MONTHS: ${{ inputs.months }}
+          INCLUDE_STOCK: ${{ (github.event_name == 'schedule' || inputs.include_stock) && '1' || '0' }}
+          ONLY_OUTLETS: ${{ inputs.outlets }}
+          DRY_RUN: ${{ inputs.dry_run && '1' || '0' }}
+          RUN_ID: ${{ inputs.run_id }}
+          WORKERS: "4"
+          MOKA_TZ_OFFSET: "7"
+          LOCAL_TZ_OFFSET: "8"
+          MOKA_TOKEN_EXPIRES: "2027-05-04"
+        run: python3 moka-sync/moka_sync.py
+
+      - name: Simpan hasil uji coba
+        if: always() && inputs.dry_run
+        uses: actions/upload-artifact@v4
+        with:
+          name: moka-sync-output
+          path: moka-sync-output/
+          if-no-files-found: ignore
+          retention-days: 7
