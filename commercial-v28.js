@@ -12,7 +12,7 @@
   'use strict';
   if (window.V28) return;
   const V28 = window.V28 = { run: null, active: null, poll: null, access: null, accessReady: false, revision: null };
-  const SEGMENT_BRANDS = ['TIGALAPAN', 'MAMU'];
+  const SEGMENT_BRANDS = ['TIGALAPAN', 'MAMU', 'MYNO', 'DEFECT'];
   const SEGMENT_PAGES = new Set(['dash', 'sales', 'mkt', 'pdca', 'h2h', 'program']);
   const STORE_BRAND_PAGES = new Set(['review', 'trx', 'jam', 'pelanggan', 'stok']);
   const ADMIN_PAGES = new Set(['upload', 'uploadreset', 'masterinput', 'akses']);
@@ -188,8 +188,7 @@ td.sticky1{overflow-wrap:break-word}
   function brandOptionsFor(id) {
     const storeBrands = [...new Set(S.stores.map(s => canonicalProductBrand(s.brand)).filter(Boolean))].sort();
     if (STORE_BRAND_PAGES.has(id)) return storeBrands;
-    if (SEGMENT_PAGES.has(id)) return SEGMENT_BRANDS.filter(b => storeBrands.includes(b) ||
-      (S.brandStores || []).some(r => canonicalProductBrand(r.brand) === b));
+    if (SEGMENT_PAGES.has(id)) return SEGMENT_BRANDS;
     return null;
   }
   const origPFB = pageFilterBar;
@@ -301,10 +300,19 @@ td.sticky1{overflow-wrap:break-word}
     if (viewOnly()) { box.append(el('p', { class: 'note warn' }, 'Akun Anda hanya untuk melihat data.')); return; }
     const stock = el('input', { type: 'checkbox' });
     const prev = el('input', { type: 'checkbox' });
+    const selection=opsSelect([['month','Bulan'],['year','Tahun penuh'],['range','Rentang tanggal']], 'month', {'aria-label':'Jenis periode sinkron'});
+    const year=opsInput(S.year,'number',{min:2000,max:2100,'aria-label':'Tahun sinkron'});
+    const month=opsSelect(MONTHS.map((m,i)=>[i+1,m]),S.month||Number(todayWita().slice(5,7)),{'aria-label':'Bulan sinkron'});
+    const from=opsInput(todayWita().slice(0,8)+'01','date',{'aria-label':'Tanggal awal sinkron'});
+    const to=opsInput(todayWita(),'date',{'aria-label':'Tanggal akhir sinkron',max:todayWita()});
+    const periodBox=el('div',{class:'v28-tools'},opsField('Periode',selection),opsField('Tahun',year),opsField('Bulan',month),opsField('Dari',from),opsField('Sampai',to));
+    const syncFields=()=>{year.closest('.fld').hidden=selection.value==='range';month.closest('.fld').hidden=selection.value!=='month';from.closest('.fld').hidden=to.closest('.fld').hidden=selection.value!=='range';};selection.onchange=syncFields;syncFields();
+    const library=el('input',{type:'checkbox'});library.checked=true;
     const err = el('p', { class: 'note warn', role: 'alert' });
     const start = el('button', { class: 'btn pri v28-sync-btn', type: 'button' }, syncIcon(), ' Mulai sinkron');
     box.append(
-      el('p', {}, 'Menarik transaksi Moka ', el('b', {}, 'sampai menit ini'), ' untuk semua toko: Sales Type, Item Sales, jumlah transaksi, jam ramai dan pelanggan. Biasanya selesai dalam ', el('b', {}, '2–4 menit'), '.'),
+      periodBox,el('label',{class:'rowline'},library,'Perbarui library item & Price List'),
+      el('p', {}, 'Menarik transaksi Moka ', el('b', {}, 'sampai menit ini'), ' untuk toko yang diizinkan: Sales Type, Item Sales, jumlah transaksi, jam ramai dan pelanggan. Biasanya selesai dalam ', el('b', {}, 'beberapa menit; periode lama bisa lebih lama'), '.'),
       el('label', { class: 'rowline' }, stock, 'Ikut perbarui stok & library item (tambah ±5–10 menit)'),
       el('label', { class: 'rowline' }, prev, 'Tarik ulang sebulan penuh (koreksi data bulan berjalan s.d. kemarin, ±10–20 menit)'),
       el('p', { class: 'note' }, 'Terakhir: ' + (V28.run ? dt(V28.run.finished_at) + ' (' + ago(V28.run.finished_at) + ')' : 'belum ada') + '. Jadwal otomatis dikonfigurasi pukul 04:37 WITA; keberhasilannya mengikuti status proses terakhir.'),
@@ -312,11 +320,20 @@ td.sticky1{overflow-wrap:break-word}
     start.onclick = async () => {
       start.disabled = true; err.textContent = '';
       try {
+        const y=Number(year.value),m=Number(month.value);
+        const request={mode:prev.checked?'full':'live',include_stock:stock.checked,include_library:library.checked,months:'',date_from:'',date_to:''};
+        if(selection.value==='range'){
+          if(!/^\d{4}-\d{2}-\d{2}$/.test(from.value)||!/^\d{4}-\d{2}-\d{2}$/.test(to.value)||from.value>to.value||to.value>todayWita())throw Error('Rentang tanggal tidak valid.');
+          request.date_from=from.value;request.date_to=to.value;
+        }else{
+          if(!Number.isInteger(y)||y<2000||y>2100)throw Error('Tahun tidak valid.');
+          request.months=selection.value==='year'?y+'-01..'+y+'-12':y+'-'+String(m).padStart(2,'0');
+        }
         const token = await masterToken();
         const headers = { apikey: S.key, 'Content-Type': 'application/json', 'x-commercial-pin-session': token };
         if (/^eyJ/.test(S.key)) headers.Authorization = 'Bearer ' + S.key;
         const res = await fetch(S.url.replace(/\/$/, '') + '/functions/v1/moka-sync', {
-          method: 'POST', headers, signal: AbortSignal.timeout(45000), body: JSON.stringify({ mode: prev.checked ? 'full' : 'live', include_stock: stock.checked })
+          method: 'POST', headers, signal: AbortSignal.timeout(45000), body: JSON.stringify(request)
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok || !data.ok || !data.run_id) {
@@ -727,10 +744,11 @@ td.sticky1{overflow-wrap:break-word}
       multiSelectDropdown(mBox, menuOpts, rule.menus, arr => { rule.menus = arr; }, { allLabel: 'Semua menu' });
       multiSelectDropdown(sBox, storeOpts, rule.stores.map(String), arr => { rule.stores = arr; }, { allLabel: 'Semua toko' });
       vo.onchange = () => { rule.view_only = vo.checked; };
+      const sync=el('input',{type:'checkbox'});sync.checked=!!rule.can_sync;sync.onchange=()=>{rule.can_sync=sync.checked};mBox.append(el('label',{class:'rowline'},sync,'Boleh sinkron Moka'));
       const pii = el('input', { type: 'checkbox' }); pii.checked = !!rule.customer_pii; pii.onchange = () => { rule.customer_pii = pii.checked; };
       mBox.append(el('label', { class: 'rowline', style: 'margin-top:8px' }, pii, 'Lihat telepon customer lengkap'));
       const quick = el('div', { class: 'sub', style: 'display:flex;gap:6px;margin-top:4px' }, ...SEGMENT_BRANDS.map(b => el('button', { class: 'btn sm', type: 'button', onclick: () => { rule.stores = S.stores.filter(s => canonicalProductBrand(s.brand) === b).map(s => String(s.id)); multiSelectDropdown(sBox, storeOpts, rule.stores, arr => { rule.stores = arr; }, { allLabel: 'Semua toko' }); } }, 'Toko ' + b)));
-      list.append(el('div', { class: 'v28-access-row' }, el('span', {}, el('b', {}, u.name), el('div', { class: 'sub' }, (u.role === 'editor' ? 'Editor' : u.role) + (u.enabled ? '' : ' · nonaktif'))), mBox, el('div', {}, sBox, quick), el('label', { class: 'rowline' }, vo, 'Ya'), el('span')));
+      list.append(el('div', { class: 'v28-access-row' }, el('span', {}, el('b', {}, u.name), el('div', { class: 'sub' }, (u.role === 'editor' ? 'Editor' : u.role) + (u.enabled ? '' : ' · nonaktif'))), mBox, el('div', {}, sBox, quick), el('label', { class: 'rowline' }, vo, 'Viewer (hanya lihat)'), el('span')));
     }
     const err = el('p', { class: 'note warn', role: 'alert' });
     const save = el('button', { class: 'btn pri', type: 'button', onclick: async () => {
@@ -758,7 +776,7 @@ td.sticky1{overflow-wrap:break-word}
     renderPriceListV24 = async function () {
       await origPL.apply(this, arguments);
       const head = $('#p-pricelist .phead');
-      if (head && !head.querySelector('[data-v28-pl]') && S.key && !S.demo)
+      if (head && !head.querySelector('[data-v28-pl]') && S.key && !S.demo && !viewOnly())
         head.append(el('button', { class: 'btn pri', 'data-v28-pl': '', type: 'button', onclick: priceFromMoka, title: 'Bangun Price List dari Library item Moka hasil sinkron terakhir' }, 'Perbarui dari Moka'));
     };
   }

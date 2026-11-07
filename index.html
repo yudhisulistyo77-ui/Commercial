@@ -2068,8 +2068,11 @@ async function capturePngOfNode(node){
        tidak didukungnya, apapun sumbernya (var(), color-mix(), atau color(srgb...) langsung). */
     const rect=node.getBoundingClientRect();
     const clone=node.cloneNode(true);
-    const captureWidth=Math.ceil(Math.max(rect.width,...[...node.querySelectorAll('.tw,.number-chart-scroll')].map(n=>n.scrollWidth+Math.max(0,n.getBoundingClientRect().left-rect.left)+24)));
+    const captureWidth=Math.ceil(Math.max(rect.width,node.scrollWidth,...[...node.querySelectorAll('.tw,.number-chart-scroll')].map(n=>n.scrollWidth+Math.max(0,n.getBoundingClientRect().left-rect.left)+24)));
+    clone.querySelectorAll('details').forEach(n=>n.open=true);clone.querySelectorAll('[data-export-control]').forEach(n=>n.style.display='none');
     clone.style.width=captureWidth+'px';clone.style.maxWidth='none';
+    for(const n of [clone,...clone.querySelectorAll('*')]){n.style.setProperty('max-height','none','important');if(!n.matches('svg,svg *')){n.style.setProperty('overflow','visible','important');n.style.setProperty('content-visibility','visible','important');}if(getComputedStyle(n).position==='sticky')n.style.setProperty('position','static','important');}
+    clone.style.setProperty('height','auto','important');clone.style.setProperty('position','relative','important');clone.style.setProperty('transform','none','important');
     for(const n of [clone,...clone.querySelectorAll('*')]){n.style.setProperty('animation','none','important');n.style.setProperty('transition','none','important');}
     bakeColorFunctions(node,clone);
     freezeCopyTablesV33(node,clone);
@@ -2080,11 +2083,15 @@ async function capturePngOfNode(node){
     host=el('div',{style:`position:fixed;left:-99999px;top:0;width:${captureWidth}px;background:${(!bg||bg==='rgba(0, 0, 0, 0)')?'#ffffff':bg}`});
     host.append(clone);
     document.body.append(host);
+    await document.fonts?.ready;
+    const captureHeight=Math.ceil(Math.max(clone.scrollHeight,clone.getBoundingClientRect().height,node.scrollHeight));
+    if(captureWidth*captureHeight>60000000)throw Error('Layout terlalu besar untuk satu PNG. Persempit filter atau salin per bagian agar tidak terpotong.');
     const canvas=await html2canvas(clone,{
       backgroundColor:(!bg||bg==='rgba(0, 0, 0, 0)')?'#ffffff':bg,
-      scale:2, useCORS:true, logging:false
+      scale:Math.min(2,Math.sqrt(60000000/Math.max(1,captureWidth*captureHeight))), useCORS:true, logging:false,
+      width:captureWidth,height:captureHeight,windowWidth:Math.max(document.documentElement.clientWidth,captureWidth),windowHeight:captureHeight,scrollX:0,scrollY:0
     });
-    return await new Promise(res=>canvas.toBlob(res,'image/png'));
+    return await new Promise((res,reject)=>canvas.toBlob(b=>b?res(b):reject(Error('PNG gagal dibuat; coba persempit bagian yang disalin.')),'image/png'));
   } finally {
     hideEls.forEach((b,i)=>{ b.style.visibility=prevVis[i]; });
     if(host) host.remove();
@@ -2460,9 +2467,7 @@ function renderDash(){
   }
   if(!gs.length)ranking.append(chartCard(`Growth vs ${S.year-1} per toko`,'Mengikuti filter aktif',el('div',{class:'empty'},'Belum ada data pembanding pada filter ini.')));
   p.append(dashTable(rows));
-  p.append(el('h2',{style:'font-size:16px;margin:8px 0 -6px'},'Top Product, Warna & Ukuran'));
-  const tp=el('div',{style:'display:flex;flex-direction:column;gap:18px'}); p.append(tp);
-  topBlock(tp,{limit:8});
+  // Top/Low Product stays in its dedicated menu; omitted from dashboard.
 
   /* Rekap Target & GAP — item baru: ditaruh PALING BAWAH Dashboard (dipindah dari atas sesuai
      permintaan user) karena H2H Sales cuma banding antar tahun tanpa data target sama sekali. Rekap
@@ -4305,7 +4310,7 @@ function renderSetReal(){
           if(guard()) return;
           try{ await DB.del('sales_type_map','id=eq.'+m.id);await refreshSalesTypeMapping();toast('Aturan dihapus dan data diperbarui.'); }catch(e){ toast('Gagal: '+e.message); } }},'Hapus')))));
   });
-  mp.append(el('datalist',{id:'sc-brand-opts'},['TIGALAPAN','MAMU','MYNO'].map(b=>el('option',{value:b}))));
+  mp.append(el('datalist',{id:'sc-brand-opts'},['TIGALAPAN','MAMU','MYNO','DEFECT'].map(b=>el('option',{value:b}))));
   if(S.map.length) mp.append(el('div',{class:'tw',style:'margin-top:13px;max-height:420px;overflow:auto'},
     el('table',{},el('thead',{},el('tr',{},['SALES TYPE','KETERANGAN','SEGMEN','BRAND','CHANNEL','']
       .map((h,i)=>el('th',{class:i===0?'sticky1':''},h)))),tb3)));
@@ -4853,7 +4858,7 @@ function renderTop(){
   const p=$('#p-top'); p.innerHTML='';
   if(!S.topN) S.topN=20;
   const bsel=el('select',{id:'top-brand'},el('option',{value:''},'Semua brand produk'),
-    ['TIGALAPAN','MAMU','MYNO'].map(b=>el('option',{value:b,selected:S.topBrand===b?'':null},b)));
+    ['TIGALAPAN','MAMU','MYNO','DEFECT'].map(b=>el('option',{value:b,selected:S.topBrand===b?'':null},b)));
   const nsel=el('select',{id:'top-n'},[10,20,50,100].map(n=>el('option',{value:String(n),selected:S.topN===n?'':null},'Top '+n)));
   const catSel=categoryPicker('top-cat',S.topCat,arr=>{S.topCat=arr;run();});
   const clearBtn=el('button',{class:'btn sm',title:'Reset filter halaman ini'},'Clear');
@@ -5976,7 +5981,7 @@ function renderBrand(){
   const p=$('#p-brand'); p.innerHTML='';
   const [m1,m2]=periodM1M2(S.year);
   const bsel=el('select',{id:'bp-brand'},el('option',{value:''},'Semua brand'),
-    ['TIGALAPAN','MAMU','MYNO'].map(b=>el('option',{value:b,selected:S.bpBrand===b?'':null},b)));
+    ['TIGALAPAN','MAMU','MYNO','DEFECT'].map(b=>el('option',{value:b,selected:S.bpBrand===b?'':null},b)));
   p.append(el('div',{class:'phead'},el('div',{},el('h1',{},'Brand Performance'),
     el('p',{},'Performa brand dan kategori dari Item Sales yang dicocokkan ke master DATABASE STOCK. '+ymLabel(S.year,m1,m2)+' · '+periodLabel().split(' · ').slice(1).join(' · '))),
     el('span',{class:'spacer'}),el('div',{class:'fld'},el('label',{for:'bp-brand'},'Brand produk'),bsel)));
@@ -6006,7 +6011,7 @@ function renderBrand(){
       const get=(arr,k)=>arr.find(r=>r.k===k)||{qty:0,sales:0,refunded:0};
       /* tiles */
       const tl=el('div',{class:'grid g4'});
-      ['TIGALAPAN','MAMU','MYNO'].filter(b=>!brandFilter||b===brandFilter).forEach(b=>{ const r=get(b0,b), t=brandTarget(b,S.year,m1,m2);
+      ['TIGALAPAN','MAMU','MYNO','DEFECT'].filter(b=>!brandFilter||b===brandFilter).forEach(b=>{ const r=get(b0,b), t=brandTarget(b,S.year,m1,m2);
         tl.append(tile(b,compact(r.sales),(t>0?`target ${compact(t)} · `:'')+`${int(r.qty)} item`,t>0?r.sales/t:null)); });
       tl.append(tile('Total item sales',compact(tSales),`${int(tQty)} item terjual bersih`,null));
       host.append(tl);
@@ -6018,7 +6023,7 @@ function renderBrand(){
           py.sales>0?compact(py.sales):'',growthPill(r.sales,py.sales),gapTxt(r.sales,py.sales),r.qty>0?rp(r.sales/r.qty):'—']; });
       host.append(card('Performa per brand',ymLabel(S.year,m1,m2)+' · diurutkan net sales terbesar→terkecil',mkTable(heads,rows)));
       /* chart brand vs target */
-      const achItems=['TIGALAPAN','MAMU','MYNO'].filter(b=>!brandFilter||b===brandFilter).map(b=>{ const r=get(b0,b), t=brandTarget(b,S.year,m1,m2);
+      const achItems=['TIGALAPAN','MAMU','MYNO','DEFECT'].filter(b=>!brandFilter||b===brandFilter).map(b=>{ const r=get(b0,b), t=brandTarget(b,S.year,m1,m2);
         return t>0?{label:b,v:r.sales/t,tip:`<div class="row"><span>Net sales</span><span>${compact(r.sales)}</span></div><div class="row"><span>Target</span><span>${compact(t)}</span></div>`}:null; }).filter(Boolean);
       if(achItems.length) host.append(chartCard('Achievement brand terhadap TARGET BRAND',`${ymLabel(S.year,m1,m2)} · garis putus-putus = 100%`,hBars(achItems,{mode:'ach',fmt:v=>pct(v,0),name:'Achievement',min:1,lw:100})));
       /* kategori — item 8: diurutkan NET SALES terbesar→terkecil (bukan urutan dari RPC yg berdasar qty) */
@@ -7014,7 +7019,7 @@ setInterval(masterRevisionCheck,45000);window.addEventListener('focus',masterRev
   buildNav();
   fillFilters();
   go('dash');
-  if(S.key) loadAll().then(()=>googleResume()); else { buildDemo(); render(); }
+  if(S.key) { S.ready=false; window.COMMERCIAL_LOGIN_REQUIRED_V38=true; } else { buildDemo(); render(); }
 })();
 </script>
 
@@ -7023,7 +7028,8 @@ setInterval(masterRevisionCheck,45000);window.addEventListener('focus',masterRev
 <script src="price-list-ui-v24.js?v=26"></script>
 <script src="member-v27.js?v=34"></script>
 <script src="member-ui-v27.js?v=37"></script>
-<script src="commercial-v28.js?v=37"></script>
-<script src="member-monthly-v37.js?v=37"></script>
+<script src="commercial-v28.js?v=38"></script>
+<script src="member-monthly-v37.js?v=38"></script>
+<script src="commercial-v38.js?v=38"></script>
 </body>
 </html>

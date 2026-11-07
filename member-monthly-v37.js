@@ -22,12 +22,13 @@
       try {
         const aoa=PRICE_ENGINE.csv(await file.text());const names=aoa.shift().map(h=>String(h).trim().toLowerCase().replace(/[^a-z0-9]/g,''));
         const col=(...aliases)=>names.findIndex(h=>aliases.includes(h));
+        const category=col('category','kategoricustomer'),status=col('status','statuscustomer');
         const id=col('customerkey','customerid','id'),name=col('name','customername','namacustomer'),city=col('city','kota'),phone=col('phone','customerphone','phone number'.replace(/ /g,''),'telepon','notelp','notelf'),since=col('custsince','customersince','createdat');
         if(id<0||name<0)throw Error('Kolom Customer ID dan Name wajib ada. Profil tidak dicocokkan otomatis berdasarkan nama atau telepon.');
         const seen=new Set(),rows=aoa.filter(r=>r.some(v=>String(v).trim())).map(r=>{
           const key=String(r[id]??'').trim();if(!key||seen.has(key))throw Error('Customer ID kosong/ganda: '+key);seen.add(key);
           const d=since>=0?String(r[since]||'').slice(0,10):'';
-          return {customer_key:key,name:String(r[name]||'').trim(),city:city>=0?String(r[city]||'').trim():null,phone:phone>=0?String(r[phone]||'').trim():null,cust_since:/^\d{4}-\d{2}-\d{2}$/.test(d)?d:null,source:{kind:'manual_customer_list',file:file.name}};
+          return {customer_key:key,name:String(r[name]||'').trim(),city:city>=0?String(r[city]||'').trim():null,phone:phone>=0?String(r[phone]||'').trim():null,cust_since:/^\d{4}-\d{2}-\d{2}$/.test(d)?d:null,source:{kind:'manual_customer_list',file:file.name,category:category>=0?String(r[category]||'').trim():null,status:status>=0?String(r[status]||'').trim():null}};
         });
         if(!rows.length)throw Error('Tidak ada profil pada file.');
         await masterRpc('commercial_member_profiles_save_v37',{p_rows:rows});show(host);
@@ -37,7 +38,7 @@
   }
   const area=el('div');host.append(area);area.append(el('p',{class:'note'},'Memuat transaksi bulanan…'));
   let data;
-  try{data=await masterRpc('commercial_member_monthly_v37',{p_year:Number(S.year),p_month:Number(S.month),p_stores:storeList().length?storeList().map(Number):null})}
+  try{data=await masterRpc('commercial_member_view_v38',{p_year:Number(S.year),p_month:Number(S.month),p_stores:storeList().length?storeList().map(Number):null})}
   catch(e){if(epoch===M.epoch&&area.isConnected)area.replaceChildren(el('p',{class:'note warn',role:'alert'},'Transaksi bulanan belum dapat dibaca: '+e.message));return}
   if(epoch!==M.epoch||!area.isConnected||MEM27.view!=='monthly')return;
   area.replaceChildren();
@@ -54,7 +55,13 @@
    if(!data.profile_count)result.append(el('p',{class:'note warn'},'Customer List belum dimuat. Nama memakai transaksi; kota dan telepon lengkap ditandai belum tersedia.'));
    if(!data.pii_allowed)result.append(el('p',{class:'note'},'Akses nomor telepon lengkap tidak diberikan untuk pengguna ini.'));
    const sorted=[...rows].sort((a,b)=>Number(b.net)-Number(a.net)||a.name.localeCompare(b.name,'id'));
-   const table=(title,list)=>card(title,MONTHS[Number(data.month)-1]+' '+data.year+' · berdasarkan revenue positif; cabang mengikuti akses pengguna',memberTableV27(['Nama customer','Kota','Telepon','Cabang belanja','Transaksi','Frekuensi','Revenue','Last Visit'],list.map(r=>[r.name,r.city||'Belum tersedia',r.phone||(r.phone_last4?'…'+r.phone_last4:'Belum tersedia'),(r.stores||[]).map(s=>s.store).join(', '),int(r.trx),r.frequency,compact(r.net),r.last_visit||'—']),['TOTAL DAFTAR','','','',int(list.reduce((s,r)=>s+Number(r.trx),0)),'',compact(list.reduce((s,r)=>s+Number(r.net),0)),'']));
+   const year=Number(data.year),prior=year-1,older=year-2;
+   const history=(r,y)=>y===year?Number(r.net):r.sales_history?.[String(y)]??null;
+   const totalYear=(list,y)=>list.every(r=>history(r,y)!=null)?list.reduce((s,r)=>s+Number(history(r,y)),0):null;
+   const table=(title,list)=>card(title,MONTHS[Number(data.month)-1]+' '+year+' · histori memakai bulan yang sama dari transaksi Moka; — = cakupan belum lengkap',memberTableV27(['Customer / Profil','Cabang belanja','Transaksi','Frekuensi','Sales '+older,'Sales '+prior,'Sales '+year,'GAP '+year+'–'+prior,'Growth','Last Visit'],list.map(r=>[
+    el('div',{},el('b',{},r.name),el('small',{style:'display:block'},[r.city||'Kota belum tersedia',r.phone||(r.phone_last4?'…'+r.phone_last4:'Telepon belum tersedia')].join(' · ')),el('small',{style:'display:block'},'Kategori: '+(r.category||'belum tersedia')+' · Status: '+(r.status||'belum tersedia')+' · Member sejak '+(r.cust_since||'belum tersedia'))),
+    (r.stores||[]).map(s=>s.store).join(', '),int(r.trx),r.frequency,history(r,older)==null?'—':compact(history(r,older)),history(r,prior)==null?'—':compact(history(r,prior)),compact(r.net),memberGapV29(Number(r.net),history(r,prior)),memberGrowthV30(Number(r.net),history(r,prior)),r.last_visit||'—'
+   ]),['TOTAL DAFTAR','',int(list.reduce((s,r)=>s+Number(r.trx),0)),'',totalYear(list,older)==null?'—':compact(totalYear(list,older)),totalYear(list,prior)==null?'—':compact(totalYear(list,prior)),compact(list.reduce((s,r)=>s+Number(r.net),0)),memberGapV29(totalYear(list,year),totalYear(list,prior)),memberGrowthV30(totalYear(list,year),totalYear(list,prior)),'']));
    const positive=sorted.filter(r=>Number(r.net)>0);result.append(table('Top Customer',positive.slice(0,M.count)),table('Low Customer',positive.slice().reverse().slice(0,M.count)));
    const details=el('details',{},el('summary',{},'Seluruh customer dan rincian cabang · '+rows.length+' customer'));
    details.append(table('Semua customer bulan pilihan',sorted));
