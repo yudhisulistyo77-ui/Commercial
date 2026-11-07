@@ -43,6 +43,7 @@ import os
 import re
 import sys
 import time
+import uuid
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -70,7 +71,8 @@ if MODE not in ("full", "live"):
 DRY_RUN = env("DRY_RUN", "0").lower() in ("1", "true", "yes")
 LIVE_DAYS = max(1, int(env("LIVE_DAYS", "3")))
 INCLUDE_STOCK = env("INCLUDE_STOCK", "1" if MODE == "full" else "0").lower() in ("1", "true", "yes")
-WORKERS = max(1, int(env("WORKERS", "3")))
+WORKERS = max(1, min(3, int(env("WORKERS", "2"))))
+STOCK_BATCH_SIZE = max(50, min(400, int(env("STOCK_BATCH_SIZE", "250"))))
 OUT_DIR = env("OUTPUT_DIR", "moka-sync-output")
 STEP_SUMMARY = os.environ.get("GITHUB_STEP_SUMMARY")
 LAG_RETRY_WAIT = int(env("LAG_RETRY_WAIT", "180" if MODE == "full" else "45"))
@@ -106,7 +108,7 @@ def http(method, url, headers, body=None, timeout=180, retries=5, retry_500=True
                 return (json.loads(raw) if raw else None), r.headers
         except urllib.error.HTTPError as e:
             text = e.read()[:400].decode("utf-8", "replace")
-            transient = e.code in (408, 429, 502, 503, 504) or (retry_500 and e.code == 500)
+            transient = e.code in (408, 429, 502, 503, 504, 520, 521, 522, 523, 524) or (retry_500 and e.code == 500)
             if transient and attempt < retries - 1:
                 time.sleep(min(60, 4 * 2 ** attempt))
                 continue
@@ -124,13 +126,13 @@ class Moka:
         self.h = {"Authorization": "Bearer " + token, "Accept": "application/json",
                   "User-Agent": "commercial-dashboard-moka-sync"}
 
-    def get(self, path, params=None, retry_500=True):
+    def get(self, path, params=None, retry_500=True, retries=5):
         url = path if path.startswith("http") else MOKA_BASE + path
         if not url.startswith(MOKA_BASE + "/"):
             raise RuntimeError("URL Moka tidak dikenal, dihentikan demi keamanan token")
         if params:
             url += ("&" if "?" in url else "?") + urllib.parse.urlencode(params)
-        body, _ = http("GET", url, self.h, retry_500=retry_500)
+        body, _ = http("GET", url, self.h, retry_500=retry_500, retries=retries)
         return body["data"] if isinstance(body, dict) and "data" in body else body
 
     def outlets(self):
@@ -146,27 +148,50 @@ class Moka:
         return self.get(f"/v3/outlets/{oid}/reports/item_sales",
                         {"start": d1.strftime("%d/%m/%Y"), "end": d2.strftime("%d/%m/%Y"), "per_page": 1000})
 
-    def transactions(self, oid, since_dt, until_dt, per_page=300):
+    def transactions(self, oid, since_dt, until_dt, per_page=100):
+        """Bound requests to one reporting day; fail rather than return partial pages."""
+        out, seen = [], set()
+        cursor = since_dt
+        while cursor <= until_dt:
+            next_day = datetime.combine(cursor.date() + timedelta(days=1), datetime.min.time(), tzinfo=cursor.tzinfo)
+            end = min(until_dt, next_day)
+            for payment in self._transaction_window(oid, cursor, end, per_page):
+                if payment["id"] not in seen:
+                    seen.add(payment["id"])
+                    out.append(payment)
+            cursor = next_day
+        return out
+
+    def _transaction_window(self, oid, since_dt, until_dt, per_page):
         url = MOKA_BASE + f"/v3/outlets/{oid}/reports/get_latest_transactions?" + urllib.parse.urlencode(
-            {"per_page": per_page, "since": int(since_dt.timestamp()), "until": int(until_dt.timestamp())})
-        seen, pays, visited = set(), [], set()
+            {"per_page": min(100, per_page), "since": int(since_dt.timestamp()), "until": int(until_dt.timestamp())})
+        seen, pays, visited, attempts = set(), [], set(), defaultdict(int)
         while url:
             if url in visited:
                 raise RuntimeError("Pagination transaksi Moka berulang; data tidak disimpan.")
-            visited.add(url)
             try:
-                d = self.get(url, retry_500=False)
+                d = self.get(url, retry_500=False, retries=1)
             except HttpError as e:
-                m = re.search(r"per_page=(\d+)", url)
-                if e.code == 500 and m and int(m.group(1)) > 25:
-                    url = url.replace(m.group(0), f"per_page={int(m.group(1)) // 2}")
+                match = re.search(r"per_page=(\d+)", url)
+                if e.code not in (0, 408, 429, 500, 502, 503, 504, 520, 521, 522, 523, 524):
+                    raise
+                attempts[url] += 1
+                if match and int(match.group(1)) > 25:
+                    url = url.replace(match.group(0), f"per_page={max(25, int(match.group(1)) // 2)}")
                     continue
-                raise
-            fresh = [p for p in d.get("payments") or [] if p["id"] not in seen]
+                if attempts[url] >= 3:
+                    raise
+                time.sleep(min(16, 4 * attempts[url]))
+                continue
+            visited.add(url)
+            payments = d.get("payments") or []
+            fresh = [p for p in payments if p["id"] not in seen]
             seen.update(p["id"] for p in fresh)
             pays.extend(fresh)
-            if d.get("completed") or not d.get("payments") or not fresh:
-                break
+            if d.get("completed"):
+                return pays
+            if not payments or not fresh:
+                raise RuntimeError("Pagination transaksi belum dinyatakan selesai; hasil parsial tidak disimpan.")
             url = (d.get("next_url") or "").replace("access_token=&", "")
             if not url:
                 raise RuntimeError("Pagination transaksi Moka belum selesai tanpa next_url; data tidak disimpan.")
@@ -325,8 +350,14 @@ class Supa:
     def patch(self, table, q, body):
         http("PATCH", f"{self.base}{table}?{q}", dict(self.h, Prefer="return=minimal"), body, retry_500=False)
 
+    def rpc_idempotent(self, fn, args):
+        # Only use for V36 stage/commit endpoints with stable request IDs.
+        body, _ = http("POST", self.base + "rpc/" + fn, self.h, args,
+                       timeout=75, retries=3, retry_500=True)
+        return body
+
     def rpc(self, fn, args=None):
-        body, _ = http("POST", self.base + "rpc/" + fn, self.h, args or {}, timeout=600, retry_500=False)
+        body, _ = http("POST", self.base + "rpc/" + fn, self.h, args or {}, timeout=600, retries=1, retry_500=False)
         return body
 
 
@@ -631,6 +662,19 @@ def item_rows(outlet, sid, items):
     return rows
 
 
+def publish_stock(db, sid, rows):
+    batch_id = str(uuid.uuid4())
+    ids = [r["variant_id"] for r in rows]
+    if len(ids) != len(set(ids)):
+        raise RuntimeError("Variant stok ganda; snapshot lama dipertahankan.")
+    db.rpc_idempotent("commercial_moka_stock_begin_v36", {
+        "p_batch": batch_id, "p_store_id": sid, "p_expected": len(rows)})
+    for i in range(0, len(rows), STOCK_BATCH_SIZE):
+        db.rpc_idempotent("commercial_moka_stock_stage_v36", {
+            "p_batch": batch_id, "p_rows": rows[i:i + STOCK_BATCH_SIZE]})
+    db.rpc_idempotent("commercial_moka_stock_commit_v36", {"p_batch": batch_id})
+
+
 def process_items(ctx, outlet, sid):
     t0 = time.time()
     res = {"outlet": outlet["name"], "store_id": sid, "status": "OK", "errors": []}
@@ -639,7 +683,7 @@ def process_items(ctx, outlet, sid):
         res["rows"] = len(rows)
         res["stock"] = sum(float(r["in_stock"] or 0) for r in rows if r["track_stock"] is not False)
         if ctx.db and not DRY_RUN:
-            ctx.db.rpc("commercial_moka_stock_replace_v35", {"p_store_id": sid, "p_rows": rows})
+            publish_stock(ctx.db, sid, rows)
     except HttpError as e:
         res["status"] = "SKIP" if (e.code == 403 and "xpired" in e.body) else "ERROR"
         res["errors"].append(str(e))
@@ -690,7 +734,7 @@ def main():
                 run_id = str(got[0]["id"]) if got else None
             CRASH["run_id"] = run_id
         except HttpError as e:
-            warn("Status sinkron tidak tersimpan (jalankan MOKA-SYNC-V2.sql?): " + str(e)[:200])
+            warn("Status sinkron tidak tersimpan (periksa SQL V35/V36): " + str(e)[:200])
 
     run_update(status="running", started_at=datetime.now(timezone.utc).isoformat(), github_run_url=run_url,
                message="Sedang menarik data Moka…")
@@ -738,9 +782,7 @@ def main():
 
     with ThreadPoolExecutor(WORKERS) as ex:
         futs = {} if env("SKIP_SALES") == "1" else {ex.submit(process, ctx, o, sid, p): (o, sid) for p in periods for o, sid in mapped}
-        if INCLUDE_STOCK:
-            for o, sid in mapped:
-                futs[ex.submit(process_items, ctx, o, sid)] = (o, "items")
+
         for f in as_completed(futs):
             o, tag = futs[f]
             try:
@@ -776,11 +818,21 @@ def main():
                 f"  {res['seconds']:>6}s {'; '.join(res['errors'])}")
             results.append(res)
 
+    if INCLUDE_STOCK:
+        log("Penjualan selesai diproses. Memperbarui stok secara berurutan (batch kecil)…")
+        for o, sid in mapped:
+            res = process_items(ctx, o, sid)
+            item_results.append(res)
+            mark = {"OK": "✓", "SKIP": "·"}.get(res["status"], "✗")
+            log(f"  {mark} {res['outlet']:<26} item & stok: {res.get('rows', 0):>6} SKU"
+                f"  stok {res.get('stock', 0):>10,.0f}  {res['seconds']:>6}s {'; '.join(res['errors'])}")
+
     rebuild_error = None
-    if writing and any(r["status"] in ("OK", "WARN") for r in results):
+    if writing and (any(r["status"] in ("OK", "WARN") for r in results) or any(r["status"] == "OK" for r in item_results)):
         try:
-            db.rpc("rebuild_sales_actual")
-            log("✓ rebuild_sales_actual selesai")
+            if any(r["status"] in ("OK", "WARN") for r in results):
+                db.rpc("rebuild_sales_actual")
+                log("✓ rebuild_sales_actual selesai")
         except HttpError as e:
             rebuild_error = str(e)
             warn("Sales Type tersimpan, tetapi rebuild_sales_actual gagal: " + str(e))
@@ -792,14 +844,17 @@ def main():
 
     ok = [r for r in results if r["status"] == "OK"]
     wr = [r for r in results if r["status"] == "WARN"]
-    bad = [r for r in results if r["status"] == "ERROR"] + [r for r in item_results if r["status"] == "ERROR"]
+    sales_bad = [r for r in results if r["status"] == "ERROR"]
+    stock_bad = [r for r in item_results if r["status"] == "ERROR"]
+    bad = sales_bad + stock_bad
     for r in wr:
         warn(f"{r['outlet']} {r['year']}-{r['month']:02d}: {r['errors'][0]}")
     data_until = now if MODE == "live" else datetime(cutoff.year, cutoff.month, cutoff.day, 23, 59, 59, tzinfo=TZ)
+    stock_ok = [r for r in item_results if r["status"] == "OK"]
     run_update(status="error" if bad or rebuild_error else "warn" if wr else "done",
-               finished_at=datetime.now(timezone.utc).isoformat(), data_until=data_until.isoformat(),
+               finished_at=datetime.now(timezone.utc).isoformat(), data_until=data_until.isoformat() if results else None,
                stores_ok=len(ok), stores_warn=len(wr), stores_error=len(bad),
-               message=(f"{len(ok)} OK, {len(wr)} menunggu Moka, {len(bad)} gagal" + ("; hitung ulang sales gagal: " + rebuild_error[:160] if rebuild_error else "") +
+               message=(f"Sales: {len(ok)} OK, {len(wr)} menunggu Moka, {len(sales_bad)} gagal; stok: {len(stock_ok)} OK, {len(stock_bad)} gagal" + ("; hitung ulang sales gagal: " + rebuild_error[:160] if rebuild_error else "") +
                         (f" · stok {len([r for r in item_results if r['status'] == 'OK'])} toko" if item_results else "") +
                         ("; " + "; ".join(f"{r['outlet']}: {r['errors'][0][:120]}" for r in bad[:3]) if bad else ""))[:900])
 
@@ -827,7 +882,7 @@ def main():
             unm = sorted({t for r in results for t in r.get("unmapped") or []})
             if unm:
                 fh.write(f"\n**Sales Type belum termapping:** {', '.join(unm)} — atur di Pengaturan → Pemetaan Sales Type.\n")
-    log(f"Selesai: {len(ok)} OK, {len(wr)} WARN, {len(bad)} gagal")
+    log(f"Selesai: sales {len(ok)} OK, {len(wr)} WARN, {len(sales_bad)} gagal; stok {len(stock_ok)} OK, {len(stock_bad)} gagal")
     if bad or rebuild_error:
         sys.exit(1)
 
