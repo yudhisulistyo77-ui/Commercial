@@ -730,6 +730,7 @@ td.sticky1{overflow-wrap:break-word}
     };
   }
   async function mokaLibraryDoc(outlet) {
+    if (/^(?:DC|DISTRIBUTION CENTER|GUDANG)(?:[\s._-]|$)/i.test(String(outlet).trim()) || !PRICE_ENGINE.city(outlet)) return null;
     const rows = await DB.selAll('moka_items?select=sku,item_name,category,brand,cogs,basic_price,prices&outlet_name=eq.' + encodeURIComponent(outlet) + '&order=item_name', 1000, 30000);
     if (!rows.length) return null;
     const types = [...new Set(rows.flatMap(r => Object.keys(r.prices || {})))].sort((a, b) => a.localeCompare(b));
