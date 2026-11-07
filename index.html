@@ -2690,7 +2690,7 @@ async function itemDetailRows(args,onProgress){
   if(session.controller.signal.aborted)throw readAbortV22();return itemMergeV22(chunks);
  });}catch(e){if(e.name!=='AbortError')session.controller.abort();throw e;}finally{session.listeners.delete(onProgress);if(ITEM_LOAD_V22===session)session.done=true;const keys=[...S.rollCache.keys()].filter(k=>k.startsWith('item-detail-v22|')&&!S.rollCache.get(k)?.then);while(keys.length>4)S.rollCache.delete(keys.shift());}
 }
-function itemPagedTableV22(rows,heads,keys,rowCells,totals,state,pageKey,paint){const size=Number(state.pageSize)||100,sort=state[pageKey+'Sort'];let ordered=rows;if(sort){ordered=rows.slice().sort((a,b)=>{const x=a[keys[sort.ci]],y=b[keys[sort.ci]],cmp=typeof x==='number'&&typeof y==='number'?x-y:String(x??'').localeCompare(String(y??''),'id',{numeric:true});return sort.dir==='asc'?cmp:-cmp;});}const pages=Math.max(1,Math.ceil(ordered.length/size)),page=Math.max(0,Math.min(pages-1,Number(state[pageKey])||0));state[pageKey]=page;const first=page*size,wrap=el('div',{}),table=mkTable(heads,ordered.slice(first,first+size).map(rowCells),totals),node=table.querySelector('table');node.dataset.paged='true';node.dataset.totalRows=rows.length;node._sortAll=(ci,dir)=>{state[pageKey+'Sort']={ci,dir};state[pageKey]=0;paint();};if(sort)node.tHead.rows[0].cells[sort.ci].dataset.dir=sort.dir;
+function itemPagedTableV22(rows,heads,keys,rowCells,totals,state,pageKey,paint){const size=Number(state.pageSize)||100,sort=state[pageKey+'Sort'];let ordered=rows;if(sort){ordered=rows.slice().sort((a,b)=>{const x=a[keys[sort.ci]],y=b[keys[sort.ci]],cmp=typeof x==='number'&&typeof y==='number'?x-y:String(x??'').localeCompare(String(y??''),'id',{numeric:true});return sort.dir==='asc'?cmp:-cmp;});}const pages=Math.max(1,Math.ceil(ordered.length/size)),page=Math.max(0,Math.min(pages-1,Number(state[pageKey])||0));state[pageKey]=page;const first=page*size,wrap=el('div',{}),table=mkTable(heads,ordered.slice(first,first+size).map(rowCells),totals),node=table.querySelector('table');node.dataset.paged='true';node.dataset.totalRows=rows.length;node._csvAllV39=()=>ordered.map(rowCells);node._sortAll=(ci,dir)=>{state[pageKey+'Sort']={ci,dir};state[pageKey]=0;paint();};if(sort)node.tHead.rows[0].cells[sort.ci].dataset.dir=sort.dir;
  wrap.append(el('div',{class:'item-pager'},el('span',{class:'sub'},(rows.length?first+1:0)+'–'+Math.min(first+size,rows.length)+' dari '+int(rows.length)+' hasil · total untuk seluruh filter'),el('button',{class:'btn sm',disabled:page===0,onclick:()=>{state[pageKey]=page-1;paint();}},'Sebelumnya'),el('span',{class:'sub'},(page+1)+' / '+pages),el('button',{class:'btn sm',disabled:page+1>=pages,onclick:()=>{state[pageKey]=page+1;paint();}},'Berikutnya')),table);return wrap;}
 
 async function renderItem(){
@@ -7031,5 +7031,7 @@ setInterval(masterRevisionCheck,45000);window.addEventListener('focus',masterRev
 <script src="commercial-v28.js?v=38"></script>
 <script src="member-monthly-v37.js?v=38"></script>
 <script src="commercial-v38.js?v=38"></script>
+<script src="member-analytics-v39.js?v=39"></script>
+<script src="table-csv-v39.js?v=39"></script>
 </body>
 </html>

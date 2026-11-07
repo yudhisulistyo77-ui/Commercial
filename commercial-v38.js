@@ -41,9 +41,9 @@
  // Keep monthly transactions as the main member dataset, and retain historical
  // profiling only as an explicit reference; no name-based customer joins.
  renderMembersV27=async function(){
-  parkFilters();MEM27.view='monthly';const p=$('#p-members');p.replaceChildren(el('div',{class:'phead'},el('div',{},el('h1',{},'Member'),el('p',{},'Transaksi aktual per bulan · profil customer · perbandingan dan Top/Low'))));
+  parkFilters();MEM27.view='monthly';const p=$('#p-members');p.replaceChildren(el('div',{class:'phead'},el('div',{},el('h1',{},'Member'),el('p',{},'Analisis Member · tren bulanan/tahunan · repeat · cabang · detail Customer List'))));
   const actions=el('div',{class:'rowline',style:'margin-bottom:12px'}),host=el('div');p.append(actions,host);
-  actions.append(el('button',{class:'btn',onclick:()=>renderMembersV27()},'Muat ulang'));
+  actions.append(el('button',{class:'btn',onclick:()=>renderMembersV27()},'Muat ulang'),el('button',{class:'btn','data-export-control':'',onclick:e=>copyNodeAsImage(p,e.currentTarget,host)},'Salin PNG analisis')); 
   if(MASTER.session?.user?.role==='master')actions.append(el('button',{class:'btn',onclick:async()=>{await memberLoadV27();memberUploadV27()}},'Upload profil / riwayat lama'),el('button',{class:'btn',onclick:async()=>{await memberLoadV27();MEM27.view='summary';const {box,modal}=opsModal('Referensi profil upload lama');box.style.maxWidth='min(1400px,calc(100vw - 24px))';memberPaintV27(box);responsiveLabels(box);const observer=new MutationObserver(()=>{if(!modal.isConnected){observer.disconnect();MEM27.view='monthly';if(S.page==='members')renderMembersV27()}});observer.observe(document.body,{childList:true})}},'Lihat referensi upload lama'));
   if(!MASTER.verified){host.append(masterLoginForm(async()=>renderMembersV27()).node);return}await V28.renderMemberTransactions(host);
  };
