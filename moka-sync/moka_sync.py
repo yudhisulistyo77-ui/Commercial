@@ -725,6 +725,19 @@ def rp(x):
     return f"Rp{x:,.0f}".replace(",", ".")
 
 
+def refresh_price_list(outlet_name):
+    if re.match(r'^(?:DC|DISTRIBUTION CENTER|GUDANG)(?:[\s._-]|$)',outlet_name.strip(),re.I):
+        return {'outlet':outlet_name,'status':'skipped','reason':'DC/gudang tidak dimasukkan ke Price List'}
+    task=subprocess.run(['node','moka_price_sync_v38.cjs',outlet_name],capture_output=True,text=True,timeout=330)
+    if task.returncode:
+        raise RuntimeError((task.stderr or task.stdout or 'Helper gagal')[-400:].strip())
+    markers=[line.removeprefix('PRICE_RESULT_JSON=') for line in task.stdout.splitlines() if line.startswith('PRICE_RESULT_JSON=')]
+    if not markers:raise RuntimeError('Status helper tidak tersedia; perbarui moka_price_sync_v38.cjs dari paket V42.')
+    receipt=json.loads(markers[-1])
+    if receipt.get('status') not in ('saved','unchanged','skipped') or receipt.get('outlet')!=outlet_name:raise RuntimeError('Status helper tidak valid')
+    return receipt
+
+
 def main():
     token = env("MOKA_ACCESS_TOKEN")
     if not token:
@@ -856,15 +869,21 @@ def main():
                 f"  {res['seconds']:>6}s {'; '.join(res['errors'])}")
 
     price_errors=[]
+    price_results=[]
     if writing and INCLUDE_LIBRARY:
         for library_result in item_results:
             if library_result['status']!='OK':continue
+            outlet_name=library_result['outlet']
             try:
-                subprocess.run(['node','moka_price_sync_v38.cjs',library_result['outlet']],check=True,timeout=180)
-                log('✓ Price List diperbarui: '+library_result['outlet'])
-            except (subprocess.SubprocessError,OSError) as e:
-                price_errors.append({'outlet':library_result['outlet'],'status':'ERROR','errors':['Price List: '+type(e).__name__]})
-                warn('Price List belum diperbarui: '+library_result['outlet']+'; periksa log helper.')
+                receipt=refresh_price_list(outlet_name)
+                price_results.append(receipt)
+                verb={'saved':'diperbarui','unchanged':'tetap sama (tanpa tulis ulang)','skipped':'dilewati'}[receipt['status']]
+                log(('✓ ' if receipt['status']=='saved' else '· ')+'Price List '+verb+': '+outlet_name)
+            except (subprocess.SubprocessError,OSError,RuntimeError,ValueError) as e:
+                reason=str(e).strip()[:350] or type(e).__name__
+                failure={'outlet':outlet_name,'status':'ERROR','errors':['Price List: '+reason]}
+                price_errors.append(failure);price_results.append(failure)
+                warn('Price List belum diperbarui: '+outlet_name+'; '+reason)
     rebuild_error = None
     if writing and (any(r["status"] in ("OK", "WARN", "UNCHANGED") for r in results) or any(r["status"] == "OK" for r in item_results)):
         try:
@@ -885,6 +904,9 @@ def main():
     wr = [r for r in results if r["status"] == "WARN"]
     sales_bad = [r for r in results if r["status"] == "ERROR"]
     library_bad = [r for r in item_results if r["status"] == "ERROR"]
+    price_saved=sum(r["status"]=="saved" for r in price_results)
+    price_same=sum(r["status"]=="unchanged" for r in price_results)
+    price_skipped=sum(r["status"]=="skipped" for r in price_results)
     bad = sales_bad + library_bad + price_errors
     for r in wr:
         warn(f"{r['outlet']} {r['year']}-{r['month']:02d}: {r['errors'][0]}")
@@ -894,7 +916,7 @@ def main():
     run_update(status="error" if bad or rebuild_error else "warn" if wr else "done",
                finished_at=datetime.now(timezone.utc).isoformat(), data_until=data_until.isoformat() if results else None,
                stores_ok=len(ok)+len(unchanged), stores_warn=len(wr), stores_error=len(bad),
-               message=(f"Sales: {len(ok)} OK, {len(unchanged)} dilewati (sesuai), {len(wr)} menunggu Moka, {len(sales_bad)} gagal; Price List {len(price_errors)} gagal; library: {len(library_ok)} OK, {len(library_bad)} gagal" + ("; hitung ulang sales gagal: " + rebuild_error[:160] if rebuild_error else "") +
+               message=(f"Sales: {len(ok)} OK, {len(unchanged)} dilewati (sesuai), {len(wr)} menunggu Moka, {len(sales_bad)} gagal; Price List {price_saved} diperbarui, {price_same} sama, {price_skipped} dilewati, {len(price_errors)} gagal; library: {len(library_ok)} OK, {len(library_bad)} gagal" + ("; hitung ulang sales gagal: " + rebuild_error[:160] if rebuild_error else "") +
                         (f" · library {len([r for r in item_results if r['status'] == 'OK'])} toko" if item_results else "") +
                         ("; " + "; ".join(f"{r['outlet']}: {r['errors'][0][:120]}" for r in bad[:3]) if bad else ""))[:900])
 
@@ -919,10 +941,14 @@ def main():
                 fh.write("\n| Toko | SKU Library | Status |\n|---|---:|---|\n")
                 for r in sorted(item_results, key=lambda r: r["outlet"]):
                     fh.write(f"| {r['outlet']} | {r.get('rows', 0):,} | {r['status']} {'; '.join(r['errors'])} |\n")
+            if price_results:
+                fh.write("\n| Price List toko | Status | Keterangan |\n|---|---|---|\n")
+                for r in price_results:
+                    fh.write(f"| {r['outlet']} | {r['status']} | {r.get('reason') or '; '.join(r.get('errors',[]))} |\n")
             unm = sorted({t for r in results for t in r.get("unmapped") or []})
             if unm:
                 fh.write(f"\n**Sales Type belum termapping:** {', '.join(unm)} — atur di Pengaturan → Pemetaan Sales Type.\n")
-    log(f"Selesai: sales {len(ok)} OK, {len(unchanged)} dilewati, {len(wr)} WARN, {len(sales_bad)} gagal; library {len(library_ok)} OK, {len(library_bad)} gagal")
+    log(f"Selesai: sales {len(ok)} OK, {len(unchanged)} dilewati, {len(wr)} WARN, {len(sales_bad)} gagal; library {len(library_ok)} OK, {len(library_bad)} gagal; Price List {price_saved} diperbarui, {price_same} sama, {price_skipped} dilewati, {len(price_errors)} gagal")
     if bad or rebuild_error:
         sys.exit(1)
 
