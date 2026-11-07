@@ -23,6 +23,18 @@ on:
         description: "Ikut perbarui item & stok (menambah ±5–10 menit)"
         type: boolean
         default: false
+      include_library:
+        description: "Perbarui library item dan Price List"
+        type: boolean
+        default: true
+      date_from:
+        description: "Awal rentang YYYY-MM-DD (opsional)"
+        required: false
+        default: ""
+      date_to:
+        description: "Akhir rentang YYYY-MM-DD (opsional)"
+        required: false
+        default: ""
       stock_only:
         description: "Hanya pulihkan stok/library; tidak menarik ulang sales"
         type: boolean
@@ -58,6 +70,10 @@ jobs:
         with:
           python-version: "3.12"
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
       - name: Periksa konfigurasi
         env:
           MOKA_ACCESS_TOKEN: ${{ secrets.MOKA_ACCESS_TOKEN }}
@@ -79,11 +95,15 @@ jobs:
           SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           SYNC_MODE: ${{ github.event_name == 'schedule' && 'full' || inputs.mode }}
           SYNC_MONTHS: ${{ inputs.months }}
+          SYNC_FROM: ${{ inputs.date_from }}
+          SYNC_TO: ${{ inputs.date_to }}
+          INCLUDE_LIBRARY: ${{ (github.event_name == 'schedule' || inputs.include_library) && '1' || '0' }}
           SKIP_SALES: ${{ inputs.stock_only && '1' || '0' }}
           INCLUDE_STOCK: ${{ (github.event_name == 'schedule' || inputs.include_stock || inputs.stock_only) && '1' || '0' }}
           ONLY_OUTLETS: ${{ inputs.outlets }}
           DRY_RUN: ${{ inputs.dry_run && '1' || '0' }}
           RUN_ID: ${{ inputs.run_id }}
+          BRAND_MAP: ${{ vars.MOKA_BRAND_MAP_JSON }}
           WORKERS: "2"
           STOCK_BATCH_SIZE: "250"
           MOKA_TZ_OFFSET: "7"
