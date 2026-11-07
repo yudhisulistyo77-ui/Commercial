@@ -764,6 +764,14 @@ html[data-number-mode="full"] .member-ranking-v29 table{min-width:1560px!importa
 .page .card .fld{min-width:0}
 .modal .box{box-sizing:border-box;max-height:calc(100dvh - 36px)}
 @media(max-width:640px){.phead{gap:12px;flex-wrap:wrap}.modal{padding:12px}.modal .box{padding:16px;max-height:calc(100dvh - 24px)}}
+</style><style id="commercial-spacing-v37">
+.page{min-width:0}.page>.card{max-width:100%;box-sizing:border-box}
+.pagefilters{gap:10px;row-gap:10px;align-items:end}.pagefilters>.fld{min-width:0}
+.page .phead{gap:12px}.page .phead .rowline{align-items:center}
+.page .tw{max-width:100%;overscroll-behavior-x:contain}
+.page table th,.page table td{vertical-align:middle}
+.page table td[data-col-role=money],.page table td[data-col-role=number],.page table td[data-col-role=date]{white-space:nowrap}
+@media(max-width:760px){.pagefilters>.fld{flex:1 1 145px}.pagefilters .msd-btn,.pagefilters select{max-width:100%;box-sizing:border-box}}
 </style></head>
 <body>
 
@@ -829,7 +837,6 @@ html[data-number-mode="full"] .member-ranking-v29 table{min-width:1560px!importa
     <section class="page" id="p-brand"></section>
     <section class="page" id="p-mkt"></section>
     <section class="page" id="p-h2h"></section>
-    <section class="page" id="p-sssg"></section>
     <section class="page" id="p-program"></section>
     <section class="page" id="p-bazar"></section>
     <section class="page" id="p-pica"></section>
@@ -1228,8 +1235,7 @@ const PAGES = [
   {id:'pdca',  t:'Plan Do Check Action', ic:'pdca'},
   {id:'pica',  t:'PICA / MOM',      ic:'pica'},
   {g:'Analisis'},
-  {id:'h2h',   t:'H2H Sales',       ic:'h2h'},
-  {id:'sssg',  t:'Same Store Sales Growth', ic:'sssg'},
+  {id:'h2h',   t:'SSSG',       ic:'h2h'},
   {id:'program', t:'Program Sales',  ic:'program'},
   {id:'review', t:'Google Review', ic:'top'},
   {id:'bazar',t:'Bazar',ic:'mkt'},
@@ -1240,7 +1246,7 @@ const PAGES = [
   {id:'sales', t:'Sales & Target',  ic:'sales'},
   {id:'item',  t:'Item Sales',      ic:'item'},
   {id:'pricelist',t:'Price List',ic:'sales'},
-  {id:'members',t:'Data Member',ic:'trx'},
+  {id:'members',t:'Member',ic:'trx'},
   {id:'trx',   t:'Transaksi & AOV', ic:'trx'},
   {id:'kpi',   t:'KPI',             ic:'kpi'},
   {id:'datatrack', t:'Tracking Data', ic:'datatrack'},
@@ -1303,7 +1309,6 @@ const FILTER_VISIBILITY={masterinput:[], review:['brand','spv','store'],links:[]
   /* round 9 item 6 (diperbarui round 10 item 5): tahun SSSG tetap mengikuti tanggal cut-off (S.sssg.cutoffTo,
      bisa diatur user di kartu filter halaman itu sendiri), jadi 'year'/'month'/'range' global tetap
      disembunyikan di sini; hanya Brand/SPV/Toko yang relevan untuk mempersempit cakupan toko yang dibandingkan. */
-  sssg:['brand','spv','store'],
   /* Program Sales: tahun/bulan diatur sendiri di dalam kartu halaman (mirip H2H) — hanya Brand/SPV/Toko
      dari filter global yang relevan utk mempersempit cakupan toko pada realisasi sales program. */
   program:['brand','spv','store'],
@@ -1342,6 +1347,7 @@ function pageFilterBar(id){
   return wrap;
 }
 function go(id){
+  if(id==='sssg')id='h2h';
   if(id==='breakdown')id='bazar';if(id==='present'||!PAGES.some(p=>p.id===id))id='dash';
   if(S.page==='item'&&id!=='item')cancelItemLoadV22();
   S.page=id;
@@ -2149,7 +2155,7 @@ function render(){
   ({dash:renderDash, sales:renderSales, item:renderItem, trx:renderTrx, kpi:renderKpi,
     pdca:renderPdca, upload:renderUpload, uploadreset:renderUploadReset, set:renderSet, h2h:renderH2H, mkt:renderMkt,
     brand:renderBrand, top:renderTop, pica:renderPica, bazar:renderBazar,
-    datatrack:renderDataTrack, sssg:renderSSSG, program:renderProgram}[S.page]||renderDash)();
+    datatrack:renderDataTrack, program:renderProgram}[S.page]||renderDash)();
   renderMappingNotice();
 }
 function connCard(){
@@ -5005,7 +5011,7 @@ function appendMonthlyMovement(page,kind,years,selectedWindow,selectedIds){
  const live=t=>host.isConnected&&initial===signature()&&t===token;
  const load=async()=>{const t=++token;loaded=true;runBtn.disabled=true;body.replaceChildren(el('div',{class:'empty'},'Memuat pergerakan bulanan…'));try{
    const w=full.checked?{mode:'month',m1:1,m2:12,d1:1,d2:31,alignToCurrent:selectedWindow.alignToCurrent!==false,calendarBase:selectedWindow.calendarBase!==false,projectCurrent:false}:{...selectedWindow},y=Number(year.value),dimension=dim.value;
-   let ids=selectedIds.slice();if(kind==='sssg'&&full.checked){const data=sssgData(years,1,12,w);ids=[...data].filter(([,r])=>years.every(yy=>r.by[yy]!=null)).map(([id])=>id);}
+   let ids=selectedIds.slice();if(false){/* legacy SSSG removed; replacement keeps H2H comparison logic */}
    if(dimension==='summary')focus.update(MOVEMENT_METRICS.map(r=>r[1]));if(dimension==='store'){focus.update(ids.map(id=>S.stores.find(s=>s.id===id)?.name||String(id)));ids=ids.filter(id=>focus.accept(S.stores.find(s=>s.id===id)?.name||String(id)));}
    const source=movementSalesMonths(years,w,ids),monthly=source[y];
    const jobs=[];for(let m=w.m1;m<=w.m2;m++)if(comparisonMonthDays(movementMonthWindow(w,m),y,m)>0)jobs.push(m);
@@ -5075,7 +5081,7 @@ function renderH2H(){
   parkFilters();
   const p=$('#p-h2h'); p.innerHTML='';
   const st=h2hInit(); const [y1,y2,y3]=st.y;
-  p.append(el('div',{class:'phead'},el('div',{},el('h1',{},'H2H Sales'),el('p',{},`${y1}/${y2}/${y3} · `+scopeLabel()))));
+  p.append(el('div',{class:'phead'},el('div',{},el('h1',{},'SSSG'),el('p',{},`${y1}/${y2}/${y3} · `+scopeLabel()))));
   const pf_h2h=pageFilterBar('h2h');if(S.demo)p.append(demoBanner());
   p.append(card('Filter & Atur Perbandingan','Periode yang sama untuk ketiga tahun.',comparisonPanel(pf_h2h,comparisonControls(st,'h2h',renderH2H))));
   if(activeProductBrands().length)p.append(el('p',{class:'note'},brandMetricNote()));
@@ -5249,220 +5255,6 @@ function renderH2H(){
 }
 
 /* SAME STORE SALES GROWTH — shared month/day comparison window. */
-function sssgInit(){const key='sssg-period-v3';if(S.sssg?.key!==key)S.sssg=comparisonInit(key);return S.sssg;}
-function sssgOpenMD(store){if(!/^\d{4}-\d{2}-\d{2}$/.test(store?.opening_date||''))return null;const [year,m,day]=store.opening_date.split('-').map(Number);if(m<1||m>12||day<1||day>daysInMonth(year,m))return null;return {year,m,day};}
-function sssgData(years,m1,m2,window){
- const w=window||{mode:'month',m1,m2,d1:1,d2:31},data=h2hData(years,w.m1,w.m2,w),out=new Map();
- for(const store of S.stores){if(store.name==='DC TIGALAPAN'||!storeOk(store.id))continue;const anchor=sssgOpenMD(store),by={};for(const y of years){const start=`${y}-${String(w.m1).padStart(2,'0')}-${String(Math.min(w.d1,daysInMonth(y,w.m1))).padStart(2,'0')}`;by[y]=!anchor||store.opening_date>start?null:(data[y].get(store.id)||{sales:0,kom:0,usr:0,kt:0,ut:0,um:0,tgt:0,trx:0,val:0,days:comparisonDays(w,y),targetDays:comparisonTargetDays(w,y)});}out.set(store.id,{anchor,by,name:store.name,opening_date:store.opening_date||null});}return out;
-}
-function renderSSSG(){
-  parkFilters();
-  const p=$('#p-sssg'); p.innerHTML='';
-  const sst=sssgInit(),y3=h2hCurrentYear(),y2=y3-1,y1=y3-2;
-  p.append(el('div',{class:'phead'},el('div',{},el('h1',{},'Same Store Sales Growth'),el('p',{},`${y1}/${y2}/${y3} · Periode yang sama untuk toko pembanding · `+scopeLabel()))));
-  const pf=pageFilterBar('sssg');if(S.demo)p.append(demoBanner());
-  p.append(card('Filter & Atur Perbandingan','Pilih periode bulanan atau rentang tanggal yang sama pada tiap tahun.',comparisonPanel(pf,comparisonControls(sst,'sssg',renderSSSG))));
-  if(activeProductBrands().length)p.append(el('p',{class:'note'},brandMetricNote()));
-  let window;try{window=comparisonWindow(sst);}catch(e){p.append(el('div',{class:'note warn',role:'alert'},e.message));return;}
-  const {m1,m2}=window,periodText=comparisonLabel(window),cf={label:periodText};if(comparisonDataNote(window))p.append(el('p',{class:'sub'},comparisonDataNote(window)));p.append(el('p',{class:'note'},'Periode aktif: '+periodText+'. Toko harus sudah buka pada awal periode pembanding agar dibandingkan selama periode yang sama. Tahun sebelum toko buka ditampilkan —. Target memakai periode kalender terpilih; bulan berjalan memakai sales upload penuh; target mengikuti kalender sampai tanggal data.'));
-  const D=sssgData([y1,y2,y3],m1,m2,window);
-  const idsAll=[...D.keys()];
-  const names=new Map(idsAll.map(id=>[id,D.get(id).name]));
-  const G=(y,id,k)=>{ const by=D.get(id)?.by?.[y]; return by?(['trx','val'].includes(k)?by[k]:N(by[k])):0; };
-  const hasY=(y,id)=>!!(D.get(id)?.by?.[y]);
-  const noAnchor=idsAll.filter(id=>!D.get(id).anchor).map(id=>names.get(id));
-
-  const idsY2=idsAll.filter(id=>hasY(y2,id)&&hasY(y3,id));    // valid same-window utk y3 vs y2
-  const idsFull=idsAll.filter(id=>hasY(y1,id)&&hasY(y3,id));  // valid same-window utk y3 vs y1 (3 tahun)
-  appendMonthlyMovement(p,'sssg',[y1,y2,y3],window,idsFull);
-  appendStoreItemMatrix(p,'sssg',[y1,y2,y3],window,idsFull);
-  const T=(y,k,set)=>{if(activeProductBrands().length){if(k==='trx'||k==='val')return null;if(k==='tgt')return brandComparisonTarget(y,window,set);}if(['trx','val'].includes(k)&&set.some(id=>G(y,id,k)==null))return null;return set.reduce((s,id)=>s+N(G(y,id,k)),0);};
-
-  if(noAnchor.length) p.append(el('div',{class:'note warn'},el('b',{},'Tanggal buka belum tersedia/valid: '),noAnchor.join(', ')+'.'));
-
-  /* ---------- tiles — round 16 item 3: disamakan STRUKTURNYA persis dengan H2H (tl: 3 tile Total Sales
-     per tahun + 1 tile Growth; tl2: Growth y3-vs-y1 + Target harian + Pencapaian thd target + AOV) —
-     dipakai idsFull (toko dgn window valid di 3 tahun sekaligus) sebagai SATU himpunan toko yang sama utk
-     ketiga tahun di baris ini, persis seperti H2H memakai satu himpunan `liveIds` yang sama di seluruh tile. ---------- */
-  const tl=el('div',{class:'grid g4'});
-  [y1,y2,y3].forEach((y,i)=>tl.append(tile(`Total sales ${y}`,compact(T(y,'sales',idsFull)),
-    `${idsFull.length} toko same-window (jendela thd ${y1})`+(i===2?` · target ${compact(T(y,'tgt',idsFull))}`:''),null)));
-  const s3F=T(y3,'sales',idsFull), s2F=T(y2,'sales',idsFull), s1F=T(y1,'sales',idsFull);
-  const g32F=s2F>0?(s3F-s2F)/s2F:null;
-  tl.append(tile(`Growth ${y3} vs ${y2}`,pct(g32F),`GAP ${s2F>0?compact(s3F-s2F):'—'}`,null,
-    g32F==null?el('span',{class:'pill neu'},'—'):el('span',{class:'pill '+(g32F>=0?'ok':'bad')},g32F>=0?'Tumbuh':'Turun')));
-  p.append(tl);
-  const tl2=el('div',{class:'grid g4'});
-  const g31F=s1F>0?(s3F-s1F)/s1F:null;
-  tl2.append(tile(`Growth ${y3} vs ${y1}`,pct(g31F),`GAP ${s1F>0?compact(s3F-s1F):'—'}`,null,
-    g31F==null?el('span',{class:'pill neu'},'—'):el('span',{class:'pill '+(g31F>=0?'ok':'bad')},g31F>=0?'Tumbuh':'Turun')));
-  const targetDays3=comparisonTargetDays(window,y3),targetFull3=T(y3,'tgt',idsFull),tgtDaily3=targetFull3!=null&&targetDays3>0?targetFull3/targetDays3:null;
-  tl2.append(tile(`Target harian ${y3}`,tgtDaily3!=null?compact(tgtDaily3):'—','target rentang ÷ jumlah hari dalam rentang',null));
-  const tgtF3=T(y3,'tgt',idsFull);
-  tl2.append(tile(`Pencapaian thd target ${y3}`,pct(tgtF3>0?s3F/tgtF3:null),'estimasi sales vs target pada rentang sama, toko valid thd '+y1,null));
-  const aovYF=y=>{ const c=T(y,'trx',idsFull),v=T(y,'val',idsFull);return c>0&&v!=null?v/c:null; };
-  const aov3F=aovYF(y3), aov2F=aovYF(y2), aovGF=(aov3F!=null&&aov2F>0)?(aov3F-aov2F)/aov2F:null;
-  tl2.append(tile(`AOV ${y3} vs ${y2}`,aov3F!=null?rp(aov3F):'—',aovGF!=null?`${aovGF>=0?'naik':'turun'} ${pct(Math.abs(aovGF))} dari AOV ${y2} (${aov2F!=null?rp(aov2F):'—'})`:'belum ada pembanding',
-    null,aovGF==null?null:el('span',{class:'pill '+(aovGF>=0?'ok':'bad')},aovGF>=0?'Naik':'Turun')));
-  p.append(tl2);
-
-  /* round 17 item 1: tile tambahan "Toko ikut/tumbuh/turun" (round 12) dan "Rata² sales harian" (round 16)
-     DIHAPUS dari sini — user melaporkan jumlah card SSSG kebanyakan & indikatornya tidak sama dengan H2H.
-     SSSG sekarang berhenti PERSIS di 8 tile (2 baris × 4), sama persis jumlah & jenis indikatornya dengan
-     H2H (Total sales y1/y2/y3 + Growth y3vsy2, lalu Growth y3vsy1 + Target harian + Pencapaian + AOV) —
-     tidak ada tile tambahan lagi. Info "toko ikut" tetap tersirat dari subtitle tile Total Sales ("N toko
-     same-window") dan dari baris warning di atas (toko yang tidak bisa dibandingkan pada cut-off ini);
-     metrik rata-rata sales harian per permintaan user (item 2 round 16) TETAP ADA, tapi dipindah penuh ke
-     tabel "Rata-rata Sales Harian per Toko" di bawah (lebih tepat sebagai tabel presisi per-toko daripada
-     tile ringkasan yang menambah jumlah card). `avgDaily`/field `days` TIDAK dihapus — tetap dipakai oleh
-     tabel tersebut. */
-
-  /* Monthly chart uses the selected period and the same three-year store cohort. */
-  const monSS=(y,set)=>MONTHS.map((_,i)=>S.dashAll.filter(r=>r.year===y&&r.month===i+1&&set.includes(r.store_id)).reduce((s,r)=>s+comparisonSalesValue(brandSalesRow(r).total_sales,window,y,r.month),0));
-  const cols=['var(--s7)','var(--s2)','var(--s1)'];
-  const serSS=[y1,y2,y3].map((y,i)=>({name:String(y),color:cols[i],vals:monSS(y,idsFull)}));
-  p.append(chartCard('Sales per bulan, toko pembanding tiga tahun',periodText+' · sales mengikuti proporsi hari',
-    el('div',{},legend(serSS),groupedBars(MON3,serSS,{h:300}))));
-
-  /* Monthly table uses the same factors as summary cards. */
-  {
-    const serM={y1:monSS(y1,idsFull),y2:monSS(y2,idsFull),y3fory2:monSS(y3,idsFull),y3fory1:monSS(y3,idsFull)};
-    const heads=[H('BULAN',{s:1}),H('SALES '+y1,{r:1}),H('SALES '+y2,{r:1}),H('SALES '+y3,{r:1}),H(`Δ ${y3} VS ${y2}`,{r:1}),H(`GAP ${y3}-${y2}`,{r:1}),H(`Δ ${y3} VS ${y1}`,{r:1}),H(`GAP ${y3}-${y1}`,{r:1})];
-    const rows=MONTHS.map((mn,i)=>{ const a=serM.y1[i],b=serM.y2[i],c2=serM.y3fory2[i],c1=serM.y3fory1[i];
-      if(!a&&!b&&!c2&&!c1) return null;
-      return [mn,compact(a),compact(b),compact(c2),growthPill(c2,b),gapTxt(c2,b),growthPill(c1,a),gapTxt(c1,a)]; }).filter(Boolean);
-    const totA=serM.y1.reduce((s,v)=>s+v,0), totB=serM.y2.reduce((s,v)=>s+v,0), totC2=serM.y3fory2.reduce((s,v)=>s+v,0), totC1=serM.y3fory1.reduce((s,v)=>s+v,0);
-    p.append(card('Bulan demi bulan (same-window)',periodText+' · cakupan toko yang sama pada tiga tahun, sesuai kartu ringkasan',
-      mkTable(heads,rows,['TOTAL PERIODE',compact(totA),compact(totB),compact(totC2),growthPill(totC2,totB),gapTxt(totC2,totB),growthPill(totC1,totA),gapTxt(totC1,totA)])));
-  }
-
-  /* ---------- transaksi & AOV (same-window idsY2) — round 12: tambah Δ TRX/AOV y3 vs y1 (2024 vs 2026)
-     langsung, dan kolom UPT (Unit Per Transaksi) dari item_rollup dimensi toko, jendela kalender
-     pendekatan Jan–cut-off (sama seperti blok item sales same-window di bawah). ---------- */
-  {
-    const trxHost=el('div',{}); p.append(trxHost);
-    trxHost.append(el('div',{class:'empty'},'Memuat Transaksi & AOV…'));
-    (async()=>{
-      let units={};
-      try{
-        const res=await Promise.all([y1,y2,y3].map(y=>comparisonRollup('store',y,window,{stores:idsAll.filter(id=>hasY(y,id)),limit:60})));
-        [y1,y2,y3].forEach((y,i)=>{ units[y]=new Map(res[i].map(r=>[r.k,r.qty])); });
-      }catch(e){ [y1,y2,y3].forEach(y=>units[y]=new Map()); }
-      if(!trxHost.isConnected||S.page!=='sssg')return;
-      trxHost.innerHTML='';
-      const aov=(y,id)=>{ const c=G(y,id,'trx'); const v=G(y,id,'val');return c>0&&v!=null?v/c:null; };
-      const upt=(y,id)=>{ const c=G(y,id,'trx'), u=units[y].get(names.get(id)); return (c>0&&u!=null)?u/c:null; };
-      const uptTxt=v=>v==null?'—':v.toLocaleString('id-ID',{minimumFractionDigits:2,maximumFractionDigits:2});
-      const heads=[H('TOKO',{s:1}),...[y1,y2,y3].map(y=>H('TRX '+y,{r:1})),H(`Δ TRX ${y3}/${y2}`,{r:1}),H(`Δ TRX ${y3}/${y1}`,{r:1}),
-        ...[y1,y2,y3].map(y=>H('AOV '+y,{r:1})),H(`Δ AOV ${y3}/${y2}`,{r:1}),H(`Δ AOV ${y3}/${y1}`,{r:1}),
-        ...[y1,y2,y3].map(y=>H('UPT '+y,{r:1})),H(`Δ UPT ${y3}/${y2}`,{r:1})];
-      const rows=idsY2.filter(id=>[y2,y3].some(y=>G(y,id,'trx')>0)).map(id=>[names.get(id),...[y1,y2,y3].map(y=>int(G(y,id,'trx'))),
-        growthPill(G(y3,id,'trx'),G(y2,id,'trx')),growthPill(G(y3,id,'trx'),G(y1,id,'trx')),
-        ...[y1,y2,y3].map(y=>rp(aov(y,id))),growthPill(aov(y3,id)||0,aov(y2,id)||0),growthPill(aov(y3,id)||0,aov(y1,id)||0),
-        ...[y1,y2,y3].map(y=>uptTxt(upt(y,id))),growthPill(upt(y3,id)||0,upt(y2,id)||0)]);
-      const aT=(y,set)=>{ const c=T(y,'trx',set),v=T(y,'val',set); return c>0&&v!=null?v/c:null; };
-      const uT=(y,set)=>{ const c=T(y,'trx',set); let u=0; set.forEach(id=>{ u+=units[y].get(names.get(id))||0; }); return c>0?u/c:null; };
-      trxHost.append(card('Transaksi & AOV (same-window)',`${y1}/${y2}/${y3} · cut-off ${cf.label} · UPT = unit terjual ÷ jumlah transaksi`,
-        mkTable(heads,rows,['TOTAL',...[y1,y2,y3].map(y=>int(T(y,'trx',idsY2))),growthPill(T(y3,'trx',idsY2),T(y2,'trx',idsY2)),growthPill(T(y3,'trx',idsY2),T(y1,'trx',idsY2)),
-          ...[y1,y2,y3].map(y=>rp(aT(y,idsY2))),growthPill(aT(y3,idsY2)||0,aT(y2,idsY2)||0),growthPill(aT(y3,idsY2)||0,aT(y1,idsY2)||0),
-          ...[y1,y2,y3].map(y=>uptTxt(uT(y,idsY2))),growthPill(uT(y3,idsY2)||0,uT(y2,idsY2)||0)])));
-    })();
-  }
-
-  /* ---------- sales per toko — round 10 item 4: Δ/GAP NYATA utk tiap toko dgn ≥2 tahun yg valid; hanya
-     "—" utk tahun yang benar-benar tak ada (toko belum ada / window tak valid pd cut-off ini) ---------- */
-  {
-    const dash=()=>'—';
-    const heads=[H('TOKO',{s:1}),H('BUKA SEJAK',{r:1}),...[y1,y2,y3].map(y=>H('SALES '+y,{r:1})),
-      H(`Δ ${y3} VS ${y2}`,{r:1}),H(`GAP ${y3}-${y2}`,{r:1}),H(`Δ ${y3} VS ${y1}`,{r:1}),H(`GAP ${y3}-${y1}`,{r:1}),H(`TARGET ${y3}`,{r:1}),H(`ACHIEV ${y3}`,{r:1})];
-    const rowsRaw=idsAll.sort((a,b)=>G(y3,b,'sales')-G(y3,a,'sales'));  // item 8: diurutkan besar→kecil berdasar sales y3
-    const maxSales=rowsRaw.length?G(y3,rowsRaw[0],'sales'):0;
-    const rows=rowsRaw.map(id=>{
-      const rec=D.get(id);
-      const a=hasY(y1,id)?G(y1,id,'sales'):null, b=hasY(y2,id)?G(y2,id,'sales'):null, c=hasY(y3,id)?G(y3,id,'sales'):null, t=G(y3,id,'tgt');
-      const e2=hasY(y2,id)&&hasY(y3,id), e1=hasY(y1,id)&&hasY(y3,id);
-      return [names.get(id), rec.opening_date||'—', a==null?dash():compact(a), b==null?dash():compact(b), c==null?dash():magCell(c,maxSales,compact(c)),
-        e2?growthPill(c,b):dash(), e2?gapTxt(c,b):'', e1?growthPill(c,a):dash(), e1?gapTxt(c,a):'',
-        compact(t), pillCell(t>0&&c!=null?c/t:null)]; });
-    const sumY=y=>idsAll.reduce((s,id)=>hasY(y,id)?s+G(y,id,'sales'):s,0);
-    const tTotAll=T(y3,'tgt',idsAll), cTotAll=sumY(y3);
-    p.append(card('Sales per toko (periode terpilih)',periodText+' · diurutkan sales '+y3+' terbesar→terkecil. — berarti toko belum buka pada awal periode tahun tersebut atau tanggal buka belum tersedia.',
-      mkTable(heads,rows,['TOTAL','',compact(sumY(y1)),compact(sumY(y2)),compact(cTotAll),
-        growthPill(T(y3,'sales',idsY2),T(y2,'sales',idsY2)),gapTxt(T(y3,'sales',idsY2),T(y2,'sales',idsY2)),
-        growthPill(T(y3,'sales',idsFull),T(y1,'sales',idsFull)),gapTxt(T(y3,'sales',idsFull),T(y1,'sales',idsFull)),
-        compact(tTotAll),pillCell(tTotAll>0?cTotAll/tTotAll:null)])));
-  }
-
-  /* ---------- item 2/5: tabel rata-rata sales HARIAN per toko — basis sesungguhnya dari "same store
-     sales growth": total sales jendela ÷ jumlah hari dalam jendela, jendela dimulai dari tgl buka toko. ---------- */
-  {
-    const avgPS=(y,id)=>{ if(!hasY(y,id)) return null; const d=G(y,id,'days'); return d>0?G(y,id,'sales')/d:null; };
-    const heads=[H('TOKO',{s:1}),H('BUKA SEJAK',{r:1}),...[y1,y2,y3].map(y=>H('RATA² SALES/HARI '+y,{r:1})),H(`Δ ${y3} VS ${y2}`,{r:1}),H(`Δ ${y3} VS ${y1}`,{r:1}),H(`HARI ${y3}`,{r:1})];
-    const rowsAvg=idsAll.slice().sort((a,b)=>(avgPS(y3,b)||0)-(avgPS(y3,a)||0)).map(id=>{
-      const rec=D.get(id), a=avgPS(y1,id), b=avgPS(y2,id), c=avgPS(y3,id);
-      return [names.get(id), rec.opening_date||'—', a==null?'—':rp(a), b==null?'—':rp(b), c==null?'—':rp(c),
-        (b!=null&&c!=null)?growthPill(c,b):'—', (a!=null&&c!=null)?growthPill(c,a):'—', int(G(y3,id,'days'))];
-    });
-    const avgTotFn=(y,set)=>{ const d=comparisonDays(window,y); return set.length&&d>0?T(y,'sales',set)/d:null; };
-    p.append(card('Rata-rata Sales Harian per Toko (periode terpilih)',periodText+' · Rata² = sales periode ÷ jumlah hari periode.',
-      mkTable(heads,rowsAvg,['TOTAL (gabungan)','',rp(avgTotFn(y1,idsFull)),rp(avgTotFn(y2,idsY2)),rp(avgTotFn(y3,idsY2)),
-        growthPill(avgTotFn(y3,idsY2)||0,avgTotFn(y2,idsY2)||0),growthPill(avgTotFn(y3,idsFull)||0,avgTotFn(y1,idsFull)||0),int(comparisonDays(window,y3))])));
-  }
-
-  /* ---------- segmen komersial & user (same-window idsY2) — round 12: tambah Δ/GAP y3 vs y1 (2024 vs 2026) langsung ---------- */
-  {
-    const heads=[H('SEGMEN',{s:1}),...[y1,y2,y3].map(y=>H(String(y),{r:1})),H(`Δ ${y3} VS ${y2}`,{r:1}),H(`GAP ${y3}-${y2}`,{r:1}),H(`Δ ${y3} VS ${y1}`,{r:1}),H(`GAP ${y3}-${y1}`,{r:1}),H('PORSI '+y3,{r:1})];
-    const tot=T(y3,'kom',idsY2)+T(y3,'usr',idsY2);
-    const mkRow=(n,vfn)=>{ const v=[y1,y2,y3].map(y=>vfn(y)); return [n,...v.map(x=>compact(x)),growthPill(v[2],v[1]),gapTxt(v[2],v[1]),growthPill(v[2],v[0]),gapTxt(v[2],v[0]),pct(tot?v[2]/tot:null)]; };
-    const totV=[y1,y2,y3].map(y=>T(y,'kom',idsY2)+T(y,'usr',idsY2));
-    p.append(card('Segmen Komersial & User (same-window)','total per segmen, toko dgn window valid thd '+y2,
-      mkTable(heads,[mkRow('KOMERSIAL',y=>T(y,'kom',idsY2)),mkRow('USER',y=>T(y,'usr',idsY2))],
-        ['TOTAL',...totV.map(x=>compact(x)),growthPill(totV[2],totV[1]),gapTxt(totV[2],totV[1]),growthPill(totV[2],totV[0]),gapTxt(totV[2],totV[0]),pct(tot?totV[2]/tot:null)])));
-  }
-
-  /* ---------- Rincian Brand per Segmen (same-window idsY2) — item 4: section H2H yang belum ada di SSSG.
-     KOMERSIAL MAMU sengaja tidak diikutkan, sama persis kebijakan di H2H. round 12: tambah Δ/GAP y3 vs y1. ---------- */
-  {
-    const heads=[H('SEGMEN',{s:1}),...[y1,y2,y3].map(y=>H(String(y),{r:1})),H(`Δ ${y3} VS ${y2}`,{r:1}),H(`GAP ${y3}-${y2}`,{r:1}),H(`Δ ${y3} VS ${y1}`,{r:1}),H(`GAP ${y3}-${y1}`,{r:1}),H('PORSI '+y3,{r:1})];
-    const tot=T(y3,'kom',idsY2)+T(y3,'usr',idsY2);
-    const mkRow=(n,vfn)=>{ const v=[y1,y2,y3].map(y=>vfn(y)); return [n,...v.map(x=>compact(x)),growthPill(v[2],v[1]),gapTxt(v[2],v[1]),growthPill(v[2],v[0]),gapTxt(v[2],v[0]),pct(tot?v[2]/tot:null)]; };
-    const totV=[y1,y2,y3].map(y=>T(y,'kt',idsY2)+T(y,'ut',idsY2)+T(y,'um',idsY2));
-    p.append(card('Rincian Brand per Segmen (same-window)','Komersial Tigalapan, User Tigalapan, dan User Mamu — toko dgn window valid thd '+y2,
-      mkTable(heads,[mkRow('KOMERSIAL TIGALAPAN',y=>T(y,'kt',idsY2)),mkRow('USER TIGALAPAN',y=>T(y,'ut',idsY2)),mkRow('USER MAMU',y=>T(y,'um',idsY2))],
-        ['TOTAL',...totV.map(x=>compact(x)),growthPill(totV[2],totV[1]),gapTxt(totV[2],totV[1]),growthPill(totV[2],totV[0]),gapTxt(totV[2],totV[0]),pct(tot?totV[2]/tot:null)])));
-  }
-
-  /* ---------- Segmen per toko (same-window idsY2) — item 4: section H2H yang belum ada di SSSG.
-     round 12: tambah Δ/GAP KOM & USER y3 vs y1 langsung. ---------- */
-  {
-    const heads=[H('TOKO',{s:1}),...[y1,y2,y3].map(y=>H('KOMERSIAL '+y,{r:1})),H(`Δ KOM ${y3}/${y2}`,{r:1}),H(`GAP KOM ${y3}-${y2}`,{r:1}),H(`Δ KOM ${y3}/${y1}`,{r:1}),H(`GAP KOM ${y3}-${y1}`,{r:1}),
-      ...[y1,y2,y3].map(y=>H('USER '+y,{r:1})),H(`Δ USER ${y3}/${y2}`,{r:1}),H(`GAP USER ${y3}-${y2}`,{r:1}),H(`Δ USER ${y3}/${y1}`,{r:1}),H(`GAP USER ${y3}-${y1}`,{r:1})];
-    const rows=idsY2.slice().sort((a,b)=>G(y3,b,'sales')-G(y3,a,'sales')).map(id=>[names.get(id),...[y1,y2,y3].map(y=>compact(G(y,id,'kom'))),
-      growthPill(G(y3,id,'kom'),G(y2,id,'kom')),gapTxt(G(y3,id,'kom'),G(y2,id,'kom')),growthPill(G(y3,id,'kom'),G(y1,id,'kom')),gapTxt(G(y3,id,'kom'),G(y1,id,'kom')),
-      ...[y1,y2,y3].map(y=>compact(G(y,id,'usr'))),growthPill(G(y3,id,'usr'),G(y2,id,'usr')),gapTxt(G(y3,id,'usr'),G(y2,id,'usr')),growthPill(G(y3,id,'usr'),G(y1,id,'usr')),gapTxt(G(y3,id,'usr'),G(y1,id,'usr'))]);
-    const footKomV=[y1,y2,y3].map(y=>T(y,'kom',idsY2)), footUsrV=[y1,y2,y3].map(y=>T(y,'usr',idsY2));
-    p.append(card('Segmen per toko (same-window)',`${y1}/${y2}/${y3} · diurutkan sales ${y3} terbesar→terkecil`,
-      mkTable(heads,rows,['TOTAL',...footKomV.map(x=>compact(x)),growthPill(footKomV[2],footKomV[1]),gapTxt(footKomV[2],footKomV[1]),growthPill(footKomV[2],footKomV[0]),gapTxt(footKomV[2],footKomV[0]),
-        ...footUsrV.map(x=>compact(x)),growthPill(footUsrV[2],footUsrV[1]),gapTxt(footUsrV[2],footUsrV[1]),growthPill(footUsrV[2],footUsrV[0]),gapTxt(footUsrV[2],footUsrV[0])])));
-  }
-
-  /* Item amounts and units use the same selected calendar-day proportions. */
-  const host=el('div',{style:'display:flex;flex-direction:column;gap:18px'});
-  p.append(host);
-  host.append(el('div',{class:'empty'},'Memuat item sales same-window…'));
-  (async()=>{
-    try{
-      /* round 22: dim 'color' dihitung client-side dari dim 'product' — lihat colorRowsFromProducts. */
-      const dims=['store','category','product','size'];
-      const res={}; await Promise.all(dims.map(async d=>{ res[d]=await Promise.all([y1,y2,y3].map(y=>comparisonRollup(d,y,window,{limit:d==='product'?400:d==='store'?60:40,stores:idsFull}))); }));
-      if(!host.isConnected||S.page!=='sssg')return;
-      res.color=res.product.map(yearRows=>colorRowsFromProducts(yearRows,true));
-      host.innerHTML='';
-      if(host.isConnected&&S.page==='sssg')appendComparisonDetailTables(host,res,[y1,y2,y3],window,true,idsFull);
-    }catch(e){ if(!host.isConnected||S.page!=='sssg')return;host.innerHTML=''; host.append(el('div',{class:'note warn'},'Gagal memuat item sales: '+e.message)); }
-  })();
-}
-
 /* =====================================================================
    PROGRAM SALES — round 17: kelompokkan beberapa kategori item jadi satu
    "program" (mis. Program Lebaran, Promo Akhir Tahun) dengan TARGET
@@ -7230,7 +7022,8 @@ setInterval(masterRevisionCheck,45000);window.addEventListener('focus',masterRev
 <script src="price-list-catalog-v26.js?v=26"></script>
 <script src="price-list-ui-v24.js?v=26"></script>
 <script src="member-v27.js?v=34"></script>
-<script src="member-ui-v27.js?v=34"></script>
-<script src="commercial-v28.js?v=35"></script>
+<script src="member-ui-v27.js?v=37"></script>
+<script src="commercial-v28.js?v=37"></script>
+<script src="member-monthly-v37.js?v=37"></script>
 </body>
 </html>

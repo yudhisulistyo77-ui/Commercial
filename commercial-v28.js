@@ -13,7 +13,7 @@
   if (window.V28) return;
   const V28 = window.V28 = { run: null, active: null, poll: null, access: null, accessReady: false, revision: null };
   const SEGMENT_BRANDS = ['TIGALAPAN', 'MAMU'];
-  const SEGMENT_PAGES = new Set(['dash', 'sales', 'mkt', 'pdca', 'h2h', 'sssg', 'program']);
+  const SEGMENT_PAGES = new Set(['dash', 'sales', 'mkt', 'pdca', 'h2h', 'program']);
   const STORE_BRAND_PAGES = new Set(['review', 'trx', 'jam', 'pelanggan', 'stok']);
   const ADMIN_PAGES = new Set(['upload', 'uploadreset', 'masterinput', 'akses']);
   const ACCESS_KEY = 'kpi_access_v28';
@@ -99,7 +99,7 @@ td.sticky1{overflow-wrap:break-word}
     if (id === 'akses') return isMaster();
     const r = userRule();
     if (r && r.view_only && ADMIN_PAGES.has(id)) return false;
-    if (r && Array.isArray(r.menus) && r.menus.length && !r.menus.includes(id)) return false;
+    if (r && Array.isArray(r.menus) && r.menus.length && !r.menus.includes(id) && !(id === 'members' && r.menus.includes('pelanggan'))) return false;
     return true;
   }
   function allowedStoreSet() {
@@ -107,6 +107,11 @@ td.sticky1{overflow-wrap:break-word}
     return r && Array.isArray(r.stores) && r.stores.length ? new Set(r.stores.map(String)) : null;
   }
   V28.pageAllowed = pageAllowed;
+  V28.memberTabAllowed = function (tab) {
+    const rule = userRule();
+    if (!rule?.menus?.length) return true;
+    return tab === 'monthly' ? rule.menus.includes('members') || rule.menus.includes('pelanggan') : rule.menus.includes('members');
+  };
 
   /* ------------------------------------------------ halaman baru */
   function addPage(afterId, page) {
@@ -115,15 +120,15 @@ td.sticky1{overflow-wrap:break-word}
     PAGES.splice(i < 0 ? PAGES.length : i + 1, 0, page);
   }
   addPage('top', { id: 'jam', t: 'Jam Ramai', ic: 'datatrack' });
-  addPage('jam', { id: 'pelanggan', t: 'Pelanggan & Member', ic: 'trx' });
+  // Customer analytics now live inside Member; no second navigation entry.
   addPage('item', { id: 'stok', t: 'Stok Toko', ic: 'item' });
   addPage('uploadreset', { id: 'akses', t: 'Akses Pengguna', ic: 'set' });
   const host = $('#p-dash').parentElement;
   for (const id of ['jam', 'pelanggan', 'stok', 'akses'])
     if (!$('#p-' + id)) host.append(el('section', { class: 'page', id: 'p-' + id }));
   Object.assign(FILTER_VISIBILITY, {
-    jam: ['year', 'month', 'range', 'brand', 'spv', 'store'],
-    pelanggan: ['year', 'month', 'range', 'brand', 'spv', 'store'],
+    jam: ['year', 'month', 'brand', 'spv', 'store'],
+    pelanggan: ['year', 'month', 'brand', 'spv', 'store'],
     stok: ['brand', 'spv', 'store'], akses: []
   });
 
@@ -144,6 +149,7 @@ td.sticky1{overflow-wrap:break-word}
 
   const origGo = go;
   go = function (id) {
+    if (id === 'pelanggan') { id = 'members'; if (typeof MEM27 !== 'undefined') MEM27.view = 'monthly'; }
     if (!pageAllowed(id)) { const first = PAGES.find(p => p.id && pageAllowed(p.id)); id = first ? first.id : 'dash'; }
     return origGo(id);
   };
@@ -518,6 +524,8 @@ td.sticky1{overflow-wrap:break-word}
   /* ======================= JAM RAMAI (heatmap) ======================= */
   V28.jam = { metric: 'trx', avg: true };
   async function renderJam() {
+    S.month = Number(S.month) || Number(todayWita().slice(5,7)); S.monthRange = null;
+    const monthSelect = $('#f-month'); if (monthSelect) monthSelect.value = String(S.month);
     const p = pageHead('jam', 'Jam Ramai', 'Heatmap transaksi per jam × hari (jam WITA) dari data Moka · ' + periodLabel());
     if (needData(p)) return;
     const { from, to } = periodDates();
@@ -593,8 +601,15 @@ td.sticky1{overflow-wrap:break-word}
 
   /* ======================= PELANGGAN & MEMBER ======================= */
   V28.cust = { q: '', b2b: 'all', limit: 200 };
-  async function renderPelanggan() {
-    const p = pageHead('pelanggan', 'Pelanggan & Member', 'Hari kunjungan, transaksi dan top customer dari data Moka · ' + periodLabel());
+  async function renderPelanggan(memberHost = null) {
+    const p = memberHost || pageHead('pelanggan', 'Pelanggan & Member', 'Hari kunjungan, transaksi dan top customer dari data Moka · ' + periodLabel());
+    if (memberHost) {
+      S.month = Number(S.month) || Number(MEM27.filter.month) || Number(todayWita().slice(5,7)); S.monthRange = null;
+      const monthSelect = $('#f-month'); if (monthSelect) monthSelect.value = String(S.month);
+      const pf = pageFilterBar('pelanggan');
+      if (pf) p.append(pf);
+      p.append(el('p', { class: 'note' }, 'Transaksi aktual Moka · ' + periodLabel() + '. Profil lengkap Customer List belum tersedia pada sumber V36; nomor telepon di data lama hanya 4 digit terakhir.'));
+    }
     if (needData(p)) return;
     const { from, to } = periodDates(), ids = scopeStoreIds(), C = V28.cust;
     const body = el('div'); p.append(body); body.append(el('p', { class: 'note' }, 'Memuat pelanggan…'));
@@ -605,7 +620,7 @@ td.sticky1{overflow-wrap:break-word}
         DB.rpc('commercial_customer_freq_v1', { p_from: from, p_to: to, p_stores: ids }),
         DB.rpc('commercial_customers_v1', { p_from: from, p_to: to, p_stores: ids, p_query: C.b2b === 'b2b' && !C.q ? 'MK' : C.q || null, p_limit: C.b2b === 'all' ? C.limit : 2000 })]);
     } catch (e) { body.replaceChildren(); sqlMissing(body, e); return; }
-    if (S.page !== 'pelanggan') return;
+    if ((!memberHost && S.page !== 'pelanggan') || (memberHost && (S.page !== 'members' || !memberHost.isConnected || MEM27.view !== 'monthly'))) return;
     body.replaceChildren();
     const s = stats[0] || {};
     if (!num(s.customers) && !num(s.walkin_trx)) { emptySync(body, 'Belum ada data pelanggan', 'Belum ada transaksi hasil sinkron pada filter ' + from + ' s.d. ' + to + '. Jalankan sinkron dan periksa filter toko.'); return; }
@@ -635,6 +650,8 @@ td.sticky1{overflow-wrap:break-word}
       el('div', { class: 'v28-tools' }, el('div', { class: 'fld' }, el('label', {}, 'Cari'), q), el('div', { class: 'fld' }, el('label', {}, 'Jenis'), kind)),
       mkTable([H('#', { r: 1 }), H('PELANGGAN', { s: 1 }), H('HP'), H('TOKO'), H('KUNJUNGAN', { r: 1 }), H('TRANSAKSI', { r: 1 }), H('NET SALES', { r: 1 }), H('AOV', { r: 1 }), H('TERAKHIR')], rows)));
   }
+
+  V28.renderMemberTransactions = renderPelanggan;
 
   /* ============================ STOK TOKO ============================ */
   V28.stok = { q: '', cat: '', brand: '', only: true, offset: 0 };
@@ -710,6 +727,8 @@ td.sticky1{overflow-wrap:break-word}
       multiSelectDropdown(mBox, menuOpts, rule.menus, arr => { rule.menus = arr; }, { allLabel: 'Semua menu' });
       multiSelectDropdown(sBox, storeOpts, rule.stores.map(String), arr => { rule.stores = arr; }, { allLabel: 'Semua toko' });
       vo.onchange = () => { rule.view_only = vo.checked; };
+      const pii = el('input', { type: 'checkbox' }); pii.checked = !!rule.customer_pii; pii.onchange = () => { rule.customer_pii = pii.checked; };
+      mBox.append(el('label', { class: 'rowline', style: 'margin-top:8px' }, pii, 'Lihat telepon customer lengkap'));
       const quick = el('div', { class: 'sub', style: 'display:flex;gap:6px;margin-top:4px' }, ...SEGMENT_BRANDS.map(b => el('button', { class: 'btn sm', type: 'button', onclick: () => { rule.stores = S.stores.filter(s => canonicalProductBrand(s.brand) === b).map(s => String(s.id)); multiSelectDropdown(sBox, storeOpts, rule.stores, arr => { rule.stores = arr; }, { allLabel: 'Semua toko' }); } }, 'Toko ' + b)));
       list.append(el('div', { class: 'v28-access-row' }, el('span', {}, el('b', {}, u.name), el('div', { class: 'sub' }, (u.role === 'editor' ? 'Editor' : u.role) + (u.enabled ? '' : ' · nonaktif'))), mBox, el('div', {}, sBox, quick), el('label', { class: 'rowline' }, vo, 'Ya'), el('span')));
     }
@@ -727,7 +746,7 @@ td.sticky1{overflow-wrap:break-word}
     p.append(card('Pengaturan login', 'berlaku untuk semua perangkat',
       el('label', { class: 'rowline' }, req, el('b', {}, 'Wajib masuk dengan PIN untuk membuka aplikasi')),
       el('p', { class: 'note' }, 'Setiap orang memakai PIN miliknya sendiri. Buat atau nonaktifkan PIN lewat tombol Kelola PIN. Kosongkan pilihan menu/toko untuk memberi akses semua. "Hanya lihat" menyembunyikan menu upload/kelola dan menolak semua penyimpanan.'),
-      el('p', { class: 'note' }, 'Catatan keamanan: pembatasan ini berlaku di aplikasi. Data mentah tetap dilindungi oleh kunci Supabase; jangan bagikan kunci di luar tim.'),
+      el('p', { class: 'note' }, 'Akses cabang dan telepon pada transaksi Member V37 diperiksa di server. Pembatasan server untuk modul lama masih perlu diaudit sebelum aplikasi dibagikan lebih luas.'),
       el('div', { class: 'rowline' }, el('button', { class: 'btn', type: 'button', onclick: async () => { await masterPinManager(); } }, 'Kelola PIN (tambah / ubah pengguna)'),
         el('button', { class: 'btn', type: 'button', onclick: () => renderAkses() }, 'Muat ulang daftar'))));
     p.append(card('Hak akses per pengguna', users.length + ' PIN terdaftar', list, err, save));
