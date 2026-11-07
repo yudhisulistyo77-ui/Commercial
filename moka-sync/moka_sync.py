@@ -5,10 +5,10 @@ Sinkronisasi Moka POS -> Supabase (Dashboard Commercial / Store Operation) — V
 Mode
 ----
   full  (jadwal harian)  : bulan berjalan sampai KEMARIN ditarik ulang penuh
-                           (+ bulan lalu pada tanggal 1–3). Juga memperbarui item & stok.
+                           (+ bulan lalu pada tanggal 1–3). Juga memperbarui katalog item & harga.
   live  (tombol Sinkron) : data sampai MENIT INI. Cukup menarik transaksi beberapa hari
                            terakhir (LIVE_DAYS, default 3); hari sebelumnya dibaca dari
-                           tabel harian yang sudah tersimpan. Stok ikut bila INCLUDE_STOCK=1.
+                           tabel harian yang sudah tersimpan. Periode lama bisa dilewati melalui checkpoint V41.
 
 Tabel yang diisi
 ----------------
@@ -29,7 +29,6 @@ Variabel lingkungan
   SYNC_MODE           full | live (default full).
   SYNC_MONTHS         opsional "2026-10,2026-11" atau "2026-01..2026-10" (mode full).
   LIVE_DAYS           default 3.
-  INCLUDE_STOCK       "1" = tarik item & stok (default 1 untuk full, 0 untuk live).
   ONLY_OUTLETS        opsional, nama outlet Moka dipisah koma.
   RUN_ID              id baris moka_sync_runs (diisi tombol Sinkron).
   DRY_RUN             "1" = tidak menulis; hasil di moka-sync-output/.
@@ -72,7 +71,6 @@ if MODE not in ("full", "live"):
 DRY_RUN = env("DRY_RUN", "0").lower() in ("1", "true", "yes")
 LIVE_DAYS = max(1, int(env("LIVE_DAYS", "3")))
 INCLUDE_LIBRARY = env("INCLUDE_LIBRARY", "1").lower() in ("1","true","yes")
-INCLUDE_STOCK = env("INCLUDE_STOCK", "1" if MODE == "full" else "0").lower() in ("1", "true", "yes")
 WORKERS = max(1, min(3, int(env("WORKERS", "2"))))
 STOCK_BATCH_SIZE = max(50, min(400, int(env("STOCK_BATCH_SIZE", "250"))))
 OUT_DIR = env("OUTPUT_DIR", "moka-sync-output")
@@ -205,7 +203,7 @@ class Moka:
         while url and guard < 200:
             guard += 1
             if url in visited:
-                raise RuntimeError("Pagination item Moka berulang; stok lama dipertahankan.")
+                raise RuntimeError("Pagination item Moka berulang; katalog lama dipertahankan.")
             visited.add(url)
             d = self.get(url)
             out.extend(d.get("items") or [])
@@ -213,11 +211,11 @@ class Moka:
                 return out
             if not d.get("next_url"):
                 if d.get("completed") is False:
-                    raise RuntimeError("Pagination item Moka belum selesai tanpa next_url; stok lama dipertahankan.")
+                    raise RuntimeError("Pagination item Moka belum selesai tanpa next_url; katalog lama dipertahankan.")
                 return out
             url = d["next_url"].replace("access_token=&", "")
         if url:
-            raise RuntimeError("Pagination item melebihi batas 200 halaman; stok lama dipertahankan.")
+            raise RuntimeError("Pagination item melebihi batas 200 halaman; katalog lama dipertahankan.")
         return out
 
 
@@ -453,7 +451,8 @@ def fetch_store_month(ctx, outlet, sid, period):
         fetch_from = d1
         fetch_to = d2
         date_range = bool(env('SYNC_FROM') and env('SYNC_TO'))
-        if date_range:
+        force_refresh=env('FORCE_REFRESH','0').lower() in ('1','true','yes')
+        if date_range and not force_refresh:
             want_from=max(d1,date.fromisoformat(env('SYNC_FROM')))
             want_to=min(d2,date.fromisoformat(env('SYNC_TO')))
             if want_from>want_to:raise ValueError('Tidak ada tanggal yang tercakup.')
@@ -466,7 +465,7 @@ def fetch_store_month(ctx, outlet, sid, period):
                 fetch_from,fetch_to=want_from,want_to
             else:
                 res['range_note']='Cache di luar rentang belum lengkap; bulan terkait ditarik utuh.'
-        if MODE == "live" and ctx.db and not date_range:
+        if MODE == "live" and ctx.db and not date_range and not force_refresh and d2 == ctx.now.date():
             want = max(d1, ctx.now.date() - timedelta(days=LIVE_DAYS - 1))
             if want > d1:
                 cov = ctx.db.sel(f"moka_sync_coverage?select=sale_date&store_id=eq.{sid}"
@@ -539,6 +538,16 @@ def process(ctx, outlet, sid, period):
 
 
 def _process(ctx, outlet, sid, period, t0):
+    # Only closed, older periods can skip detail. Recent days always refresh.
+    y, m, d1, d2 = period
+    if env('SKIP_UNCHANGED','1').lower() in ('1','true','yes') and env('FORCE_REFRESH','0').lower() not in ('1','true','yes') and ctx.db and d2 < ctx.now.date()-timedelta(days=3):
+        try:
+            summary = ctx.moka.sales_summary(outlet['id'],d1,d2)
+            checkpoint = ctx.db.rpc('commercial_moka_check_v41',{'p_store_id':sid,'p_year':y,'p_month':m,'p_from':d1.isoformat(),'p_to':d2.isoformat(),'p_summary':summary})
+            if checkpoint and checkpoint.get('skip') is True:
+                return {'outlet':outlet['name'],'outlet_id':outlet['id'],'store_id':sid,'year':y,'month':m,'start':d1.isoformat(),'end':d2.isoformat(),'status':'UNCHANGED','summary':summary,'errors':[],'skip_reason':checkpoint.get('reason'),'seconds':round(time.time()-t0,1)}
+        except Exception as e:
+            log('Cek cepat tidak tersedia; tarik detail '+outlet['name']+': '+type(e).__name__)
     res = fetch_store_month(ctx, outlet, sid, period)
     if res["status"] == "ERROR" and res.get("lag"):
         time.sleep(LAG_RETRY_WAIT)
@@ -626,9 +635,11 @@ def write_store_month(db, res, known_types, stamp):
                               "rows_total": 1, "rows_mapped": 1, "rows_unmapped": 0,
                               "total_amount": trx["nilai_transaksi"], "status": "OK", "message": note}])
 
-    target_db.rpc("commercial_moka_replace_v35", {
+    target_db.rpc("commercial_moka_replace_v41", {
         "p_store_id": sid, "p_year": y, "p_month": m,
         "p_from": f1, "p_to": f2, "p_rows": db.rows,
+        "p_period_from": res["start"], "p_period_to": res["end"],
+        "p_summary": res["summary"], "p_validated": res["status"] == "OK" and not res["errors"],
     })
 
 
@@ -676,22 +687,21 @@ def item_rows(outlet, sid, items):
             rows.append({"store_id": sid, "outlet_name": outlet["name"], "variant_id": v["id"],
                          "sku": (v.get("sku") or "").strip() or None, "item_name": name, "category": cat,
                          "brand": brand, "cogs": v.get("cogs"), "basic_price": v.get("price"), "prices": prices,
-                         "in_stock": v.get("in_stock"), "stock_alert": v.get("stock_alert"),
-                         "track_stock": v.get("track_stock"), "updated_at": datetime.now(timezone.utc).isoformat()})
+                         "updated_at": datetime.now(timezone.utc).isoformat()})
     return rows
 
 
-def publish_stock(db, sid, rows):
+def publish_library(db, sid, rows):
     batch_id = str(uuid.uuid4())
     ids = [r["variant_id"] for r in rows]
     if len(ids) != len(set(ids)):
-        raise RuntimeError("Variant stok ganda; snapshot lama dipertahankan.")
-    db.rpc_idempotent("commercial_moka_stock_begin_v36", {
+        raise RuntimeError("Variant library ganda; snapshot lama dipertahankan.")
+    db.rpc_idempotent("commercial_moka_library_begin_v40", {
         "p_batch": batch_id, "p_store_id": sid, "p_expected": len(rows)})
     for i in range(0, len(rows), STOCK_BATCH_SIZE):
-        db.rpc_idempotent("commercial_moka_stock_stage_v36", {
+        db.rpc_idempotent("commercial_moka_library_stage_v40", {
             "p_batch": batch_id, "p_rows": rows[i:i + STOCK_BATCH_SIZE]})
-    db.rpc_idempotent("commercial_moka_stock_commit_v36", {"p_batch": batch_id})
+    db.rpc_idempotent("commercial_moka_library_commit_v40", {"p_batch": batch_id})
 
 
 def process_items(ctx, outlet, sid):
@@ -700,9 +710,8 @@ def process_items(ctx, outlet, sid):
     try:
         rows = item_rows(outlet, sid, ctx.moka.items(outlet["id"]))
         res["rows"] = len(rows)
-        res["stock"] = sum(float(r["in_stock"] or 0) for r in rows if r["track_stock"] is not False)
         if ctx.db and not DRY_RUN:
-            publish_stock(ctx.db, sid, rows)
+            publish_library(ctx.db, sid, rows)
     except HttpError as e:
         res["status"] = "SKIP" if (e.code == 403 and "xpired" in e.body) else "ERROR"
         res["errors"].append(str(e))
@@ -813,7 +822,7 @@ def main():
             if tag == "items":
                 item_results.append(res)
                 log(f"  {'✓' if res['status'] == 'OK' else '·' if res['status'] == 'SKIP' else '✗'} "
-                    f"{res['outlet']:<26} item & stok: {res.get('rows', 0):>6} SKU  stok {res.get('stock', 0):>10,.0f}"
+                    f"{res['outlet']:<26} library item: {res.get('rows', 0):>6} SKU"
                     f"  {res['seconds']:>6}s {'; '.join(res['errors'])}")
                 continue
             if res["status"] in ("OK", "WARN") and writing:
@@ -830,21 +839,21 @@ def main():
                 except HttpError:
                     pass
             s = res.get("summary") or {}
-            mark = {"OK": "✓", "WARN": "!", "SKIP": "·"}.get(res["status"], "✗")
+            mark = {"OK": "✓", "WARN": "!", "SKIP": "·", "UNCHANGED": "↷"}.get(res["status"], "✗")
             log(f"  {mark} {res['outlet']:<26} {res['year']}-{res['month']:02d}  net {rp(float(s.get('net_sales') or 0)):>17}"
                 f"  trx {int(s.get('number_of_transactions') or 0):>6}  {len(res.get('sales_types') or {}):>3} sales type"
                 f"  {len(res.get('items') or []):>5} item  dari {res.get('fetch_from', '-')}"
-                f"  {res['seconds']:>6}s {'; '.join(res['errors'])}")
+                f"  {res['seconds']:>6}s {'; '.join(res['errors'])}" + (" · dilewati: "+res['skip_reason'] if res.get('skip_reason') else ''))
             results.append(res)
 
-    if INCLUDE_STOCK or INCLUDE_LIBRARY:
-        log("Penjualan selesai diproses. Memperbarui stok secara berurutan (batch kecil)…")
+    if INCLUDE_LIBRARY:
+        log("Penjualan selesai diproses. Memperbarui katalog Item Library secara berurutan (batch kecil)…")
         for o, sid in mapped:
             res = process_items(ctx, o, sid)
             item_results.append(res)
-            mark = {"OK": "✓", "SKIP": "·"}.get(res["status"], "✗")
-            log(f"  {mark} {res['outlet']:<26} item & stok: {res.get('rows', 0):>6} SKU"
-                f"  stok {res.get('stock', 0):>10,.0f}  {res['seconds']:>6}s {'; '.join(res['errors'])}")
+            mark = {"OK": "✓", "SKIP": "·", "UNCHANGED": "↷"}.get(res["status"], "✗")
+            log(f"  {mark} {res['outlet']:<26} library item: {res.get('rows', 0):>6} SKU"
+                f"  {res['seconds']:>6}s {'; '.join(res['errors'])}")
 
     price_errors=[]
     if writing and INCLUDE_LIBRARY:
@@ -857,9 +866,9 @@ def main():
                 price_errors.append({'outlet':library_result['outlet'],'status':'ERROR','errors':['Price List: '+type(e).__name__]})
                 warn('Price List belum diperbarui: '+library_result['outlet']+'; periksa log helper.')
     rebuild_error = None
-    if writing and (any(r["status"] in ("OK", "WARN") for r in results) or any(r["status"] == "OK" for r in item_results)):
+    if writing and (any(r["status"] in ("OK", "WARN", "UNCHANGED") for r in results) or any(r["status"] == "OK" for r in item_results)):
         try:
-            if any(r["status"] in ("OK", "WARN") for r in results):
+            if any(r["status"] in ("OK", "WARN", "UNCHANGED") for r in results):
                 db.rpc("rebuild_sales_actual")
                 log("✓ rebuild_sales_actual selesai")
         except HttpError as e:
@@ -872,19 +881,21 @@ def main():
             pass
 
     ok = [r for r in results if r["status"] == "OK"]
+    unchanged = [r for r in results if r["status"] == "UNCHANGED"]
     wr = [r for r in results if r["status"] == "WARN"]
     sales_bad = [r for r in results if r["status"] == "ERROR"]
-    stock_bad = [r for r in item_results if r["status"] == "ERROR"]
-    bad = sales_bad + stock_bad + price_errors
+    library_bad = [r for r in item_results if r["status"] == "ERROR"]
+    bad = sales_bad + library_bad + price_errors
     for r in wr:
         warn(f"{r['outlet']} {r['year']}-{r['month']:02d}: {r['errors'][0]}")
-    data_until = now if MODE == "live" else datetime(cutoff.year, cutoff.month, cutoff.day, 23, 59, 59, tzinfo=TZ)
-    stock_ok = [r for r in item_results if r["status"] == "OK"]
+    actual_end=max(p[3] for p in periods)
+    data_until = now if MODE == "live" and actual_end == now.date() else datetime(actual_end.year, actual_end.month, actual_end.day, 23, 59, 59, tzinfo=TZ)
+    library_ok = [r for r in item_results if r["status"] == "OK"]
     run_update(status="error" if bad or rebuild_error else "warn" if wr else "done",
                finished_at=datetime.now(timezone.utc).isoformat(), data_until=data_until.isoformat() if results else None,
-               stores_ok=len(ok), stores_warn=len(wr), stores_error=len(bad),
-               message=(f"Sales: {len(ok)} OK, {len(wr)} menunggu Moka, {len(sales_bad)} gagal; Price List {len(price_errors)} gagal; stok: {len(stock_ok)} OK, {len(stock_bad)} gagal" + ("; hitung ulang sales gagal: " + rebuild_error[:160] if rebuild_error else "") +
-                        (f" · stok {len([r for r in item_results if r['status'] == 'OK'])} toko" if item_results else "") +
+               stores_ok=len(ok)+len(unchanged), stores_warn=len(wr), stores_error=len(bad),
+               message=(f"Sales: {len(ok)} OK, {len(unchanged)} dilewati (sesuai), {len(wr)} menunggu Moka, {len(sales_bad)} gagal; Price List {len(price_errors)} gagal; library: {len(library_ok)} OK, {len(library_bad)} gagal" + ("; hitung ulang sales gagal: " + rebuild_error[:160] if rebuild_error else "") +
+                        (f" · library {len([r for r in item_results if r['status'] == 'OK'])} toko" if item_results else "") +
                         ("; " + "; ".join(f"{r['outlet']}: {r['errors'][0][:120]}" for r in bad[:3]) if bad else ""))[:900])
 
     if DRY_RUN:
@@ -905,13 +916,13 @@ def main():
                          f"{int(s.get('number_of_transactions') or 0):,} | {len(r.get('sales_types') or {})} | "
                          f"{len(r.get('items') or [])} | {r['status']} {'; '.join(r['errors'])} |\n")
             if item_results:
-                fh.write("\n| Toko | SKU | Total stok | Status |\n|---|---:|---:|---|\n")
+                fh.write("\n| Toko | SKU Library | Status |\n|---|---:|---|\n")
                 for r in sorted(item_results, key=lambda r: r["outlet"]):
-                    fh.write(f"| {r['outlet']} | {r.get('rows', 0):,} | {r.get('stock', 0):,.0f} | {r['status']} {'; '.join(r['errors'])} |\n")
+                    fh.write(f"| {r['outlet']} | {r.get('rows', 0):,} | {r['status']} {'; '.join(r['errors'])} |\n")
             unm = sorted({t for r in results for t in r.get("unmapped") or []})
             if unm:
                 fh.write(f"\n**Sales Type belum termapping:** {', '.join(unm)} — atur di Pengaturan → Pemetaan Sales Type.\n")
-    log(f"Selesai: sales {len(ok)} OK, {len(wr)} WARN, {len(sales_bad)} gagal; stok {len(stock_ok)} OK, {len(stock_bad)} gagal")
+    log(f"Selesai: sales {len(ok)} OK, {len(unchanged)} dilewati, {len(wr)} WARN, {len(sales_bad)} gagal; library {len(library_ok)} OK, {len(library_bad)} gagal")
     if bad or rebuild_error:
         sys.exit(1)
 
