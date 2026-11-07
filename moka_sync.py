@@ -149,8 +149,11 @@ class Moka:
     def transactions(self, oid, since_dt, until_dt, per_page=300):
         url = MOKA_BASE + f"/v3/outlets/{oid}/reports/get_latest_transactions?" + urllib.parse.urlencode(
             {"per_page": per_page, "since": int(since_dt.timestamp()), "until": int(until_dt.timestamp())})
-        seen, pays = set(), []
+        seen, pays, visited = set(), [], set()
         while url:
+            if url in visited:
+                raise RuntimeError("Pagination transaksi Moka berulang; data tidak disimpan.")
+            visited.add(url)
             try:
                 d = self.get(url, retry_500=False)
             except HttpError as e:
@@ -165,18 +168,29 @@ class Moka:
             if d.get("completed") or not d.get("payments") or not fresh:
                 break
             url = (d.get("next_url") or "").replace("access_token=&", "")
+            if not url:
+                raise RuntimeError("Pagination transaksi Moka belum selesai tanpa next_url; data tidak disimpan.")
         return pays
 
     def items(self, oid):
         url = MOKA_BASE + f"/v1/outlets/{oid}/items?per_page=1000"
-        out, guard = [], 0
+        out, guard, visited = [], 0, set()
         while url and guard < 200:
             guard += 1
+            if url in visited:
+                raise RuntimeError("Pagination item Moka berulang; stok lama dipertahankan.")
+            visited.add(url)
             d = self.get(url)
             out.extend(d.get("items") or [])
-            if d.get("completed") or not d.get("items") or not d.get("next_url"):
-                break
+            if d.get("completed") or not d.get("items"):
+                return out
+            if not d.get("next_url"):
+                if d.get("completed") is False:
+                    raise RuntimeError("Pagination item Moka belum selesai tanpa next_url; stok lama dipertahankan.")
+                return out
             url = d["next_url"].replace("access_token=&", "")
+        if url:
+            raise RuntimeError("Pagination item melebihi batas 200 halaman; stok lama dipertahankan.")
         return out
 
 
@@ -485,7 +499,21 @@ def _process(ctx, outlet, sid, period, t0):
     return res
 
 
+class WritePlan:
+    """Collect rows locally; only one transactional RPC mutates each store-month."""
+    def __init__(self):
+        self.rows = {}
+
+    def delete(self, table, query):
+        pass  # scoped deletes are performed inside the database transaction
+
+    def insert(self, table, rows, conflict=None, ret=False):
+        self.rows.setdefault(table, []).extend(rows)
+        return []
+
+
 def write_store_month(db, res, known_types, stamp):
+    target_db, db = db, WritePlan()
     sid, y, m = res["store_id"], res["year"], res["month"]
     key = f"store_id=eq.{sid}&year=eq.{y}&month=eq.{m}"
     src = f"MOKA API {stamp}"
@@ -548,6 +576,11 @@ def write_store_month(db, res, known_types, stamp):
                               "rows_total": 1, "rows_mapped": 1, "rows_unmapped": 0,
                               "total_amount": trx["nilai_transaksi"], "status": "OK", "message": note}])
 
+    target_db.rpc("commercial_moka_replace_v35", {
+        "p_store_id": sid, "p_year": y, "p_month": m,
+        "p_from": f1, "p_to": f2, "p_rows": db.rows,
+    })
+
 
 def brand_name(brand_id, categories):
     b = BRANDS.get(str(brand_id))
@@ -606,8 +639,7 @@ def process_items(ctx, outlet, sid):
         res["rows"] = len(rows)
         res["stock"] = sum(float(r["in_stock"] or 0) for r in rows if r["track_stock"] is not False)
         if ctx.db and not DRY_RUN:
-            ctx.db.delete("moka_items", f"store_id=eq.{sid}")
-            ctx.db.insert("moka_items", rows, "store_id,variant_id")
+            ctx.db.rpc("commercial_moka_stock_replace_v35", {"p_store_id": sid, "p_rows": rows})
     except HttpError as e:
         res["status"] = "SKIP" if (e.code == 403 and "xpired" in e.body) else "ERROR"
         res["errors"].append(str(e))
@@ -624,7 +656,7 @@ def rp(x):
 def main():
     token = env("MOKA_ACCESS_TOKEN")
     if not token:
-        sys.exit("MOKA_ACCESS_TOKEN belum diisi (GitHub → Settings → Secrets and variables → Actions).")
+        raise RuntimeError("MOKA_ACCESS_TOKEN belum diisi di GitHub Actions Secrets.")
     exp = env("MOKA_TOKEN_EXPIRES")
     if exp:
         left = (date.fromisoformat(exp) - datetime.now(TZ).date()).days
@@ -690,7 +722,13 @@ def main():
             continue
         mapped.append((o, sid))
 
+    if not mapped:
+        raise RuntimeError("Tidak ada outlet Moka yang cocok dengan stores/store_aliases. Tidak ada data ditulis.")
+    if len({sid for _, sid in mapped}) != len(mapped):
+        raise RuntimeError("Beberapa outlet Moka dipetakan ke toko yang sama. Perbaiki store_aliases sebelum sinkron.")
     periods, cutoff = periods_for_run(now)
+    if not periods:
+        raise RuntimeError("Tidak ada periode valid untuk disinkronkan.")
     until_txt = (now.astimezone(LOCAL_TZ).strftime("%Y-%m-%d %H:%M WITA") if MODE == "live" else cutoff.isoformat())
     log(f"Periode: {', '.join(f'{y}-{m:02d} ({a.day}–{b.day})' for y, m, a, b in periods) or '-'}"
         f" · data sampai {until_txt} · {'DRY RUN' if DRY_RUN else 'TULIS KE SUPABASE'}")
@@ -705,7 +743,12 @@ def main():
                 futs[ex.submit(process_items, ctx, o, sid)] = (o, "items")
         for f in as_completed(futs):
             o, tag = futs[f]
-            res = f.result()
+            try:
+                res = f.result()
+            except Exception as e:
+                res = {"outlet": o["name"], "status": "ERROR", "errors": [str(e)[:300]], "seconds": 0}
+                if tag != "items":
+                    raise
             if tag == "items":
                 item_results.append(res)
                 log(f"  {'✓' if res['status'] == 'OK' else '·' if res['status'] == 'SKIP' else '✗'} "
@@ -733,11 +776,13 @@ def main():
                 f"  {res['seconds']:>6}s {'; '.join(res['errors'])}")
             results.append(res)
 
+    rebuild_error = None
     if writing and any(r["status"] in ("OK", "WARN") for r in results):
         try:
             db.rpc("rebuild_sales_actual")
             log("✓ rebuild_sales_actual selesai")
         except HttpError as e:
+            rebuild_error = str(e)
             warn("Sales Type tersimpan, tetapi rebuild_sales_actual gagal: " + str(e))
         try:
             rev = datetime.now(timezone.utc).isoformat()
@@ -751,10 +796,10 @@ def main():
     for r in wr:
         warn(f"{r['outlet']} {r['year']}-{r['month']:02d}: {r['errors'][0]}")
     data_until = now if MODE == "live" else datetime(cutoff.year, cutoff.month, cutoff.day, 23, 59, 59, tzinfo=TZ)
-    run_update(status="error" if bad else "warn" if wr else "done",
+    run_update(status="error" if bad or rebuild_error else "warn" if wr else "done",
                finished_at=datetime.now(timezone.utc).isoformat(), data_until=data_until.isoformat(),
                stores_ok=len(ok), stores_warn=len(wr), stores_error=len(bad),
-               message=(f"{len(ok)} OK, {len(wr)} menunggu Moka, {len(bad)} gagal" +
+               message=(f"{len(ok)} OK, {len(wr)} menunggu Moka, {len(bad)} gagal" + ("; hitung ulang sales gagal: " + rebuild_error[:160] if rebuild_error else "") +
                         (f" · stok {len([r for r in item_results if r['status'] == 'OK'])} toko" if item_results else "") +
                         ("; " + "; ".join(f"{r['outlet']}: {r['errors'][0][:120]}" for r in bad[:3]) if bad else ""))[:900])
 
@@ -783,7 +828,7 @@ def main():
             if unm:
                 fh.write(f"\n**Sales Type belum termapping:** {', '.join(unm)} — atur di Pengaturan → Pemetaan Sales Type.\n")
     log(f"Selesai: {len(ok)} OK, {len(wr)} WARN, {len(bad)} gagal")
-    if bad:
+    if bad or rebuild_error:
         sys.exit(1)
 
 

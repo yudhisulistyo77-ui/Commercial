@@ -38,7 +38,18 @@ td.sticky1{overflow-wrap:break-word}
 .v28-two-col{display:grid!important;grid-template-columns:repeat(auto-fit,minmax(min(100%,460px),1fr));gap:16px;align-items:start}
 .v28-two-col>*{min-width:0;margin:0!important}
 .v28-sync-btn{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
-.v28-sync-btn svg{width:14px;height:14px}
+.v28-sync-btn{min-height:34px;max-width:100%;line-height:1.3;padding:7px 12px}
+.v28-sync-icon{display:inline-flex;width:16px;height:16px;flex:0 0 16px;align-items:center;justify-content:center}
+.v28-sync-icon svg,.v28-sync-btn svg{display:block;width:16px!important;height:16px!important;max-width:16px;flex:none}
+.modal[data-v28-sync] .box{width:min(560px,100%);max-height:calc(100dvh - 36px);overflow:auto;box-sizing:border-box}
+.modal[data-v28-sync] .rowline{display:flex;flex-wrap:nowrap;align-items:flex-start;gap:10px;line-height:1.5;margin:12px 0}
+.modal[data-v28-sync] input[type=checkbox]{width:16px;height:16px;flex:0 0 16px;margin:3px 0 0}
+.modal[data-v28-sync] .v28-sync-btn{width:auto;justify-content:center;margin-top:6px}
+.v28-tools{display:grid!important;grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr));gap:12px!important;align-items:end}
+.v28-tools .fld{min-width:0!important;display:grid;gap:5px}
+.v28-tools input:not([type=checkbox]),.v28-tools select{width:100%;min-width:0!important;box-sizing:border-box;min-height:34px}
+.v28-tools .rowline{align-items:center;min-height:34px}
+.v28-two-col .tw{max-width:100%}
 .v28-badge{font-size:11px;white-space:nowrap;cursor:pointer}
 .v28-spin svg{animation:v28spin 1s linear infinite}@keyframes v28spin{to{transform:rotate(360deg)}}
 .v28-update{display:grid;grid-template-columns:auto 1fr auto;gap:16px;align-items:center}
@@ -201,13 +212,13 @@ td.sticky1{overflow-wrap:break-word}
   async function loadRuns() {
     if (!S.key || S.demo) { V28.run = null; V28.active = null; return; }
     try {
-      const rows = await DB.sel('moka_sync_runs?select=*&order=id.desc&limit=12');
+      const rows = await DB.sel('moka_sync_runs?select=*&order=requested_at.desc&limit=20');
       V28.tableMissing = false;
       V28.run = rows.find(r => ['done', 'warn'].includes(r.status)) || null;
       V28.stockRun = rows.find(r => ['done', 'warn'].includes(r.status) && /stok/i.test(r.message || '')) || null;
-      const act = rows.find(r => ['requested', 'running'].includes(r.status) && Date.now() - Date.parse(r.requested_at) < 40 * 60000);
+      const act = rows.find(r => ['requested', 'running'].includes(r.status) && Date.now() - Date.parse(r.requested_at) < 245 * 60000);
       V28.active = act || null;
-      V28.lastError = rows.find(r => r.status === 'error' && (!V28.run || r.id > V28.run.id)) || null;
+      V28.lastError = rows.find(r => r.status === 'error' && (!V28.run || Date.parse(r.requested_at) > Date.parse(V28.run.requested_at))) || null;
     } catch (e) {
       V28.tableMissing = true;
       try {
@@ -219,7 +230,7 @@ td.sticky1{overflow-wrap:break-word}
   }
   V28.loadRuns = loadRuns;
 
-  function syncIcon() { return el('span', { html: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>' }); }
+  function syncIcon() { return el('span', { class: 'v28-sync-icon', 'aria-hidden': 'true', html: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>' }); }
   function paintBadge() {
     let bar = $('#v28-bar');
     const conn = $('#conn'); if (!conn) return;
@@ -253,7 +264,7 @@ td.sticky1{overflow-wrap:break-word}
         el('div', { class: 'big', role: 'status' }, r ? dt(r.finished_at) : '—'),
         el('div', { class: 'meta' }, meta),
         V28.lastError ? el('div', { class: 'meta', style: 'color:#df4255' }, 'Sinkron terakhir gagal: ' + String(V28.lastError.message || '').slice(0, 160)) : null,
-        V28.tableMissing ? el('div', { class: 'meta', style: 'color:#b67a00' }, 'Jalankan MOKA-SYNC-V2.sql di Supabase untuk status sinkron lengkap.') : null,
+        V28.tableMissing ? el('div', { class: 'meta', style: 'color:#b67a00' }, 'Status sinkron tidak terbaca. Periksa akses database dan PANDUAN-MOKA-V35.md.') : null,
         manual ? el('div', { class: 'meta' }, 'Tanggal manual: ' + fmtD.format(new Date(manual + 'T12:00:00Z'))) : null),
       el('div', { class: 'acts' },
         el('span', { class: 'app-update-badge' }, el('span', { class: 'app-update-dot', 'aria-hidden': 'true' }), a ? 'Berjalan' : r ? ago(r.finished_at) : 'Belum ada'),
@@ -285,12 +296,12 @@ td.sticky1{overflow-wrap:break-word}
     const stock = el('input', { type: 'checkbox' });
     const prev = el('input', { type: 'checkbox' });
     const err = el('p', { class: 'note warn', role: 'alert' });
-    const start = el('button', { class: 'btn pri', type: 'button' }, syncIcon(), ' Mulai sinkron');
+    const start = el('button', { class: 'btn pri v28-sync-btn', type: 'button' }, syncIcon(), ' Mulai sinkron');
     box.append(
       el('p', {}, 'Menarik transaksi Moka ', el('b', {}, 'sampai menit ini'), ' untuk semua toko: Sales Type, Item Sales, jumlah transaksi, jam ramai dan pelanggan. Biasanya selesai dalam ', el('b', {}, '2–4 menit'), '.'),
       el('label', { class: 'rowline' }, stock, 'Ikut perbarui stok & library item (tambah ±5–10 menit)'),
       el('label', { class: 'rowline' }, prev, 'Tarik ulang sebulan penuh (koreksi data bulan berjalan s.d. kemarin, ±10–20 menit)'),
-      el('p', { class: 'note' }, 'Terakhir: ' + (V28.run ? dt(V28.run.finished_at) + ' (' + ago(V28.run.finished_at) + ')' : 'belum ada') + '. Sinkron otomatis tetap berjalan setiap pagi pukul 04:37 WITA.'),
+      el('p', { class: 'note' }, 'Terakhir: ' + (V28.run ? dt(V28.run.finished_at) + ' (' + ago(V28.run.finished_at) + ')' : 'belum ada') + '. Jadwal otomatis dikonfigurasi pukul 04:37 WITA; keberhasilannya mengikuti status proses terakhir.'),
       err, start);
     start.onclick = async () => {
       start.disabled = true; err.textContent = '';
@@ -299,11 +310,11 @@ td.sticky1{overflow-wrap:break-word}
         const headers = { apikey: S.key, 'Content-Type': 'application/json', 'x-commercial-pin-session': token };
         if (/^eyJ/.test(S.key)) headers.Authorization = 'Bearer ' + S.key;
         const res = await fetch(S.url.replace(/\/$/, '') + '/functions/v1/moka-sync', {
-          method: 'POST', headers, body: JSON.stringify({ mode: prev.checked ? 'full' : 'live', include_stock: stock.checked })
+          method: 'POST', headers, signal: AbortSignal.timeout(45000), body: JSON.stringify({ mode: prev.checked ? 'full' : 'live', include_stock: stock.checked })
         });
         const data = await res.json().catch(() => ({}));
-        if (!res.ok || !data.ok) {
-          if (res.status === 404) throw Error('Fungsi moka-sync belum dipasang di Supabase Edge Functions. Ikuti PANDUAN-V28.md langkah 3.');
+        if (!res.ok || !data.ok || !data.run_id) {
+          if (res.status === 404) throw Error('Fungsi moka-sync belum dipasang di Supabase Edge Functions. Ikuti PANDUAN-MOKA-V35.md bagian Edge Function.');
           throw Error(data.error || ('Permintaan sinkron gagal (' + res.status + ').'));
         }
         try { localStorage.setItem('sc_v28_run', String(data.run_id)); } catch { }
@@ -311,7 +322,12 @@ td.sticky1{overflow-wrap:break-word}
         V28.active = { id: data.run_id, status: 'requested', requested_at: new Date().toISOString() };
         paintBadge(); repaintUpdateCard();
         watchRun(data.run_id, box);
-      } catch (e) { err.textContent = e.message; start.disabled = false; }
+      } catch (e) {
+        err.textContent = /Failed to fetch|NetworkError|Load failed/i.test(e.message || '')
+          ? 'Browser tidak dapat menghubungi fungsi sinkron. Periksa koneksi dan pasang pembaruan Edge Function moka-sync (termasuk izin CORS/OPTIONS). Data lama tetap tersedia.'
+          : /TimeoutError|AbortError/.test(e.name || '') ? 'Permintaan belum terkonfirmasi setelah 45 detik. Tutup lalu buka status sinkron sebelum mencoba lagi.' : e.message;
+        start.disabled = false;
+      }
     };
   }
   V28.openSync = openSync;
@@ -321,6 +337,7 @@ td.sticky1{overflow-wrap:break-word}
     const msg = el('p', { class: 'note', role: 'status' });
     const link = el('p', { class: 'sub' });
     const t0 = Date.now();
+    let polling = false;
     box.append(el('p', {}, 'Sinkron #' + id + ' — Anda boleh menutup jendela ini; status tetap terlihat di kanan atas.'), steps, msg, link);
     const paint = r => {
       const st = r?.status || 'requested';
@@ -337,25 +354,30 @@ td.sticky1{overflow-wrap:break-word}
     paint(null);
     clearInterval(V28.poll);
     V28.poll = setInterval(async () => {
+      if (polling) return;
+      polling = true;
       let r = null;
-      try { r = (await DB.sel('moka_sync_runs?select=*&id=eq.' + id))[0]; } catch { }
+      try { r = (await DB.sel('moka_sync_runs?select=*&id=eq.' + id))[0]; } catch { } finally { polling = false; }
       if (box.isConnected) paint(r);
       if (r && ['done', 'warn', 'error'].includes(r.status)) {
-        clearInterval(V28.poll); V28.active = null;
+        clearInterval(V28.poll); V28.poll = null; V28.active = null;
         try { localStorage.removeItem('sc_v28_run'); } catch { }
-        if (r.status !== 'error') {
+        if (r.status !== 'error' || Number(r.stores_ok || 0) + Number(r.stores_warn || 0) > 0) {
           masterResetCaches(); if (typeof PL24 !== 'undefined') PL24.docs = null;
           await loadAll();
           const unm = (S.unmapped || []).length;
           toast('Data Moka terbaru dimuat' + (unm ? ' · ' + unm + ' Sales Type perlu dipetakan' : '') + '.');
-          if (box.isConnected) box.append(...[el('p', { class: 'note' }, r.status === 'warn' ? 'Selesai. Sebagian toko menunggu Moka memproses transaksi terbaru; angka akan terkoreksi pada sinkron berikutnya.' : 'Selesai. Data sudah diperbarui.'),
+          if (box.isConnected) box.append(...[el('p', { class: 'note' }, r.status === 'error' ? 'Sebagian data berhasil diperbarui; beberapa toko gagal. Periksa log sebelum mengulang sinkron.' : r.status === 'warn' ? 'Selesai. Sebagian toko menunggu Moka memproses transaksi terbaru; angka akan terkoreksi pada sinkron berikutnya.' : 'Selesai. Data sudah diperbarui.'),
             unm ? el('p', { class: 'note warn' }, unm + ' Sales Type belum dipetakan sehingga sales belum lengkap. ', el('button', { class: 'btn sm', onclick: () => { document.querySelectorAll('.modal').forEach(m => m.remove()); go('set'); requestAnimationFrame(() => $('#sales-type-pending')?.scrollIntoView({ block: 'start', behavior: 'smooth' })); } }, 'Sesuaikan pemetaan')) : null].filter(Boolean));
         } else {
           await loadRuns(); repaintUpdateCard();
           if (box.isConnected) box.append(el('p', { class: 'note warn' }, 'Sinkron gagal: ' + (r.message || '')));
         }
       }
-      if (Date.now() - t0 > 40 * 60000) clearInterval(V28.poll);
+      if (Date.now() - t0 > 245 * 60000) {
+        clearInterval(V28.poll); V28.poll = null;
+        if (box.isConnected) msg.textContent = 'Pemantauan melewati batas 245 menit. Periksa log GitHub dan status terakhir sebelum mengulang sinkron.';
+      }
     }, 5000);
   }
   function resumeActive() {
@@ -473,6 +495,11 @@ td.sticky1{overflow-wrap:break-word}
     if (!S.ready) { p.append(el('div', { class: 'empty' }, el('b', {}, 'Data belum termuat'), 'Tekan Muat ulang.')); return true; }
     return false;
   }
+  function emptySync(body, title, message) {
+    const actions = el('div', { class: 'rowline' });
+    if (!viewOnly()) actions.append(el('button', { class: 'btn sm v28-sync-btn', type: 'button', onclick: openSync }, syncIcon(), 'Sinkron Moka'));
+    body.append(el('div', { class: 'empty' }, el('b', {}, title), el('p', {}, message), actions));
+  }
   function periodDates() {
     const y = Number(S.year); const [m1, m2] = periodM1M2(y);
     const from = `${y}-${String(m1).padStart(2, '0')}-01`;
@@ -483,7 +510,7 @@ td.sticky1{overflow-wrap:break-word}
   function sqlMissing(p, e) {
     const m = String(e.message || e);
     p.append(el('p', { class: 'note warn', role: 'alert' }, /PGRST202|42883|404|does not exist|Could not find/i.test(m)
-      ? 'Fungsi/tabel V28 belum dipasang. Jalankan MOKA-SYNC-V2.sql di Supabase SQL Editor, lalu jalankan Sinkron Moka.'
+      ? 'Fungsi/tabel analitik Moka tidak tersedia atau tidak dapat dibaca. Periksa pemasangan awal dan akses database; lihat PANDUAN-MOKA-V35.md.'
       : 'Gagal memuat: ' + m));
   }
   const stName = id => S.stores.find(s => Number(s.id) === Number(id))?.name || ('Toko ' + id);
@@ -505,7 +532,7 @@ td.sticky1{overflow-wrap:break-word}
     } catch (e) { body.replaceChildren(); sqlMissing(body, e); return; }
     if (S.page !== 'jam') return;
     body.replaceChildren();
-    if (!rows.length) { body.append(el('div', { class: 'empty' }, el('b', {}, 'Belum ada data jam ramai'), 'Data ini terisi setelah sinkron Moka V28 berjalan untuk periode ' + from + ' s.d. ' + to + '.')); return; }
+    if (!rows.length) { emptySync(body, 'Belum ada data jam ramai', 'Belum ada transaksi hasil sinkron pada filter ' + from + ' s.d. ' + to + '. Jalankan sinkron, lalu pilih periode/toko yang sudah tercakup.'); return; }
     const firstCov = cov.map(c => c.first_date).sort()[0] || from, lastCov = cov.map(c => c.last_date).sort().slice(-1)[0] || to;
     const dowCount = [0, 0, 0, 0, 0, 0, 0];
     for (let d = new Date(firstCov + 'T12:00:00Z'); isoDate(d) <= lastCov; d.setUTCDate(d.getUTCDate() + 1)) dowCount[(d.getUTCDay() + 6) % 7]++;
@@ -513,6 +540,7 @@ td.sticky1{overflow-wrap:break-word}
     const metricVal = r => M.metric === 'trx' ? num(r.trx) : M.metric === 'net' ? num(r.net) : num(r.items);
     const grid = {}; let hmin = 23, hmax = 0;
     for (const r of rows) { const k = r.dow + '|' + r.hour; grid[k] = (grid[k] || 0) + (metricVal(r) || 0); if (r.trx > 0) { hmin = Math.min(hmin, r.hour); hmax = Math.max(hmax, r.hour); } }
+    if (hmax < hmin) { hmin = 0; hmax = 23; }
     const val = (d, h) => { const v = grid[d + '|' + h] || 0; return M.avg ? (dowCount[d - 1] ? v / dowCount[d - 1] : 0) : v; };
     let peak = 0; for (let d = 1; d <= 7; d++) for (let h = hmin; h <= hmax; h++) peak = Math.max(peak, val(d, h));
     const fmtV = v => M.metric === 'net' ? (NUMBER_MODE === 'compact' || v >= 1e6 ? (v / 1e6).toLocaleString('id-ID', { maximumFractionDigits: 1 }) + ' jt' : Math.round(v).toLocaleString('id-ID')) : (M.avg ? v.toLocaleString('id-ID', { maximumFractionDigits: 1 }) : Math.round(v).toLocaleString('id-ID'));
@@ -566,7 +594,7 @@ td.sticky1{overflow-wrap:break-word}
   /* ======================= PELANGGAN & MEMBER ======================= */
   V28.cust = { q: '', b2b: 'all', limit: 200 };
   async function renderPelanggan() {
-    const p = pageHead('pelanggan', 'Pelanggan & Member', 'Frekuensi belanja, repeat customer dan top customer dari data Moka · ' + periodLabel());
+    const p = pageHead('pelanggan', 'Pelanggan & Member', 'Hari kunjungan, transaksi dan top customer dari data Moka · ' + periodLabel());
     if (needData(p)) return;
     const { from, to } = periodDates(), ids = scopeStoreIds(), C = V28.cust;
     const body = el('div'); p.append(body); body.append(el('p', { class: 'note' }, 'Memuat pelanggan…'));
@@ -580,17 +608,17 @@ td.sticky1{overflow-wrap:break-word}
     if (S.page !== 'pelanggan') return;
     body.replaceChildren();
     const s = stats[0] || {};
-    if (!num(s.customers) && !num(s.walkin_trx)) { body.append(el('div', { class: 'empty' }, el('b', {}, 'Belum ada data pelanggan'), 'Data ini terisi setelah sinkron Moka V28 berjalan untuk periode ' + from + ' s.d. ' + to + '.')); return; }
+    if (!num(s.customers) && !num(s.walkin_trx)) { emptySync(body, 'Belum ada data pelanggan', 'Belum ada transaksi hasil sinkron pada filter ' + from + ' s.d. ' + to + '. Jalankan sinkron dan periksa filter toko.'); return; }
     const memberShare = (num(s.member_trx) + num(s.walkin_trx)) ? num(s.member_trx) / (num(s.member_trx) + num(s.walkin_trx)) : null;
     const tiles = el('div', { class: 'grid g4' });
     tiles.append(tile('Pelanggan unik', int(s.customers), String(int(s.new_customers)) + ' pelanggan baru pada periode ini', null),
-      tile('Repeat customer', pct(num(s.customers) ? num(s.repeat_customers) / num(s.customers) : null, 1), String(int(s.repeat_customers)) + ' pelanggan belanja ≥ 2 hari berbeda', null),
+      tile('Kembali ≥2 hari', pct(num(s.customers) ? num(s.repeat_customers) / num(s.customers) : null, 1), String(int(s.repeat_customers)) + ' pelanggan belanja ≥ 2 hari berbeda', null),
       tile('Akun B2B (MK…)', int(s.b2b_customers), 'nama diawali kode member MK', null),
       tile('Transaksi bernama', pct(memberShare, 1), String(int(s.member_trx)) + ' trx pelanggan · ' + String(int(s.walkin_trx)) + ' tanpa nama', null));
     body.append(tiles);
     const fTot = freq.reduce((n, r) => n + (num(r.customers) || 0), 0);
     body.append(el('div', { class: 'v28-two-col' },
-      card('Frekuensi belanja', 'jumlah hari berbeda pelanggan bertransaksi',
+      card('Frekuensi belanja', 'jumlah hari berbeda pelanggan bertransaksi; 2 transaksi di hari yang sama tetap 1 kunjungan',
         mkTable([H('KUNJUNGAN', { s: 1 }), H('PELANGGAN', { r: 1 }), H('PORSI', { r: 1 }), H('NET SALES', { r: 1 })],
           freq.map(r => [r.bucket, int(r.customers), pct(fTot ? num(r.customers) / fTot : null, 1), compact(r.net)]))),
       card('Pelanggan per kelompok', 'B2B vs retail pada daftar teratas',
@@ -623,7 +651,7 @@ td.sticky1{overflow-wrap:break-word}
     } catch (e) { body.replaceChildren(); sqlMissing(body, e); return; }
     if (S.page !== 'stok') return;
     body.replaceChildren();
-    if (!summ.length) { body.append(el('div', { class: 'empty' }, el('b', {}, 'Belum ada data stok'), 'Jalankan Sinkron Moka dengan opsi "Ikut perbarui stok", atau tunggu sinkron otomatis pagi ini.')); return; }
+    if (!summ.length) { emptySync(body, 'Belum ada data stok', 'Jalankan Sinkron Moka dengan opsi Ikut perbarui stok & library item. Stok memakai hasil sinkron terakhir, tanpa filter bulan.'); return; }
     const upd = summ.map(r => r.updated_at).sort().slice(-1)[0];
     const tiles = el('div', { class: 'grid g4' });
     tiles.append(tile('SKU dipantau', int(sum(summ, r => r.skus)), summ.length + ' toko', null),
@@ -734,7 +762,7 @@ td.sticky1{overflow-wrap:break-word}
     let plans = [];
     try {
       await priceLoadV24();
-      const outlets = (PL24.docs || []).map(d => d.outlet);
+      const outlets = [...new Set([...(PL24.docs || []).map(d => d.outlet), ...(await DB.rpc('commercial_moka_outlets_v35', {})).map(r => r.outlet_name)].filter(Boolean))];
       for (const o of outlets) {
         status.textContent = 'Menyiapkan ' + o + '…';
         try { const r = await mokaLibraryDoc(o); if (r) plans.push({ outlet: o, ...r }); }

@@ -54,6 +54,20 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Periksa konfigurasi
+        env:
+          MOKA_ACCESS_TOKEN: ${{ secrets.MOKA_ACCESS_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: |
+          python3 - <<'PYCONFIG'
+          import os
+          missing = [k for k in ('MOKA_ACCESS_TOKEN','SUPABASE_URL','SUPABASE_SERVICE_KEY') if not os.environ.get(k)]
+          if missing: raise SystemExit('GitHub Secrets belum lengkap: ' + ', '.join(missing))
+          if os.environ['SUPABASE_SERVICE_KEY'].startswith('sb_publishable_'):
+              raise SystemExit('SUPABASE_SERVICE_KEY harus secret/service_role, bukan publishable key.')
+          PYCONFIG
+
       - name: Tarik data Moka → Supabase
         env:
           MOKA_ACCESS_TOKEN: ${{ secrets.MOKA_ACCESS_TOKEN }}
@@ -69,7 +83,25 @@ jobs:
           MOKA_TZ_OFFSET: "7"
           LOCAL_TZ_OFFSET: "8"
           MOKA_TOKEN_EXPIRES: "2027-05-04"
-        run: python3 moka-sync/moka_sync.py
+        run: python3 moka_sync.py
+
+      - name: Tandai proses yang berhenti
+        if: failure() || cancelled()
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          RUN_ID: ${{ inputs.run_id }}
+        run: |
+          python3 - <<'PYFAIL'
+          import os, json, urllib.request
+          from datetime import datetime, timezone
+          if not all(os.environ.get(k) for k in ('SUPABASE_URL','SUPABASE_KEY','RUN_ID')): raise SystemExit(0)
+          headers = {'apikey':os.environ['SUPABASE_KEY'],'Content-Type':'application/json'}
+          if os.environ['SUPABASE_KEY'].startswith('eyJ'): headers['Authorization']='Bearer '+os.environ['SUPABASE_KEY']
+          url=os.environ['SUPABASE_URL'].rstrip('/')+'/rest/v1/moka_sync_runs?id=eq.'+os.environ['RUN_ID']+'&status=in.(requested,running)'
+          body=json.dumps({'status':'error','finished_at':datetime.now(timezone.utc).isoformat(),'message':'GitHub Actions gagal/dibatalkan. Buka log workflow untuk rincian.'}).encode()
+          urllib.request.urlopen(urllib.request.Request(url,headers=headers,data=body,method='PATCH'),timeout=30).close()
+          PYFAIL
 
       - name: Simpan hasil uji coba
         if: always() && inputs.dry_run
