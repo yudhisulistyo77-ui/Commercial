@@ -14,8 +14,8 @@
   const V28 = window.V28 = { run: null, active: null, poll: null, access: null, accessReady: false, revision: null };
   const SEGMENT_BRANDS = ['TIGALAPAN', 'MAMU', 'MYNO', 'DEFECT'];
   const SEGMENT_PAGES = new Set(['dash', 'sales', 'mkt', 'pdca', 'h2h', 'program']);
-  const STORE_BRAND_PAGES = new Set(['review', 'trx', 'jam', 'pelanggan', 'stok']);
-  const ADMIN_PAGES = new Set(['upload', 'uploadreset', 'masterinput', 'akses']);
+  const STORE_BRAND_PAGES = new Set(['review', 'trx', 'jam', 'pelanggan']);
+  const ADMIN_PAGES = new Set(['upload', 'uploadreset', 'akses']);
   const ACCESS_KEY = 'kpi_access_v28';
   const WITA = 'Asia/Makassar';
   const DAYS = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'];
@@ -121,15 +121,14 @@ td.sticky1{overflow-wrap:break-word}
   }
   addPage('top', { id: 'jam', t: 'Jam Ramai', ic: 'datatrack' });
   // Customer analytics now live inside Member; no second navigation entry.
-  addPage('item', { id: 'stok', t: 'Stok Toko', ic: 'item' });
   addPage('uploadreset', { id: 'akses', t: 'Akses Pengguna', ic: 'set' });
   const host = $('#p-dash').parentElement;
-  for (const id of ['jam', 'pelanggan', 'stok', 'akses'])
+  for (const id of ['jam', 'pelanggan', 'akses'])
     if (!$('#p-' + id)) host.append(el('section', { class: 'page', id: 'p-' + id }));
   Object.assign(FILTER_VISIBILITY, {
     jam: ['year', 'month', 'brand', 'spv', 'store'],
     pelanggan: ['year', 'month', 'brand', 'spv', 'store'],
-    stok: ['brand', 'spv', 'store'], akses: []
+    akses: []
   });
 
   const origBuildNav = buildNav;
@@ -220,7 +219,7 @@ td.sticky1{overflow-wrap:break-word}
       const rows = await DB.sel('moka_sync_runs?select=*&order=requested_at.desc&limit=20');
       V28.tableMissing = false;
       V28.run = rows.find(r => ['done', 'warn'].includes(r.status)) || null;
-      V28.stockRun = rows.find(r => ['done', 'warn'].includes(r.status) && /stok/i.test(r.message || '')) || null;
+      V28.libraryRun = rows.find(r => ['done', 'warn'].includes(r.status) && /library/i.test(r.message || '')) || null;
       const act = rows.find(r => ['requested', 'running'].includes(r.status) && Date.now() - Date.parse(r.requested_at) < 245 * 60000);
       V28.active = act || null;
       V28.lastError = rows.find(r => r.status === 'error' && (!V28.run || Date.parse(r.requested_at) > Date.parse(V28.run.requested_at))) || null;
@@ -260,7 +259,7 @@ td.sticky1{overflow-wrap:break-word}
     const until = r?.data_until ? 'Data penjualan s.d. ' + dt(r.data_until) : r ? 'Waktu data belum tercatat' : 'Belum ada sinkron otomatis';
     const meta = [until, r ? (r.mode === 'live' ? 'sinkron manual (live)' : 'sinkron terjadwal') : null,
       r && r.stores_ok != null ? r.stores_ok + ' toko OK' + (r.stores_warn ? ', ' + r.stores_warn + ' menunggu Moka' : '') + (r.stores_error ? ', ' + r.stores_error + ' gagal' : '') : null,
-      V28.stockRun ? 'stok diperbarui ' + dt(V28.stockRun.finished_at) : null].filter(Boolean).join(' · ');
+      V28.libraryRun ? 'library diperbarui ' + dt(V28.libraryRun.finished_at) : null].filter(Boolean).join(' · ');
     const manual = appDataUpdateDate();
     const node = el('section', { class: 'app-data-update v28-update', 'data-update-state': r ? 'today' : 'empty', 'data-v28-update': '' }, icon,
       el('div', {},
@@ -298,7 +297,6 @@ td.sticky1{overflow-wrap:break-word}
     if (V28.active) { watchRun(V28.active.id, box); return; }
     if (!(await ensurePin(box, () => { modal.remove(); openSync(); }))) return;
     if (viewOnly()) { box.append(el('p', { class: 'note warn' }, 'Akun Anda hanya untuk melihat data.')); return; }
-    const stock = el('input', { type: 'checkbox' });
     const prev = el('input', { type: 'checkbox' });
     const selection=opsSelect([['month','Bulan'],['year','Tahun penuh'],['range','Rentang tanggal']], 'month', {'aria-label':'Jenis periode sinkron'});
     const year=opsInput(S.year,'number',{min:2000,max:2100,'aria-label':'Tahun sinkron'});
@@ -308,20 +306,21 @@ td.sticky1{overflow-wrap:break-word}
     const periodBox=el('div',{class:'v28-tools'},opsField('Periode',selection),opsField('Tahun',year),opsField('Bulan',month),opsField('Dari',from),opsField('Sampai',to));
     const syncFields=()=>{year.closest('.fld').hidden=selection.value==='range';month.closest('.fld').hidden=selection.value!=='month';from.closest('.fld').hidden=to.closest('.fld').hidden=selection.value!=='range';};selection.onchange=syncFields;syncFields();
     const library=el('input',{type:'checkbox'});library.checked=true;
+    const skip=el('input',{type:'checkbox'});skip.checked=true;const force=el('input',{type:'checkbox'});
     const err = el('p', { class: 'note warn', role: 'alert' });
     const start = el('button', { class: 'btn pri v28-sync-btn', type: 'button' }, syncIcon(), ' Mulai sinkron');
     box.append(
       periodBox,el('label',{class:'rowline'},library,'Perbarui library item & Price List'),
+      el('label',{class:'rowline'},skip,'Lewati periode lama yang sudah lengkap dan cocok'),el('label',{class:'rowline'},force,'Tarik ulang paksa (abaikan checkpoint)'),el('p',{class:'sub'},'Data terbaru tetap diperbarui. Data lama dicek ke ringkasan Moka dan sidik isi database; validasi detail diulang paling lambat 7 hari. Library & Price List tetap diperiksa jika dipilih.'),
       el('p', {}, 'Menarik transaksi Moka ', el('b', {}, 'sampai menit ini'), ' untuk toko yang diizinkan: Sales Type, Item Sales, jumlah transaksi, jam ramai dan pelanggan. Biasanya selesai dalam ', el('b', {}, 'beberapa menit; periode lama bisa lebih lama'), '.'),
-      el('label', { class: 'rowline' }, stock, 'Ikut perbarui stok & library item (tambah ±5–10 menit)'),
-      el('label', { class: 'rowline' }, prev, 'Tarik ulang sebulan penuh (koreksi data bulan berjalan s.d. kemarin, ±10–20 menit)'),
+      el('label', { class: 'rowline' }, prev, 'Mode bulan penuh s.d. kemarin (gunakan Tarik ulang paksa untuk mengabaikan checkpoint)'),
       el('p', { class: 'note' }, 'Terakhir: ' + (V28.run ? dt(V28.run.finished_at) + ' (' + ago(V28.run.finished_at) + ')' : 'belum ada') + '. Jadwal otomatis dikonfigurasi pukul 04:37 WITA; keberhasilannya mengikuti status proses terakhir.'),
       err, start);
     start.onclick = async () => {
       start.disabled = true; err.textContent = '';
       try {
         const y=Number(year.value),m=Number(month.value);
-        const request={mode:prev.checked?'full':'live',include_stock:stock.checked,include_library:library.checked,months:'',date_from:'',date_to:''};
+        const request={mode:prev.checked?'full':'live',include_library:library.checked,skip_unchanged:skip.checked,force_refresh:force.checked,months:'',date_from:'',date_to:''};
         if(selection.value==='range'){
           if(!/^\d{4}-\d{2}-\d{2}$/.test(from.value)||!/^\d{4}-\d{2}-\d{2}$/.test(to.value)||from.value>to.value||to.value>todayWita())throw Error('Rentang tanggal tidak valid.');
           request.date_from=from.value;request.date_to=to.value;
@@ -499,9 +498,9 @@ td.sticky1{overflow-wrap:break-word}
   const origRender = render;
   render = function () {
     if (!pageAllowed(S.page)) { go('dash'); return; }
-    if (['jam', 'pelanggan', 'stok', 'akses'].includes(S.page)) {
+    if (['jam', 'pelanggan', 'akses'].includes(S.page)) {
       parkFilters();
-      ({ jam: renderJam, pelanggan: renderPelanggan, stok: renderStok, akses: renderAkses })[S.page]();
+      ({ jam: renderJam, pelanggan: renderPelanggan, akses: renderAkses })[S.page]();
       renderMappingNotice();
       return;
     }
@@ -670,57 +669,7 @@ td.sticky1{overflow-wrap:break-word}
 
   V28.renderMemberTransactions = renderPelanggan;
 
-  /* ============================ STOK TOKO ============================ */
-  V28.stok = { q: '', cat: '', brand: '', only: true, offset: 0 };
-  async function renderStok() {
-    const p = pageHead('stok', 'Stok Toko', 'Posisi stok per item / SKU di setiap toko (in stock Moka saat sinkron terakhir)');
-    if (needData(p)) return;
-    const ids = scopeStoreIds(), K = V28.stok;
-    const body = el('div'); p.append(body); body.append(el('p', { class: 'note' }, 'Memuat stok…'));
-    let summ, rows;
-    try {
-      [summ, rows] = await Promise.all([
-        DB.rpc('commercial_stock_summary_v1', { p_stores: ids }),
-        DB.rpc('commercial_stock_v1', { p_stores: ids, p_query: K.q || null, p_category: K.cat || null, p_brand: K.brand || null, p_only_stock: K.only, p_limit: 300, p_offset: K.offset })]);
-    } catch (e) { body.replaceChildren(); sqlMissing(body, e); return; }
-    if (S.page !== 'stok') return;
-    body.replaceChildren();
-    if (!summ.length) { emptySync(body, 'Belum ada data stok', 'Jalankan Sinkron Moka dengan opsi Ikut perbarui stok & library item. Stok memakai hasil sinkron terakhir, tanpa filter bulan.'); return; }
-    const upd = summ.map(r => r.updated_at).sort().slice(-1)[0];
-    const tiles = el('div', { class: 'grid g4' });
-    tiles.append(tile('SKU dipantau', int(sum(summ, r => r.skus)), summ.length + ' toko', null),
-      tile('Total stok', int(sum(summ, r => r.total_stock)), 'pcs · diperbarui ' + dt(upd), null),
-      tile('Nilai stok (HPP)', compact(sum(summ, r => r.stock_value)), 'stok positif × HPP Moka', null),
-      tile('Perlu perhatian', int(sum(summ, r => r.below_alert)), String(int(sum(summ, r => r.negative))) + ' SKU stok minus · sisanya ≤ batas alert', null));
-    body.append(tiles);
-    body.append(card('Ringkasan per toko', 'stok terakhir dari Moka',
-      mkTable([H('TOKO', { s: 1 }), H('SKU', { r: 1 }), H('TOTAL STOK', { r: 1 }), H('NILAI STOK', { r: 1 }), H('≤ ALERT', { r: 1 }), H('MINUS', { r: 1 }), H('DIPERBARUI')],
-        summ.sort((a, b) => stName(a.store_id).localeCompare(stName(b.store_id))).map(r => [stName(r.store_id), int(r.skus), int(r.total_stock), compact(r.stock_value), int(r.below_alert), int(r.negative), dt(r.updated_at)]),
-        ['TOTAL', int(sum(summ, r => r.skus)), int(sum(summ, r => r.total_stock)), compact(sum(summ, r => r.stock_value)), int(sum(summ, r => r.below_alert)), int(sum(summ, r => r.negative)), ''])));
-    const storeCols = summ.map(r => Number(r.store_id)).sort((a, b) => stName(a).localeCompare(stName(b)));
-    const q = el('input', { type: 'search', placeholder: 'Nama item atau SKU', value: K.q, style: 'min-width:220px' });
-    q.addEventListener('change', () => { K.q = q.value.trim(); K.offset = 0; renderStok(); });
-    const cat = el('select', { 'aria-label': 'Kategori' }, el('option', { value: '' }, 'Semua kategori'));
-    itemCategoryList().then(list => { for (const c of list) cat.append(el('option', { value: c, selected: c === K.cat ? '' : null }, c)); }).catch(() => { });
-    cat.onchange = () => { K.cat = cat.value; K.offset = 0; renderStok(); };
-    const br = opsSelect([['', 'Semua brand'], ['Tigalapan', 'Tigalapan'], ['MAMU', 'MAMU'], ['MYNO', 'MYNO'], ['Unbranded', 'Unbranded']], K.brand, { 'aria-label': 'Brand produk' });
-    br.onchange = () => { K.brand = br.value; K.offset = 0; renderStok(); };
-    const only = el('input', { type: 'checkbox' }); only.checked = K.only; only.onchange = () => { K.only = only.checked; K.offset = 0; renderStok(); };
-    const total = Number(rows[0]?.total_rows || 0);
-    const pager = el('div', { class: 'rowline', style: 'margin-top:10px' },
-      el('span', { class: 'sub' }, total ? `Baris ${K.offset + 1}–${K.offset + rows.length} dari ${total.toLocaleString('id-ID')} item` : 'Tidak ada item yang cocok'),
-      K.offset ? el('button', { class: 'btn sm', onclick: () => { K.offset = Math.max(0, K.offset - 300); renderStok(); } }, '‹ Sebelumnya') : null,
-      K.offset + rows.length < total ? el('button', { class: 'btn sm', onclick: () => { K.offset += 300; renderStok(); } }, 'Berikutnya ›') : null);
-    const heads = [H('ITEM', { s: 1 }), H('SKU'), H('KATEGORI'), H('BRAND'), H('TOTAL', { r: 1 }), ...storeCols.map(id => H(stName(id).replace('TIGALAPANKAOS', 'TK').replace('TIGALAPAN KAOS', 'TK'), { r: 1 }))];
-    const body2 = rows.map(r => {
-      const ps = r.per_store || {};
-      return { cls: r.below_alert ? 'warn' : '', cells: [r.item_name, r.sku || '—', r.category || '—', r.brand || '—', int(r.total_stock), ...storeCols.map(id => ps[String(id)] == null ? '—' : int(ps[String(id)]))] };
-    });
-    body.append(card('Stok per item / SKU', 'satu baris per SKU · kolom = toko',
-      el('div', { class: 'v28-tools' }, el('div', { class: 'fld' }, el('label', {}, 'Cari'), q), el('div', { class: 'fld' }, el('label', {}, 'Kategori'), cat),
-        el('div', { class: 'fld' }, el('label', {}, 'Brand produk'), br), el('label', { class: 'rowline' }, only, 'Sembunyikan stok 0')),
-      mkTable(heads, body2), pager));
-  }
+  /* ============================ KATALOG ITEM ============================ */
 
   /* ======================== AKSES PENGGUNA ======================== */
   async function renderAkses() {
@@ -795,7 +744,7 @@ td.sticky1{overflow-wrap:break-word}
     const { box, modal } = opsModal('Perbarui Price List dari Moka');
     const status = el('p', { role: 'status' }), err = el('p', { class: 'note warn', role: 'alert' }), preview = el('div');
     const save = el('button', { class: 'btn pri', disabled: '' }, 'Simpan ke Price List');
-    box.append(el('p', { class: 'note' }, 'Library item (harga per Sales Type & cost) diambil dari hasil sinkron Moka terakhir' + (V28.stockRun ? ' (' + dt(V28.stockRun.finished_at) + ')' : '') + ', lalu diproses dengan aturan yang sama seperti upload file Item Library. Profil manual tetap dipertahankan.'), status, preview, err, save);
+    box.append(el('p', { class: 'note' }, 'Library item (harga per Sales Type & cost) diambil dari hasil sinkron Moka terakhir' + (V28.libraryRun ? ' (' + dt(V28.libraryRun.finished_at) + ')' : '') + ', lalu diproses dengan aturan yang sama seperti upload file Item Library. Profil manual tetap dipertahankan.'), status, preview, err, save);
     let plans = [];
     try {
       await priceLoadV24();
@@ -805,7 +754,7 @@ td.sticky1{overflow-wrap:break-word}
         try { const r = await mokaLibraryDoc(o); if (r) plans.push({ outlet: o, ...r }); }
         catch (e) { err.append(el('div', {}, o + ': ' + e.message)); }
       }
-      if (!plans.length) throw Error('Belum ada Library item dari Moka. Jalankan Sinkron Moka dengan opsi stok & library item terlebih dahulu.');
+      if (!plans.length) throw Error('Belum ada Library item dari Moka. Jalankan Sinkron Moka dengan opsi library item terlebih dahulu.');
       status.textContent = plans.length + ' toko siap diperbarui.';
       preview.append(priceTableV24(['Toko', 'Kota', 'Item Moka', 'Jenis / ukuran'], plans.map(x => [x.outlet, x.doc.city, int(x.rows), int(PRICE_ENGINE.summary([PRICE_ENGINE.compactDoc(x.doc)]).length)]), 'Diperiksa sebelum disimpan.'));
       save.disabled = false;

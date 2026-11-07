@@ -1,6 +1,6 @@
 (function(){
  'use strict';
- const X=window.V38={brandFacts:null,stock:{q:'',brand:'',category:'',only:'all',page:0},stockEpoch:0};
+ const X=window.V38={brandFacts:null};
  const oldClear=masterClear;masterClear=function(){oldClear.apply(this,arguments);if(window.COMMERCIAL_LOGIN_REQUIRED_V38){S.dash=[];S.dashAll=[];S.trx=[];S.trxAll=[];S.logs=[];S.settings={};S.rollCache.clear();for(const k of ['pdca','pica','entries','mkt','kpiWeekly','people'])S[k]=[];X.brandFacts=null;if(typeof PL24!=='undefined')PL24.docs=null;document.querySelectorAll('.page').forEach(p=>p.replaceChildren());requestAnimationFrame(()=>login())}};
  priceSeedV24=async function(){if(!PL24.seed){const response=await fetch('price-colors-v24.json?v=26');if(response.ok)PRICE_ENGINE.setColors(await response.json());PL24.seed={schema:24,docs:[]}}return PL24.seed};
  const oldHeaders=DB.h;DB.h=function(extra={}){const h=oldHeaders.call(this,extra);if(MASTER.session?.access_token)h['x-commercial-pin-session']=MASTER.session.access_token;return h};
@@ -44,29 +44,9 @@
   parkFilters();MEM27.view='monthly';const p=$('#p-members');p.replaceChildren(el('div',{class:'phead'},el('div',{},el('h1',{},'Member'),el('p',{},'Analisis Member · tren bulanan/tahunan · repeat · cabang · detail Customer List'))));
   const actions=el('div',{class:'rowline',style:'margin-bottom:12px'}),host=el('div');p.append(actions,host);
   actions.append(el('button',{class:'btn',onclick:()=>renderMembersV27()},'Muat ulang'),el('button',{class:'btn','data-export-control':'',onclick:e=>copyNodeAsImage(p,e.currentTarget,host)},'Salin PNG analisis')); 
-  if(MASTER.session?.user?.role==='master')actions.append(el('button',{class:'btn',onclick:async()=>{await memberLoadV27();memberUploadV27()}},'Upload profil / riwayat lama'),el('button',{class:'btn',onclick:async()=>{await memberLoadV27();MEM27.view='summary';const {box,modal}=opsModal('Referensi profil upload lama');box.style.maxWidth='min(1400px,calc(100vw - 24px))';memberPaintV27(box);responsiveLabels(box);const observer=new MutationObserver(()=>{if(!modal.isConnected){observer.disconnect();MEM27.view='monthly';if(S.page==='members')renderMembersV27()}});observer.observe(document.body,{childList:true})}},'Lihat referensi upload lama'));
+
   if(!MASTER.verified){host.append(masterLoginForm(async()=>renderMembersV27()).node);return}await V28.renderMemberTransactions(host);
  };
- const beforeRender=render;render=function(){if(S.page==='stok'){parkFilters();stockView();return}return beforeRender.apply(this,arguments)};
- async function stockView(){
-  const epoch=++X.stockEpoch,p=$('#p-stok');p.replaceChildren(el('div',{class:'phead'},el('div',{},el('h1',{},'Analisis Stok Toko'),el('p',{},'Satu baris per SKU · kolom per toko · snapshot library terakhir'))));
-  const body=el('div');p.append(body);let data;
-  try{data=await masterRpc('commercial_stock_analysis_v38',{p_stores:scopeStoreIds()})}catch(e){body.append(el('p',{class:'note warn'},e.message));return}if(epoch!==X.stockEpoch||S.page!=='stok')return;
-  const all=data.items||[],q=opsInput(X.stock.q,'search',{placeholder:'Cari SKU, item, kategori…','aria-label':'Pencarian stok'}),br=opsSelect([['','Semua brand'],...['MAMU','MYNO','TIGALAPAN','DEFECT'].map(b=>[b,b])],X.stock.brand),status=opsSelect([['all','Semua stok'],['alert','≤ batas alert'],['negative','Stok minus'],['zero','Stok kosong']],X.stock.only);
-  const result=el('div');body.append(el('div',{class:'product-filter-grid'},opsField('Cari',q),opsField('Brand produk',br),opsField('Status',status)),result);
-  const stockNumber=v=>v==null?'—':Number(v).toLocaleString('id-ID',{maximumFractionDigits:3});
-  const stockCell=v=>el('span',{style:v!=null&&Number(v)<0?'color:var(--bad,#dc3545);font-weight:700':''},stockNumber(v));
-  function paint(){const rows=all.filter(r=>(!X.stock.q||[r.sku,r.item_name,r.category,r.brand].join(' ').toLowerCase().includes(X.stock.q.toLowerCase()))&&(!X.stock.brand||canonicalProductBrand(r.brand)===X.stock.brand)&&(X.stock.only==='all'||X.stock.only==='alert'&&r.alert||X.stock.only==='negative'&&r.negative||X.stock.only==='zero'&&r.total_stock!=null&&Number(r.total_stock)===0));
-   const shown=rows.slice(X.stock.page*100,X.stock.page*100+100);
-   const storeIds=[...new Set(rows.flatMap(r=>Object.keys(r.per_store||{})))].sort((a,b)=>Number(a)-Number(b)),name=id=>S.stores.find(s=>String(s.id)===String(id))?.name||id;
-   result.replaceChildren(el('div',{class:'grid g4'},tile('SKU',int(rows.length),'gabungan seluruh toko pada filter',null),tile('Total stok',stockNumber(rows.reduce((s,r)=>s+Number(r.total_stock||0),0)),'satuan stok sumber',null),tile('Nilai stok (HPP)',compact(rows.reduce((s,r)=>s+Number(r.stock_value||0),0)),'stok positif × cost yang tersedia',null),tile('Perlu perhatian',int(rows.filter(r=>r.alert||r.negative).length),int(rows.filter(r=>r.negative).length)+' SKU minus',null)));
-   if(Number(data.missing_cost_rows||0)||Number(data.untracked_rows||0)||Number(data.summary?.missing_stock||0))result.append(el('p',{class:'note warn'},'Kualitas data: '+int(data.missing_cost_rows||0)+' baris stok positif tanpa HPP; '+int(data.untracked_rows||0)+' baris tidak dilacak stoknya; '+int(data.summary?.missing_stock||0)+' SKU tanpa nilai stok. Nilai HPP hanya menghitung cost yang tersedia.'));
-   result.append(card('Stok gabungan per SKU','Snapshot '+(data.updated_at||'belum tersedia')+' · tanda — = tidak tercatat pada toko tersebut',mkTable([H('SKU'),H('Item',{s:1}),H('Kategori'),H('Brand'),H('Total',{r:1}),...storeIds.map(id=>H(name(id),{r:1}))],shown.map(r=>[r.sku||'—',r.item_name,r.category||'—',r.brand||'—',stockCell(r.total_stock),...storeIds.map(id=>stockCell(r.per_store[id]))]),['TOTAL FILTER','','','',stockNumber(rows.reduce((s,r)=>s+Number(r.total_stock||0),0)),...storeIds.map(id=>stockNumber(rows.reduce((s,r)=>s+Number(r.per_store[id]||0),0)))])));
-   result.append(el('div',{class:'rowline',style:'margin:12px 0'},el('span',{class:'sub'},'Baris '+(rows.length?X.stock.page*100+1:0)+'–'+Math.min(rows.length,(X.stock.page+1)*100)+' dari '+rows.length+' SKU · total mengikuti seluruh filter'),el('button',{class:'btn sm',disabled:X.stock.page===0?'':null,onclick:()=>{X.stock.page--;paint()}},'Sebelumnya'),el('button',{class:'btn sm',disabled:(X.stock.page+1)*100>=rows.length?'':null,onclick:()=>{X.stock.page++;paint()}},'Berikutnya'),el('button',{class:'btn sm',onclick:()=>bazarCsv([['SKU','Item','Kategori','Brand','Total',...storeIds.map(name)],...rows.map(r=>[r.sku||'',r.item_name,r.category,r.brand,r.total_stock,...storeIds.map(id=>r.per_store[id]??'')])],'Stok-Seluruh-Hasil-Filter')},'Unduh seluruh hasil CSV')));
-   const summary=rows.reduce((m,r)=>{const key=r.category||'(Tanpa kategori)',v=m.get(key)||{sku:0,stock:0,value:0};v.sku++;v.stock+=Number(r.total_stock||0);v.value+=Number(r.stock_value||0);m.set(key,v);return m},new Map());
-   result.append(card('Komposisi stok per kategori','Bukan analisis umur stok atau sell-through: sumber saat ini belum menyediakan umur dan transaksi per SKU yang sebanding.',mkTable([H('Kategori',{s:1}),H('SKU',{r:1}),H('Stok',{r:1}),H('Nilai HPP',{r:1})],[...summary].sort((a,b)=>b[1].value-a[1].value).map(([k,v])=>[k,int(v.sku),stockNumber(v.stock),compact(v.value)]))));enhanceAll();responsiveLabels(result);
-  }q.oninput=()=>{X.stock.q=q.value;X.stock.page=0;paint()};br.onchange=()=>{X.stock.brand=br.value;X.stock.page=0;paint()};status.onchange=()=>{X.stock.only=status.value;X.stock.page=0;paint()};paint();
- }
  async function login(){
   if(!window.COMMERCIAL_LOGIN_REQUIRED_V38||document.querySelector('#login-v38'))return;
   try{await masterResume()}catch{}
