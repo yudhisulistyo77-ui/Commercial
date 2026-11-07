@@ -1,0 +1,33 @@
+name: Perbarui Price List langsung V43
+on:
+  workflow_dispatch:
+    inputs:
+      outlets:
+        description: "Nama outlet; pisahkan koma. DC dilewati. Item Library diproses langsung, tidak disimpan; sales tidak ditarik ulang."
+        required: true
+        default: "TIGALAPANKAOS MANADO"
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: moka-sync
+  cancel-in-progress: false
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Perbarui Price List langsung dari Moka
+        env:
+          MOKA_ACCESS_TOKEN: ${{ secrets.MOKA_ACCESS_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          PRICE_OUTLETS: ${{ inputs.outlets }}
+        run: node price_repair_v42.cjs

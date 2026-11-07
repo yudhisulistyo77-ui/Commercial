@@ -11,9 +11,9 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "live = sampai menit ini (cepat) · full = sebulan penuh s.d. kemarin"
+        description: "live = terbaru · full = s.d. kemarin · price = hanya Price List langsung dari Moka"
         type: choice
-        options: [live, full]
+        options: [live, full, price]
         default: live
       months:
         description: "Khusus mode full: bulan (YYYY-MM, pisahkan koma, atau 2026-01..2026-10). Kosong = bulan berjalan"
