@@ -23,6 +23,10 @@ on:
         description: "Ikut perbarui item & stok (menambah ±5–10 menit)"
         type: boolean
         default: false
+      stock_only:
+        description: "Hanya pulihkan stok/library; tidak menarik ulang sales"
+        type: boolean
+        default: false
       outlets:
         description: "Batasi ke outlet Moka tertentu (nama, pisahkan koma). Kosong = semua"
         required: false
@@ -75,11 +79,13 @@ jobs:
           SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           SYNC_MODE: ${{ github.event_name == 'schedule' && 'full' || inputs.mode }}
           SYNC_MONTHS: ${{ inputs.months }}
-          INCLUDE_STOCK: ${{ (github.event_name == 'schedule' || inputs.include_stock) && '1' || '0' }}
+          SKIP_SALES: ${{ inputs.stock_only && '1' || '0' }}
+          INCLUDE_STOCK: ${{ (github.event_name == 'schedule' || inputs.include_stock || inputs.stock_only) && '1' || '0' }}
           ONLY_OUTLETS: ${{ inputs.outlets }}
           DRY_RUN: ${{ inputs.dry_run && '1' || '0' }}
           RUN_ID: ${{ inputs.run_id }}
-          WORKERS: "4"
+          WORKERS: "2"
+          STOCK_BATCH_SIZE: "250"
           MOKA_TZ_OFFSET: "7"
           LOCAL_TZ_OFFSET: "8"
           MOKA_TOKEN_EXPIRES: "2027-05-04"
