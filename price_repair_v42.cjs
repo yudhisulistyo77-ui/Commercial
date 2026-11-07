@@ -1,7 +1,9 @@
 'use strict';
-const {spawnSync}=require('node:child_process'),fs=require('node:fs');
-const outlets=[...new Set((process.env.PRICE_OUTLETS||'TIGALAPANKAOS MANADO').split(',').map(s=>s.trim()).filter(Boolean))];
-if(!outlets.length||outlets.length>30)throw Error('Pilih 1–30 outlet untuk pemulihan Price List.');
-const results=[];for(const outlet of outlets){const task=spawnSync(process.execPath,[__dirname+'/moka_price_sync_v38.cjs',outlet],{encoding:'utf8',timeout:330000});if(task.status!==0){const reason=(task.stderr||task.error?.message||'Helper gagal').trim().slice(-400);results.push({outlet,status:'error',reason});console.error(outlet+': '+reason);continue}try{const receipt=JSON.parse(task.stdout.split('\n').find(l=>l.startsWith('PRICE_RESULT_JSON=')).slice('PRICE_RESULT_JSON='.length));if(receipt.outlet!==outlet||!['saved','unchanged','skipped'].includes(receipt.status))throw Error('Status tidak valid');results.push(receipt);console.log(outlet+': '+receipt.status)}catch(e){results.push({outlet,status:'error',reason:e.message})}}
-if(process.env.GITHUB_STEP_SUMMARY)fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,'\n### Pemulihan Price List\n\n| Toko | Status | Keterangan |\n|---|---|---|\n'+results.map(r=>`| ${r.outlet.replace(/\|/g,' ')} | ${r.status} | ${(r.reason||'').replace(/[\r\n|]/g,' ')} |`).join('\n')+'\n');
-if(results.some(r=>r.status==='error'))process.exitCode=1;
+const {spawnSync}=require('node:child_process');
+const {isDC}=require('./moka_price_sync_v38.cjs');
+const outletList=(process.env.PRICE_OUTLETS||'TIGALAPANKAOS MANADO').split(',').map(x=>x.trim()).filter(Boolean);
+if(!outletList.length||outletList.length>30)throw Error('Pilih 1–30 outlet');
+const chosen=outletList.filter(name=>{if(isDC(name)){console.log('Price List dilewati: '+name+' (DC/gudang)');return false}return true});
+if(!chosen.length)process.exit(0);
+const task=spawnSync('python3',[__dirname+'/moka_sync.py'],{stdio:'inherit',env:{...process.env,ONLY_OUTLETS:chosen.join(','),SYNC_MODE:'price',SKIP_SALES:'1',INCLUDE_LIBRARY:'1'},timeout:7200000});
+if(task.error)throw task.error;process.exitCode=task.status||0;

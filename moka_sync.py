@@ -66,11 +66,13 @@ def env(name, default=""):
 TZ = timezone(timedelta(hours=float(env("MOKA_TZ_OFFSET", "7"))))
 LOCAL_TZ = timezone(timedelta(hours=float(env("LOCAL_TZ_OFFSET", "8"))))
 MODE = env("SYNC_MODE", "full").lower()
+PRICE_ONLY = MODE == "price" or env("SKIP_SALES", "0") == "1"
+if MODE == "price": MODE = "live"
 if MODE not in ("full", "live"):
     MODE = "full"
 DRY_RUN = env("DRY_RUN", "0").lower() in ("1", "true", "yes")
 LIVE_DAYS = max(1, int(env("LIVE_DAYS", "3")))
-INCLUDE_LIBRARY = env("INCLUDE_LIBRARY", "1").lower() in ("1","true","yes")
+INCLUDE_LIBRARY = PRICE_ONLY or env("INCLUDE_LIBRARY", "1").lower() in ("1","true","yes")
 WORKERS = max(1, min(3, int(env("WORKERS", "2"))))
 STOCK_BATCH_SIZE = max(50, min(400, int(env("STOCK_BATCH_SIZE", "250"))))
 OUT_DIR = env("OUTPUT_DIR", "moka-sync-output")
@@ -691,30 +693,23 @@ def item_rows(outlet, sid, items):
     return rows
 
 
-def publish_library(db, sid, rows):
-    batch_id = str(uuid.uuid4())
-    ids = [r["variant_id"] for r in rows]
-    if len(ids) != len(set(ids)):
-        raise RuntimeError("Variant library ganda; snapshot lama dipertahankan.")
-    db.rpc_idempotent("commercial_moka_library_begin_v40", {
-        "p_batch": batch_id, "p_store_id": sid, "p_expected": len(rows)})
-    for i in range(0, len(rows), STOCK_BATCH_SIZE):
-        db.rpc_idempotent("commercial_moka_library_stage_v40", {
-            "p_batch": batch_id, "p_rows": rows[i:i + STOCK_BATCH_SIZE]})
-    db.rpc_idempotent("commercial_moka_library_commit_v40", {"p_batch": batch_id})
-
 
 def process_items(ctx, outlet, sid):
     t0 = time.time()
     res = {"outlet": outlet["name"], "store_id": sid, "status": "OK", "errors": []}
+    if re.match(r'^(?:DC|DISTRIBUTION CENTER|GUDANG)(?:[\s._-]|$)',outlet['name'].strip(),re.I):
+        res.update(status='SKIP',rows=0,price_result={'outlet':outlet['name'],'status':'skipped','reason':'DC tidak diambil untuk Price List'})
+        res['seconds']=round(time.time()-t0,1);return res
     try:
+        res['phase']='library_read'
         rows = item_rows(outlet, sid, ctx.moka.items(outlet["id"]))
         res["rows"] = len(rows)
         if ctx.db and not DRY_RUN:
-            publish_library(ctx.db, sid, rows)
+            res['phase']='price_list'
+            res['price_result']=refresh_price_list(outlet['name'],rows,sid)
     except HttpError as e:
-        res["status"] = "SKIP" if (e.code == 403 and "xpired" in e.body) else "ERROR"
-        res["errors"].append(str(e))
+        res['status']='ERROR'
+        res['errors'].append(str(e))
     except Exception as e:
         res["status"] = "ERROR"; res["errors"].append(f"{type(e).__name__}: {str(e)[:300]}")
     res["seconds"] = round(time.time() - t0, 1)
@@ -725,14 +720,14 @@ def rp(x):
     return f"Rp{x:,.0f}".replace(",", ".")
 
 
-def refresh_price_list(outlet_name):
+def refresh_price_list(outlet_name,rows=None,store_id=None):
     if re.match(r'^(?:DC|DISTRIBUTION CENTER|GUDANG)(?:[\s._-]|$)',outlet_name.strip(),re.I):
         return {'outlet':outlet_name,'status':'skipped','reason':'DC/gudang tidak dimasukkan ke Price List'}
-    task=subprocess.run(['node','moka_price_sync_v38.cjs',outlet_name],capture_output=True,text=True,timeout=330)
+    task=subprocess.run(['node','moka_price_sync_v38.cjs',outlet_name],capture_output=True,text=True,timeout=330,input=json.dumps({'rows':rows,'store_id':store_id}))
     if task.returncode:
         raise RuntimeError((task.stderr or task.stdout or 'Helper gagal')[-400:].strip())
     markers=[line.removeprefix('PRICE_RESULT_JSON=') for line in task.stdout.splitlines() if line.startswith('PRICE_RESULT_JSON=')]
-    if not markers:raise RuntimeError('Status helper tidak tersedia; perbarui moka_price_sync_v38.cjs dari paket V42.')
+    if not markers:raise RuntimeError('Status helper tidak tersedia; perbarui moka_price_sync_v38.cjs dari paket V43.')
     receipt=json.loads(markers[-1])
     if receipt.get('status') not in ('saved','unchanged','skipped') or receipt.get('outlet')!=outlet_name:raise RuntimeError('Status helper tidak valid')
     return receipt
@@ -822,7 +817,7 @@ def main():
     results, item_results = [], []
 
     with ThreadPoolExecutor(WORKERS) as ex:
-        futs = {} if env("SKIP_SALES") == "1" else {ex.submit(process, ctx, o, sid, p): (o, sid) for p in periods for o, sid in mapped}
+        futs = {} if PRICE_ONLY else {ex.submit(process, ctx, o, sid, p): (o, sid) for p in periods for o, sid in mapped}
 
         for f in as_completed(futs):
             o, tag = futs[f]
@@ -860,7 +855,7 @@ def main():
             results.append(res)
 
     if INCLUDE_LIBRARY:
-        log("Penjualan selesai diproses. Memperbarui katalog Item Library secara berurutan (batch kecil)…")
+        log("Penjualan selesai diproses. Memproses Item Library langsung menjadi Price List (tanpa menyimpan katalog mentah)…")
         for o, sid in mapped:
             res = process_items(ctx, o, sid)
             item_results.append(res)
@@ -868,22 +863,12 @@ def main():
             log(f"  {mark} {res['outlet']:<26} library item: {res.get('rows', 0):>6} SKU"
                 f"  {res['seconds']:>6}s {'; '.join(res['errors'])}")
 
-    price_errors=[]
-    price_results=[]
-    if writing and INCLUDE_LIBRARY:
-        for library_result in item_results:
-            if library_result['status']!='OK':continue
-            outlet_name=library_result['outlet']
-            try:
-                receipt=refresh_price_list(outlet_name)
-                price_results.append(receipt)
-                verb={'saved':'diperbarui','unchanged':'tetap sama (tanpa tulis ulang)','skipped':'dilewati'}[receipt['status']]
-                log(('✓ ' if receipt['status']=='saved' else '· ')+'Price List '+verb+': '+outlet_name)
-            except (subprocess.SubprocessError,OSError,RuntimeError,ValueError) as e:
-                reason=str(e).strip()[:350] or type(e).__name__
-                failure={'outlet':outlet_name,'status':'ERROR','errors':['Price List: '+reason]}
-                price_errors.append(failure);price_results.append(failure)
-                warn('Price List belum diperbarui: '+outlet_name+'; '+reason)
+    price_results=[r['price_result'] for r in item_results if r.get('price_result')]
+    price_errors=[{'outlet':r['outlet'],'status':'ERROR','errors':r['errors']} for r in item_results if r.get('phase')=='price_list' and r['status']=='ERROR']
+    price_results.extend(price_errors)
+    for receipt in price_results:
+        verb={'saved':'diperbarui','unchanged':'tetap sama','skipped':'dilewati','ERROR':'gagal'}[receipt['status']]
+        log('· Price List '+verb+': '+receipt['outlet'])
     rebuild_error = None
     if writing and (any(r["status"] in ("OK", "WARN", "UNCHANGED") for r in results) or any(r["status"] == "OK" for r in item_results)):
         try:
@@ -903,7 +888,7 @@ def main():
     unchanged = [r for r in results if r["status"] == "UNCHANGED"]
     wr = [r for r in results if r["status"] == "WARN"]
     sales_bad = [r for r in results if r["status"] == "ERROR"]
-    library_bad = [r for r in item_results if r["status"] == "ERROR"]
+    library_bad = [r for r in item_results if r["status"] == "ERROR" and r.get("phase")!="price_list"]
     price_saved=sum(r["status"]=="saved" for r in price_results)
     price_same=sum(r["status"]=="unchanged" for r in price_results)
     price_skipped=sum(r["status"]=="skipped" for r in price_results)

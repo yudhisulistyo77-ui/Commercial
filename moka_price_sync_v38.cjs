@@ -13,25 +13,20 @@ function isDC(outlet){return /^(?:DC|DISTRIBUTION CENTER|GUDANG)(?:[\s._-]|$)/i.
 function comparable(doc){if(!doc)return null;const data={...doc.data};delete data.imported_at;delete data.source_name;return {outlet:doc.outlet,city:doc.city,data};}
 function canonical(value){if(Array.isArray(value))return value.map(canonical);if(value&&typeof value==='object')return Object.fromEntries(Object.keys(value).sort().map(k=>[k,canonical(value[k])]));return value;}
 function sameDocument(a,b){return JSON.stringify(canonical(comparable(a)))===JSON.stringify(canonical(comparable(b)));}
+function brandKeys(rows){const map=new Map();for(const r of rows){const sku=String(r.sku||'').trim(),name=E.norm(r.item_name),brand=E.norm(r.brand);if(!name)continue;const key=JSON.stringify([sku,name]);if(!map.has(key))map.set(key,{sku,item_name:name,brand:brand||null});else if(map.get(key).brand!==(brand||null))map.get(key).brand=null;}return [...map.values()].sort((a,b)=>a.sku.localeCompare(b.sku)||a.item_name.localeCompare(b.item_name));}
 const retryable=e=>/sudah berubah|40001|409|57014|statement timeout|Supabase (?:429|500|502|503|504)|fetch failed|network|timed out|timeout|aborted/i.test(e.message);
-async function syncOutlet(outlet,api,{sleep=ms=>new Promise(r=>setTimeout(r,ms)),maxAttempts=4}={}){
+async function syncOutlet(outlet,api,{sleep=ms=>new Promise(r=>setTimeout(r,ms)),maxAttempts=4,providedRows=null,storeId=null}={}){
  if(!outlet)throw Error('Nama outlet wajib diisi.');
  if(isDC(outlet))return {status:'skipped',outlet,reason:'DC/gudang tidak dimasukkan ke Price List'};
  if(!E.city(outlet))return {status:'skipped',outlet,reason:'Bukan kota katalog'};
- const rows=[];let pageSize=500;
- for(let start=0;;){let batch;
-  for(let attempt=0;attempt<maxAttempts;attempt++){
-   try{batch=await api('moka_items?select=sku,item_name,category,brand,cogs,basic_price,prices&outlet_name=eq.'+encodeURIComponent(outlet)+'&order=variant_id',{headers:{Range:`${start}-${start+pageSize-1}`,'Range-Unit':'items'}});break}
-   catch(e){if(!retryable(e)||attempt+1>=maxAttempts)throw e;pageSize=Math.max(100,Math.floor(pageSize/2));await sleep(Math.min(8000,1000*2**attempt));}
-  }
-  rows.push(...batch);if(batch.length<pageSize)break;start+=batch.length;
- }
+ if(!Array.isArray(providedRows)||!Number.isSafeInteger(storeId)||storeId<=0)throw Error('Item Library wajib diberikan langsung dari Moka; katalog mentah tidak disimpan lagi. Jalankan sinkron Price List terbaru.');
+ const rows=providedRows;
  if(!rows.length)throw Error('Library kosong; Price List lama dipertahankan.');
  for(let attempt=0;attempt<maxAttempts;attempt++){
   try{
-   const current=(await api('commercial_price_list_v24?select=*&outlet=eq.'+encodeURIComponent(outlet)))[0],doc=buildLibrary(rows,outlet,current);
-   if(current&&sameDocument(doc,current))return {status:'unchanged',outlet,reason:'Harga/katalog sama; tidak ditulis ulang',version:current.version};
-   const result=await api('rpc/commercial_price_list_auto_v42',{method:'POST',body:JSON.stringify({p_outlet:doc.outlet,p_city:doc.city,p_data:doc.data,p_version:current?.version||0})});
+   const current=(await api('commercial_price_list_v24?select=*&outlet=eq.'+encodeURIComponent(E.norm(outlet))))[0],doc=buildLibrary(rows,outlet,current);
+   // Always reconcile the small brand lookup; the RPC avoids rewriting unchanged prices and mappings.
+   const result=await api('rpc/commercial_price_sync_v43',{method:'POST',body:JSON.stringify({p_outlet:doc.outlet,p_city:doc.city,p_data:doc.data,p_version:current?.version||0,p_store_id:storeId,p_brands:brandKeys(rows)})});
    return {status:result.status==='unchanged'?'unchanged':'saved',outlet,version:result.version,attempts:attempt+1};
   }catch(e){if(!retryable(e)||attempt+1>=maxAttempts)throw e;await sleep(Math.min(8000,1000*2**attempt));}
  }
@@ -43,6 +38,7 @@ async function main(){
  const base=(process.env.SUPABASE_URL||'').replace(/\/$/,''),key=process.env.SUPABASE_KEY;if(!base||!key)throw Error('Konfigurasi Supabase belum lengkap.');
  const headers={apikey:key,'Content-Type':'application/json'};if(key.startsWith('eyJ'))headers.Authorization='Bearer '+key;
  async function api(path,opts={}){const r=await fetch(base+'/rest/v1/'+path,{...opts,headers:{...headers,...opts.headers},signal:AbortSignal.timeout(60000)});const d=await r.json().catch(()=>({}));if(!r.ok)throw Error('Supabase '+r.status+' ['+path.split('?')[0]+']: '+(d.code?d.code+' · ':'')+(d.message||'Permintaan gagal'));return d;}
- const result=await syncOutlet(outlet,api);console.log('PRICE_RESULT_JSON='+JSON.stringify(result));
+ const payload=JSON.parse(fs.readFileSync(0,'utf8')||'{}');
+ const result=await syncOutlet(outlet,api,{providedRows:payload.rows,storeId:payload.store_id});console.log('PRICE_RESULT_JSON='+JSON.stringify(result));
 }
-module.exports={buildLibrary,isDC,sameDocument,syncOutlet};if(require.main===module)main().catch(e=>{console.error(e.message);process.exit(1)});
+module.exports={buildLibrary,isDC,sameDocument,syncOutlet,brandKeys};if(require.main===module)main().catch(e=>{console.error(e.message);process.exit(1)});
