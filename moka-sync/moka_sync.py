@@ -44,6 +44,7 @@ import re
 import sys
 import time
 import uuid
+import subprocess
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -70,6 +71,7 @@ if MODE not in ("full", "live"):
     MODE = "full"
 DRY_RUN = env("DRY_RUN", "0").lower() in ("1", "true", "yes")
 LIVE_DAYS = max(1, int(env("LIVE_DAYS", "3")))
+INCLUDE_LIBRARY = env("INCLUDE_LIBRARY", "1").lower() in ("1","true","yes")
 INCLUDE_STOCK = env("INCLUDE_STOCK", "1" if MODE == "full" else "0").lower() in ("1", "true", "yes")
 WORKERS = max(1, min(3, int(env("WORKERS", "2"))))
 STOCK_BATCH_SIZE = max(50, min(400, int(env("STOCK_BATCH_SIZE", "250"))))
@@ -385,38 +387,39 @@ def find_store(name, stores, aliases):
 
 # ------------------------------------------------------------------ periode
 def periods_for_run(now):
-    today = now.date()
-    if MODE == "live":
-        cutoff = today
-        start = today - timedelta(days=LIVE_DAYS - 1)
-        months = sorted({(start.year, start.month), (today.year, today.month)})
+    today=now.date();cutoff=today if MODE=='live' else today-timedelta(days=1)
+    spec=env('SYNC_MONTHS');first,last=env('SYNC_FROM'),env('SYNC_TO');months=[]
+    if first or last:
+        if not first or not last:raise ValueError('Tanggal awal dan akhir wajib diisi.')
+        start,end=date.fromisoformat(first),date.fromisoformat(last)
+        if start>end or (end-start).days>1096:raise ValueError('Rentang tanggal tidak valid / lebih dari 3 tahun.')
+        y,m=start.year,start.month
+        while (y,m)<=(end.year,end.month):
+            months.append((y,m));y,m=(y+1,1) if m==12 else (y,m+1)
+    elif spec:
+        for part in filter(None,(p.strip() for p in spec.split(','))):
+            if '..' in part:
+                aa,bb=part.split('..');y,m=map(int,aa.split('-'));y2,m2=map(int,bb.split('-'))
+                date(y,m,1);date(y2,m2,1)
+                if (y,m)>(y2,m2):raise ValueError('Rentang bulan terbalik.')
+                while (y,m)<=(y2,m2):
+                    months.append((y,m));y,m=(y+1,1) if m==12 else (y,m+1)
+                    if len(months)>36:raise ValueError('Maksimal 36 bulan per sinkron.')
+            else:
+                y,m=map(int,part.split('-'));date(y,m,1);months.append((y,m))
+    elif MODE=='live':
+        start=today-timedelta(days=LIVE_DAYS-1);months=[(start.year,start.month),(today.year,today.month)]
     else:
-        cutoff = today - timedelta(days=1)
-        spec = env("SYNC_MONTHS")
-        months = []
-        if spec:
-            for part in [p.strip() for p in spec.split(",") if p.strip()]:
-                if ".." in part:
-                    a, b = [x.strip() for x in part.split("..")]
-                    y, m = map(int, a.split("-")); y2, m2 = map(int, b.split("-"))
-                    while (y, m) <= (y2, m2):
-                        months.append((y, m))
-                        y, m = (y + 1, 1) if m == 12 else (y, m + 1)
-                else:
-                    y, m = map(int, part.split("-")); months.append((y, m))
-        else:
-            months.append((cutoff.year, cutoff.month))
-            if cutoff.day <= 3:
-                prev = cutoff.replace(day=1) - timedelta(days=1)
-                months.insert(0, (prev.year, prev.month))
-    out = []
-    for y, m in sorted(set(months)):
-        first = date(y, m, 1)
-        last = min(date(y + (m == 12), m % 12 + 1, 1) - timedelta(days=1), cutoff)
-        if first > cutoff:
-            continue
-        out.append((y, m, first, last))
-    return out, cutoff
+        months=[(cutoff.year,cutoff.month)]
+        if cutoff.day<=3:
+            prev=cutoff.replace(day=1)-timedelta(days=1);months.insert(0,(prev.year,prev.month))
+    if len(set(months))>36:raise ValueError('Maksimal 36 bulan per sinkron.')
+    out=[]
+    for y,m in sorted(set(months)):
+        if not 2000<=y<=2100:raise ValueError('Tahun tidak valid.')
+        d1=date(y,m,1);d2=min(date(y+(m==12),m%12+1,1)-timedelta(days=1),cutoff)
+        if d1<=d2:out.append((y,m,d1,d2))
+    return out,cutoff
 
 
 def day_range(d1, d2):
@@ -448,7 +451,22 @@ def fetch_store_month(ctx, outlet, sid, period):
 
         # Hari yang perlu ditarik transaksinya
         fetch_from = d1
-        if MODE == "live" and ctx.db:
+        fetch_to = d2
+        date_range = bool(env('SYNC_FROM') and env('SYNC_TO'))
+        if date_range:
+            want_from=max(d1,date.fromisoformat(env('SYNC_FROM')))
+            want_to=min(d2,date.fromisoformat(env('SYNC_TO')))
+            if want_from>want_to:raise ValueError('Tidak ada tanggal yang tercakup.')
+            have=set()
+            if ctx.db:
+                cov=ctx.db.sel(f"moka_sync_coverage?select=sale_date&store_id=eq.{sid}&sale_date=gte.{d1}&sale_date=lte.{d2}")
+                have={r['sale_date'] for r in cov}
+            outside=[d for d in day_range(d1,d2) if d<want_from or d>want_to]
+            if all(d.isoformat() in have for d in outside):
+                fetch_from,fetch_to=want_from,want_to
+            else:
+                res['range_note']='Cache di luar rentang belum lengkap; bulan terkait ditarik utuh.'
+        if MODE == "live" and ctx.db and not date_range:
             want = max(d1, ctx.now.date() - timedelta(days=LIVE_DAYS - 1))
             if want > d1:
                 cov = ctx.db.sel(f"moka_sync_coverage?select=sale_date&store_id=eq.{sid}"
@@ -457,9 +475,10 @@ def fetch_store_month(ctx, outlet, sid, period):
                 if all(d.isoformat() in have for d in day_range(d1, want - timedelta(days=1))):
                     fetch_from = want
         res["fetch_from"] = fetch_from.isoformat()
+        res["fetch_to"] = fetch_to.isoformat()
         since = datetime(fetch_from.year, fetch_from.month, fetch_from.day, tzinfo=TZ)
-        until = ctx.now if (MODE == "live" and d2 == ctx.now.date()) else \
-            datetime(d2.year, d2.month, d2.day, tzinfo=TZ) + timedelta(days=1) - timedelta(seconds=1)
+        until = ctx.now if (MODE == "live" and fetch_to == ctx.now.date()) else \
+            datetime(fetch_to.year, fetch_to.month, fetch_to.day, tzinfo=TZ) + timedelta(days=1) - timedelta(seconds=1)
         pays = ctx.moka.transactions(oid, since, until) if (net or summ.get("number_of_transactions") or fetch_from != d1) else []
         res["payments"] = len(pays)
         agg = aggregate(pays)
@@ -467,9 +486,9 @@ def fetch_store_month(ctx, outlet, sid, period):
 
         # Sales Type bulanan = hari tersimpan (sebelum fetch_from) + hasil tarikan baru
         monthly = defaultdict(lambda: {"amount": 0.0, "trx_count": 0})
-        if fetch_from > d1 and ctx.db:
+        if (fetch_from > d1 or fetch_to < d2) and ctx.db:
             for r in ctx.db.sel(f"moka_sales_type_daily?select=sales_type,trx_count,amount&store_id=eq.{sid}"
-                                f"&sale_date=gte.{d1}&sale_date=lt.{fetch_from}"):
+                                f"&sale_date=gte.{d1}&sale_date=lte.{d2}&or=(sale_date.lt.{fetch_from},sale_date.gt.{fetch_to})"):
                 monthly[r["sales_type"]]["amount"] += float(r["amount"] or 0)
                 monthly[r["sales_type"]]["trx_count"] += int(r["trx_count"] or 0)
         for ts in agg["sales_types"].values():
@@ -504,8 +523,8 @@ def classify_lag(res):
     consistent = st is None or it is None or abs(st - it) <= max(TOLERANCE, 0.5 * len(res.get("items") or []))
     if consistent and basis is not None and abs(net - basis) <= LAG_MAX_SHARE * max(abs(net), 1):
         res["status"] = "WARN"
-        res["errors"] = [f"Moka belum selesai memproses transaksi terbaru/telat tersinkron: Summary {net:,.0f} vs "
-                         f"detail {basis:,.0f} (selisih {net - basis:,.0f}); terkoreksi di sinkron berikutnya"]
+        res["errors"] = [f"Selisih sumber Moka belum terverifikasi: Summary {net:,.0f} vs "
+                         f"detail {basis:,.0f} (selisih {net - basis:,.0f}); periksa sumber sebelum menyatakan rekonsiliasi selesai"]
 
 
 def process(ctx, outlet, sid, period):
@@ -550,7 +569,7 @@ def write_store_month(db, res, known_types, stamp):
     src = f"MOKA API {stamp}"
     note = f"Moka {res['start']} s.d. {res['end']}" + (f"; {res['errors'][0]}" if res["status"] == "WARN" else "")
     agg = res["agg"]
-    f1, f2 = res["fetch_from"], res["end"]
+    f1, f2 = res["fetch_from"], res.get("fetch_to", res["end"])
     rng = f"store_id=eq.{sid}&sale_date=gte.{f1}&sale_date=lte.{f2}"
 
     # --- harian
@@ -601,7 +620,7 @@ def write_store_month(db, res, known_types, stamp):
 
     s = res["summary"]
     trx = {"store_id": sid, "year": y, "month": m, "jumlah_transaksi": int(s.get("number_of_transactions") or 0),
-           "nilai_transaksi": float(s.get("net_sales") or 0), "is_manual": True}
+           "nilai_transaksi": float(res.get("sales_type_total") or 0), "is_manual": True}
     db.insert("transaksi", [trx], "store_id,year,month")
     db.insert("ingest_log", [{"kind": "TRANSAKSI", "file_name": src, "store_id": sid, "year": y, "month": m,
                               "rows_total": 1, "rows_mapped": 1, "rows_unmapped": 0,
@@ -818,7 +837,7 @@ def main():
                 f"  {res['seconds']:>6}s {'; '.join(res['errors'])}")
             results.append(res)
 
-    if INCLUDE_STOCK:
+    if INCLUDE_STOCK or INCLUDE_LIBRARY:
         log("Penjualan selesai diproses. Memperbarui stok secara berurutan (batch kecil)…")
         for o, sid in mapped:
             res = process_items(ctx, o, sid)
@@ -827,6 +846,16 @@ def main():
             log(f"  {mark} {res['outlet']:<26} item & stok: {res.get('rows', 0):>6} SKU"
                 f"  stok {res.get('stock', 0):>10,.0f}  {res['seconds']:>6}s {'; '.join(res['errors'])}")
 
+    price_errors=[]
+    if writing and INCLUDE_LIBRARY:
+        for library_result in item_results:
+            if library_result['status']!='OK':continue
+            try:
+                subprocess.run(['node','moka_price_sync_v38.cjs',library_result['outlet']],check=True,timeout=180)
+                log('✓ Price List diperbarui: '+library_result['outlet'])
+            except (subprocess.SubprocessError,OSError) as e:
+                price_errors.append({'outlet':library_result['outlet'],'status':'ERROR','errors':['Price List: '+type(e).__name__]})
+                warn('Price List belum diperbarui: '+library_result['outlet']+'; periksa log helper.')
     rebuild_error = None
     if writing and (any(r["status"] in ("OK", "WARN") for r in results) or any(r["status"] == "OK" for r in item_results)):
         try:
@@ -846,7 +875,7 @@ def main():
     wr = [r for r in results if r["status"] == "WARN"]
     sales_bad = [r for r in results if r["status"] == "ERROR"]
     stock_bad = [r for r in item_results if r["status"] == "ERROR"]
-    bad = sales_bad + stock_bad
+    bad = sales_bad + stock_bad + price_errors
     for r in wr:
         warn(f"{r['outlet']} {r['year']}-{r['month']:02d}: {r['errors'][0]}")
     data_until = now if MODE == "live" else datetime(cutoff.year, cutoff.month, cutoff.day, 23, 59, 59, tzinfo=TZ)
@@ -854,7 +883,7 @@ def main():
     run_update(status="error" if bad or rebuild_error else "warn" if wr else "done",
                finished_at=datetime.now(timezone.utc).isoformat(), data_until=data_until.isoformat() if results else None,
                stores_ok=len(ok), stores_warn=len(wr), stores_error=len(bad),
-               message=(f"Sales: {len(ok)} OK, {len(wr)} menunggu Moka, {len(sales_bad)} gagal; stok: {len(stock_ok)} OK, {len(stock_bad)} gagal" + ("; hitung ulang sales gagal: " + rebuild_error[:160] if rebuild_error else "") +
+               message=(f"Sales: {len(ok)} OK, {len(wr)} menunggu Moka, {len(sales_bad)} gagal; Price List {len(price_errors)} gagal; stok: {len(stock_ok)} OK, {len(stock_bad)} gagal" + ("; hitung ulang sales gagal: " + rebuild_error[:160] if rebuild_error else "") +
                         (f" · stok {len([r for r in item_results if r['status'] == 'OK'])} toko" if item_results else "") +
                         ("; " + "; ".join(f"{r['outlet']}: {r['errors'][0][:120]}" for r in bad[:3]) if bad else ""))[:900])
 
