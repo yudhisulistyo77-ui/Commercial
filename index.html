@@ -1346,6 +1346,7 @@ function pageFilterBar(id){
   return wrap;
 }
 function go(id){
+  activeMultiSelect?.close();
   if(id==='sssg')id='h2h';
   if(id==='breakdown')id='bazar';if(id==='present'||!PAGES.some(p=>p.id===id))id='dash';
   if(S.page==='item'&&id!=='item')cancelItemLoadV22();
@@ -1372,7 +1373,8 @@ function multiSelectDropdown(container, options, selected, onChange, opt={}){
   container.innerHTML='';
   const msd=el('div',{class:'msd'});
   let dirty=false,leaveTimer=null;
-  const close=()=>{clearTimeout(leaveTimer);msd.classList.remove('open');btn.setAttribute('aria-expanded','false');if(activeMultiSelect?.node===msd)activeMultiSelect=null;if(dirty){dirty=false;onChange(selected.slice());}};
+  const owns=node=>!!node&&(msd.contains(node)||pop.contains(node));
+  const close=(commit=true)=>{clearTimeout(leaveTimer);msd.classList.remove('open');btn.setAttribute('aria-expanded','false');if(activeMultiSelect?.node===msd)activeMultiSelect=null;pop.classList.remove('msd-portal-v50');if(msd.isConnected)msd.append(pop);else pop.remove();if(dirty){dirty=false;if(commit)onChange(selected.slice());}};
   const changed=()=>{dirty=true;};
   const lbl=el('span',{class:'lbl'});
   const btn=el('button',{type:'button',class:'msd-btn','aria-expanded':'false'},lbl,
@@ -1425,16 +1427,23 @@ function multiSelectDropdown(container, options, selected, onChange, opt={}){
     }
   };
   buildPop(); renderLabel();
-  btn.onclick=e=>{e.stopPropagation();if(msd.classList.contains('open')){close();return;}activeMultiSelect?.close();if(!msd.isConnected)return;msd.classList.add('open');btn.setAttribute('aria-expanded','true');pop.style.left='0px';pop.style.top='';pop.style.bottom='';const anchor=msd.getBoundingClientRect(),below=innerHeight-anchor.bottom-16,above=anchor.top-16;const upwards=below<180&&above>below;if(upwards){pop.style.top='auto';pop.style.bottom='calc(100% + 7px)';}pop.style.maxHeight=Math.max(140,Math.min(300,upwards?above:below))+'px';const bounds=pop.getBoundingClientRect();pop.style.left=Math.max(12-msd.getBoundingClientRect().left,Math.min(0,innerWidth-12-bounds.right))+'px';activeMultiSelect={node:msd,close};if(searchBox)setTimeout(()=>{if(msd.isConnected&&msd.classList.contains('open'))searchBox.focus();},0);};
-  msd.addEventListener('pointerenter',()=>clearTimeout(leaveTimer));
-  msd.addEventListener('pointerleave',e=>{if(e.pointerType==='mouse'&&msd.classList.contains('open'))leaveTimer=setTimeout(close,120);});
-  msd.addEventListener('keydown',e=>{if(e.key==='Escape'){e.stopPropagation();btn.focus();close();}});
-  msd.addEventListener('focusout',e=>{if(e.relatedTarget&&!msd.contains(e.relatedTarget)&&msd.classList.contains('open'))close();});
+  const position=()=>{
+    if(!msd.isConnected){close(false);return;}
+    const a=btn.getBoundingClientRect(),vv=window.visualViewport,vw=vv?.width||innerWidth,vh=vv?.height||innerHeight,vx=vv?.offsetLeft||0,vy=vv?.offsetTop||0;
+    const below=Math.max(0,vy+vh-a.bottom-12),above=Math.max(0,a.top-vy-12),up=below<180&&above>below,room=up?above:below;
+    const width=Math.min(Math.max(240,a.width),vw-16);
+    pop.style.width=width+'px';pop.style.minWidth='0';pop.style.maxWidth=(vw-16)+'px';pop.style.maxHeight=Math.max(0,Math.min(320,room,vh-16))+'px';
+    pop.style.left=Math.max(vx+8,Math.min(a.left,vx+vw-width-8))+'px';pop.style.bottom='auto';pop.style.top='0px';
+    const h=pop.getBoundingClientRect().height;pop.style.top=Math.max(vy+8,Math.min(up?a.top-h-7:a.bottom+7,vy+vh-h-8))+'px';
+  };
+  btn.onclick=e=>{e.stopPropagation();if(msd.classList.contains('open')){close();return;}activeMultiSelect?.close();if(!msd.isConnected)return;msd.classList.add('open');btn.setAttribute('aria-expanded','true');pop.classList.add('msd-portal-v50');document.body.append(pop);activeMultiSelect={node:msd,pop,close,position};position();if(searchBox&&!searchBox.hidden)setTimeout(()=>{if(msd.isConnected&&msd.classList.contains('open'))searchBox.focus({preventScroll:true});},0);};
+  const enter=()=>clearTimeout(leaveTimer),leave=e=>{if(e.pointerType==='mouse'&&msd.classList.contains('open')&&!owns(e.relatedTarget))leaveTimer=setTimeout(()=>close(),200);};
+  for(const n of [msd,pop]){n.addEventListener('pointerenter',enter);n.addEventListener('pointerleave',leave);n.addEventListener('keydown',e=>{if(e.key==='Escape'){e.stopPropagation();btn.focus({preventScroll:true});close();}});n.addEventListener('focusout',e=>{if(e.relatedTarget&&!owns(e.relatedTarget)&&msd.classList.contains('open'))close();});}
   msd.append(btn,pop); container.append(msd);
   return { rebuild:(newOptions,newSelected)=>{ options=newOptions; if(newSelected){ const copy=newSelected.slice();selected.length=0; selected.push(...copy); } buildPop(); renderLabel(); } };
 }
 if(!window.__msdDocClick){ window.__msdDocClick=true;
-  document.addEventListener('click',e=>{if(activeMultiSelect&&!activeMultiSelect.node.contains(e.target))activeMultiSelect.close();}); }
+  document.addEventListener('click',e=>{if(activeMultiSelect&&!activeMultiSelect.node.contains(e.target)&&!activeMultiSelect.pop?.contains(e.target))activeMultiSelect.close();}); }
 
 function fillFilters(){
   multiSelectDropdown($('#f-year'),
@@ -2150,6 +2159,7 @@ function salesIntegrityDetailV23(){const {box}=opsModal('Pemeriksaan konsistensi
 function renderConsistencyNoticeV23(){document.querySelectorAll('.consistency-notice-v23').forEach(e=>e.remove());if(S.demo)return;const host=$('#filters');if(!host)return;const issues=S.ready?salesIntegrityV23():[],conflicts=mappingConflictsV23(),warnings=S.readWarnings||[];if(!issues.length&&!conflicts.length&&!S.lastError&&!warnings.length)return;const box=el('div',{class:'note warn consistency-notice-v23',role:'status',style:'flex:1 1 100%;margin:0'},el('b',{},S.lastError?'Pemuatan data belum berhasil':'Konsistensi sumber perlu diperiksa'),el('div',{},S.lastError?'Data terbaru belum berhasil dimuat. '+S.lastError:issues.length+' perbedaan rincian · '+conflicts.length+' pemetaan tidak selaras'+(warnings.length?' · '+warnings.length+' sumber tambahan gagal dimuat':'')),el('button',{class:'btn sm',onclick:salesIntegrityDetailV23},'Lihat pemeriksaan'));if(warnings.length)box.append(el('details',{},el('summary',{},'Sumber tambahan belum terbaca'),...warnings.map(message=>el('p',{},message))));host.append(box);}
 function renderMappingNotice(){document.querySelectorAll('.sales-mapping-notice').forEach(e=>e.remove());if(!S.ready||S.demo||!S.unmapped?.length||S.page==='set')return;const page=$('#filters');if(!page)return;const count=S.unmapped.length,total=S.unmapped.reduce((n,r)=>n+N(r.total_amount),0),box=el('div',{class:'note warn sales-mapping-notice',role:'status',style:'display:flex;align-items:center;gap:12px;flex-wrap:wrap;flex:1 1 100%;margin:0'},el('div',{style:'flex:1;min-width:180px'},el('b',{},count+' Sales Type perlu dipetakan'),el('div',{},'Nilai '+String(compact(total))+' dari seluruh data upload belum masuk perhitungan sales. Pilih klasifikasinya di Pengaturan.')),el('button',{class:'btn sm',onclick:()=>{go('set');requestAnimationFrame(()=>$('#sales-type-pending')?.scrollIntoView({block:'start',behavior:'smooth'}));}},'Buka pemetaan'));page.append(box);}
 function render(){
+  activeMultiSelect?.close();
   parkFilters();renderConsistencyNoticeV23();
   if(S.page==='pricelist'){renderPriceListV24();return;}
   if(S.page==='members'){renderMembersV27();return;}
@@ -4551,7 +4561,7 @@ function enhanceTable(tbl){
 }
 let _enhT=null;
 function enhanceAll(){for(const node of TABLE_LAYOUT_NODES)if(!node.isConnected){TABLE_LAYOUT_OBSERVER?.unobserve?.(node);TABLE_LAYOUT_NODES.delete(node);}document.querySelectorAll('.page.on table:not([data-enh])').forEach(tbl=>{if(!tbl.closest('.tw')){const wrap=el('div',{class:'tw'});tbl.before(wrap);wrap.append(tbl);}enhanceTable(tbl);}); enhanceGrids(); }
-new MutationObserver(()=>{ clearTimeout(_enhT); _enhT=setTimeout(enhanceAll,50); })
+new MutationObserver(records=>{if(!records.some(r=>[...r.addedNodes].some(n=>n.nodeType===1&&(n.matches('table:not([data-enh]),.grid:not([data-cenh])')||n.querySelector('table:not([data-enh]),.grid:not([data-cenh])')))))return;clearTimeout(_enhT);_enhT=setTimeout(enhanceAll,20);})
   .observe(document.getElementById('main'),{childList:true,subtree:true});
 
 /* round 13 (visual fidelity): sama seperti bakeSvgPaint() di atas untuk grafik, warna/gaya pill/chip/
@@ -7002,15 +7012,16 @@ setInterval(masterRevisionCheck,45000);window.addEventListener('focus',masterRev
 <script src="member-ui-v27.js?v=37"></script>
 <script src="commercial-v28.js?v=49"></script>
 <script src="member-monthly-v37.js?v=38"></script>
-<script src="commercial-v38.js?v=49"></script>
+<script src="commercial-v38.js?v=50"></script>
 <script src="member-analytics-v39.js?v=49"></script>
-<script src="table-csv-v39.js?v=40"></script>
+<script src="table-csv-v39.js?v=50"></script>
 <script src="member-profiling-moka-v40.js?v=49"></script>
-<script src="tables-v40.js?v=40"></script>
+<script src="tables-v40.js?v=50"></script>
 <script src="ai-agent-v41.js?v=41"></script>
 <script src="egress-v44.js?v=45"></script>
-<script src="sssg-mtd-v49.js?v=49"></script>
+<script src="sssg-mtd-v49.js?v=50"></script>
 <script src="member-data-v49.js?v=49"></script>
 <script src="png-export-v49.js?v=49"></script>
+<script src="navigation-layout-v50.js?v=50"></script>
 </body>
 </html>

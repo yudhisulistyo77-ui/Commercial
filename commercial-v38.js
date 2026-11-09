@@ -13,10 +13,13 @@
   };
  }
  let width=window.innerWidth,resizeTimer;window.addEventListener('resize',()=>{if(window.innerWidth===width)return;width=window.innerWidth;clearTimeout(resizeTimer);resizeTimer=setTimeout(()=>{if(S.ready||S.demo)render()},220)});
+ // Index the monthly facts once per fetched array, avoiding full scans per row.
+ let factsIdentity=null;const factsByPeriod=new Map();
+ function periodFacts(sid,year,month){if(factsIdentity!==X.brandFacts){factsIdentity=X.brandFacts;factsByPeriod.clear();for(const r of X.brandFacts||[]){const key=Number(r.store_id)+'|'+Number(r.year)+'|'+Number(r.month);if(!factsByPeriod.has(key))factsByPeriod.set(key,[]);factsByPeriod.get(key).push(r);}}return factsByPeriod.get(Number(sid)+'|'+Number(year)+'|'+Number(month))||[];}
  const oldStoreBrand=storeHasProductBrand;storeHasProductBrand=function(sid,brands){return (X.brandFacts||[]).some(r=>Number(r.store_id)===Number(sid)&&brands.includes(r.brand))||oldStoreBrand(sid,brands)};
  const oldRow=brandSalesRow;brandSalesRow=function(input){
   const brands=activeProductBrands();if(!brands.length||!X.brandFacts)return oldRow(input);
-  const r=input._source||input,rows=X.brandFacts.filter(x=>Number(x.store_id)===Number(r.store_id)&&Number(x.year)===Number(r.year)&&Number(x.month)===Number(r.month));
+  const r=input._source||input,rows=periodFacts(r.store_id,r.year,r.month);
   if(!rows.length)return {...oldRow(input),total_sales:null,sales_komersial:null,sales_user:null};
   const selected=rows.filter(x=>brands.includes(x.brand)),sales=selected.reduce((s,x)=>s+Number(x.sales||0),0),targets=scopedRowTargets(r,brands);
   return {...r,_source:r,total_sales:sales,sales_komersial:null,sales_user:null,sales_komersial_tigalapan:null,sales_user_tigalapan:null,sales_user_mamu:null,target_komersial:targets.kom,target_user:targets.user,target_total:targets.total,gap_sales:targets.total==null?null:sales-targets.total,achiev_total:targets.total>0?sales/targets.total:null};
@@ -27,16 +30,17 @@
  async function readBrandFacts(){X.brandFacts=await masterRpc('commercial_brand_monthly_v38',{p_menu:S.page,p_stores:null});for(const row of X.brandFacts)if(row.brand&&!S.brandStores.some(r=>Number(r.store_id)===Number(row.store_id)&&canonicalProductBrand(r.brand)===row.brand))S.brandStores.push({store_id:row.store_id,brand:row.brand});fillFilters()}
  const oldLoad=loadAll;loadAll=async function(){X.brandLoading=true;X.brandError=null;try{const result=await oldLoad.apply(this,arguments);X.brandFacts=null;if(S.key&&!S.demo&&MASTER.verified&&brandPages.includes(S.page)){try{await readBrandFacts()}catch(e){X.brandError=e.message}}return result}finally{X.brandLoading=false;render()}};
  const oldRender=render;render=function(){if(S.ready&&S.key&&!S.demo&&MASTER.verified&&brandPages.includes(S.page)&&X.brandFacts===null&&!X.brandLoading&&!X.brandError){X.brandLoading=true;readBrandFacts().catch(e=>X.brandError=e.message).finally(()=>{X.brandLoading=false;render()})}if(window.COMMERCIAL_LOGIN_REQUIRED_V38&&!MASTER.verified){login();return}const result=oldRender.apply(this,arguments);requestAnimationFrame(()=>{
-  const page=document.querySelector('.page.on');if(!page)return;responsiveLabels(page);
+  const page=document.querySelector('.page.on');if(!page)return;
   if(activeProductBrands().length&&['dash','sales','h2h','brand','top','item'].includes(S.page)&&!page.querySelector('[data-brand-source-v38]')){
    const unknown=(X.brandFacts||[]).filter(r=>!r.brand&&Number(r.year)===Number(S.year)).reduce((s,r)=>s+Number(r.rows_count||0),0);
    page.querySelector('.phead')?.after(el('p',{class:'note'+(unknown||!X.brandFacts?' warn':''),'data-brand-source-v38':''},X.brandFacts?'Filter brand produk memakai Item Sales yang dicocokkan ke brand Item Library per SKU/nama unik. Total tanpa filter tetap sumber Sales Type.'+(unknown?' '+int(unknown)+' baris item belum memiliki brand terverifikasi; hasil filter belum lengkap.':''):'Data brand belum tersedia: '+(X.brandError||'muat ulang setelah sinkron library')));
   }
  });return result};
- function responsiveLabels(root){for(const table of root.querySelectorAll('table')){const heads=[...(table.tHead?.rows[0]?.cells||[])].map(h=>h.textContent.trim());table.dataset.mobileCards='true';for(const body of [...table.tBodies,...(table.tFoot?[table.tFoot]:[])])for(const row of body.rows)for(const [i,cell]of [...row.cells].entries())if(cell.colSpan===1)cell.dataset.label=heads[i]||'';
+ const labelDone=new WeakSet();
+ function responsiveLabels(root){for(const table of root.matches?.('table')?[root]:root.querySelectorAll('table')){if(labelDone.has(table))continue;labelDone.add(table);const heads=[...(table.tHead?.rows[0]?.cells||[])].map(h=>h.textContent.trim());table.dataset.mobileCards='true';for(const body of [...table.tBodies,...(table.tFoot?[table.tFoot]:[])])for(const row of body.rows)for(const [i,cell]of [...row.cells].entries())if(cell.colSpan===1){const label=heads[i]||'';if(cell.dataset.label!==label)cell.dataset.label=label;}
  const wrap=table.closest('.tw');if(wrap&&!wrap.querySelector('[data-mobile-sort-v38]')){const select=opsSelect(heads.map((h,i)=>[i,h]),0,{'aria-label':'Kolom urutan tabel'}),button=el('button',{type:'button',class:'btn sm',onclick:()=>{const th=table.tHead?.rows[0]?.cells[+select.value];const control=th?.querySelector('button');if(control)control.click();else th?.click()}},'Urutkan ↕');wrap.prepend(el('div',{'data-mobile-sort-v38':'','data-export-control':'',class:'mobile-sort-v38'},select,button));}
  }}
- let labelFrame=null;const labelObserver=new MutationObserver(()=>{if(labelFrame)return;labelFrame=requestAnimationFrame(()=>{labelFrame=null;const page=document.querySelector('.page.on');if(page)responsiveLabels(page);document.querySelectorAll('.modal .box').forEach(box=>responsiveLabels(box))})});labelObserver.observe(document.body,{subtree:true,childList:true});
+ let labelFrame=null;const dirtyLabels=new Set();const labelObserver=new MutationObserver(records=>{for(const r of records){const target=r.target.nodeType===1?r.target:r.target.parentElement,table=target?.closest('table');if(table){labelDone.delete(table);dirtyLabels.add(table);}for(const n of r.addedNodes)if(n.nodeType===1){if(n.matches('table'))dirtyLabels.add(n);n.querySelectorAll('table').forEach(t=>dirtyLabels.add(t));}}if(!dirtyLabels.size||labelFrame)return;labelFrame=requestAnimationFrame(()=>{labelFrame=null;for(const t of dirtyLabels)if(t.isConnected&&(t.closest('.page.on')||t.closest('.modal')))responsiveLabels(t);dirtyLabels.clear();});});labelObserver.observe(document.body,{subtree:true,childList:true});
  const oldEnhance=enhanceAll;enhanceAll=function(){oldEnhance.apply(this,arguments);const page=document.querySelector('.page.on');if(page)responsiveLabels(page)};
  // Keep monthly transactions as the main member dataset, and retain historical
  // profiling only as an explicit reference; no name-based customer joins.
