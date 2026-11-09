@@ -1,0 +1,40 @@
+name: Periksa Koneksi API Member
+on:
+  workflow_dispatch:
+    inputs:
+      outlet:
+        description: Nama outlet persis di Moka (kosong = satu outlet dalam cakupan akses)
+        required: false
+        default: ''
+      outlets:
+        description: Cakupan outlet dari Edge Function (jangan ubah untuk pengguna terbatas)
+        required: false
+        default: ''
+permissions:
+  contents: read
+concurrency:
+  group: moka-member-check
+  cancel-in-progress: false
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Periksa sumber tanpa mengubah database
+        env:
+          MOKA_ACCESS_TOKEN: ${{ secrets.MOKA_ACCESS_TOKEN }}
+          AUDIT_OUTLET: ${{ inputs.outlet }}
+          ONLY_OUTLETS: ${{ inputs.outlets }}
+          SYNC_MODE: live
+        run: python3 moka_member_check_v46.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: moka-member-check
+          path: moka-member-check/source-schema.json
+          if-no-files-found: warn
+          retention-days: 3
