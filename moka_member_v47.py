@@ -84,7 +84,7 @@ class CustomerService:
                 return json.loads(raw,parse_float=Decimal)
         except urllib.error.HTTPError as e:
             detail=('token ditolak atau tidak berlaku' if e.code==401 else 'permintaan ditolak Moka; batas ukuran, izin, sesi atau pembatasan layanan perlu diperiksa' if e.code==403 else 'permintaan sumber gagal')
-            raise MemberSourceError(f'Customer Service HTTP {e.code} [{context}]: {detail}. Tidak ada data Member parsial ditulis.') from None
+            raise MemberSourceError(f'Customer Service HTTP {e.code} [{context}]: {detail}. Data analisis Member utama belum diganti.') from None
         except MemberSourceError:raise
         except Exception as e:raise MemberSourceError(f'Customer Service gagal [{context}] ({type(e).__name__}); data tidak ditulis.') from None
     def cursor_pages(self,path,params,body):
