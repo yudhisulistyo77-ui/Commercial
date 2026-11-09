@@ -142,6 +142,67 @@ def rows_for_scope(payments, sid, customers, tz):
     return rows, extra
 
 
+ITEM_CHUNK = 5000
+
+
+def item_rows(payments, tz):
+    """Baris item per nota bercustomer (V51). Bundel: baris COMPONENT dilewati (nilai ada di BUNDLE).
+    Refund: nilai refund resmi dibagi ke baris sesuai refunded_quantity, qty negatif."""
+    out, seen_ref = [], set()
+    for p in payments:
+        cid = str(p.get('customer_id') or '').strip()
+        if not cid or cid == '0':
+            continue
+        try:
+            tid = str(uuid.UUID(str(p['id'])))
+        except (ValueError, KeyError):
+            continue
+        lines = [c for c in p.get('checkouts') or []
+                 if not c.get('is_deleted') and str(c.get('item_type') or '').upper() != 'COMPONENT'
+                 and (c.get('item_name') or '').strip()]
+        if not lines:
+            continue
+        sale_date = datetime.fromisoformat(str(p['created_at']).replace('Z', '+00:00')).astimezone(tz).date().isoformat()
+        base = {'transaction_id': tid, 'customer_key': 'MOKA:' + cid, 'sale_date': sale_date}
+        if not p.get('is_refunded'):
+            for i, c in enumerate(lines):
+                out.append({**base, 'line_no': i, 'item_name': c['item_name'].strip(),
+                            'variant_name': (c.get('item_variant_name') or '').strip(),
+                            'category_name': (c.get('category_name') or '').strip(),
+                            'qty': float(c.get('quantity') or 0), 'net': round(float(c.get('net_sales') or 0), 2)})
+            continue
+        value = refund_value(p, seen_ref)
+        if not value:
+            continue
+        w = [(c, float(c.get('net_sales') or 0) * float(c.get('refunded_quantity') or 0) / float(c['quantity'])
+              if c.get('quantity') else 0.0) for c in lines]
+        if sum(x for _, x in w) <= 0:
+            w = [(c, float(c.get('net_sales') or 0)) for c in lines]
+        total = sum(x for _, x in w)
+        if total <= 0:
+            continue
+        for i, (c, x) in enumerate(w):
+            if x <= 0:
+                continue
+            qty = float(c.get('refunded_quantity') or 0) or float(c.get('quantity') or 0)
+            out.append({**base, 'line_no': i, 'item_name': c['item_name'].strip(),
+                        'variant_name': (c.get('item_variant_name') or '').strip(),
+                        'category_name': (c.get('category_name') or '').strip(),
+                        'qty': -qty, 'net': -round(value * x / total, 2)})
+    return out
+
+
+def write_items(db, sid, d1, d2, rows):
+    """Item ditulis per potongan; potongan pertama mengosongkan cakupan toko+tanggal lebih dulu."""
+    if not rows:
+        db.rpc('commercial_member_items_replace_v51', {'p_store_id': sid, 'p_from': d1.isoformat(),
+                                                       'p_to': d2.isoformat(), 'p_rows': [], 'p_reset': True})
+        return
+    for at in range(0, len(rows), ITEM_CHUNK):
+        db.rpc('commercial_member_items_replace_v51', {'p_store_id': sid, 'p_from': d1.isoformat(), 'p_to': d2.isoformat(),
+                                                       'p_rows': rows[at:at + ITEM_CHUNK], 'p_reset': at == 0})
+
+
 def sync(db, mapped, stores, aliases, periods, tz, writing=True, progress=None, api=None):
     log = (lambda m: print(m, flush=True))
     api = api or OfficialMoka(os.environ.get('MOKA_ACCESS_TOKEN'))
@@ -154,7 +215,7 @@ def sync(db, mapped, stores, aliases, periods, tz, writing=True, progress=None, 
         raise MemberSourceError('Customer List resmi kosong; data Member lama dipertahankan.')
     log(f'Member V50: {len(custs):,} customer terdaftar.'.replace(',', '.'))
     now = datetime.now(tz)
-    total_rows, total_profiles, done, failures, skipped = 0, set(), 0, [], 0
+    total_rows, total_profiles, done, failures, skipped, item_warn = 0, set(), 0, [], 0, []
     for _, _, d1, d2 in periods:
         since = datetime(d1.year, d1.month, d1.day, tzinfo=tz)
         until = min(datetime(d2.year, d2.month, d2.day, tzinfo=tz) + timedelta(days=1) - timedelta(seconds=1), now)
@@ -181,10 +242,15 @@ def sync(db, mapped, stores, aliases, periods, tz, writing=True, progress=None, 
                     log(f'Member V50: {label} — tidak ada nota bercustomer, dilewati.')
                     continue
                 scope = [{'store_id': int(sid), 'date_from': d1.isoformat(), 'date_to': d2.isoformat()}]
+                items = item_rows(pays, tz)
                 if writing:
                     db.rpc('commercial_member_replace_v47', {'p_scopes': scope, 'p_profiles': profs, 'p_rows': rows, 'p_complete': True})
+                    try:
+                        write_items(db, int(sid), d1, d2, items)
+                    except Exception as e:  # SQL item V51 belum dipasang: nota tetap tersimpan
+                        item_warn.append(f'{label}: {str(getattr(e, "body", "") or e)[:160]}')
                 total_rows += len(rows); total_profiles |= keys; done += 1
-                log(f'Member V50: {label} — {len(rows)} nota/refund, {len(keys)} customer'
+                log(f'Member V50: {label} — {len(rows)} nota/refund, {len(keys)} customer, {len(items)} baris item'
                     + ('' if writing else ' (uji coba, tidak ditulis)'))
             except MemberSourceError:
                 raise
@@ -192,6 +258,9 @@ def sync(db, mapped, stores, aliases, periods, tz, writing=True, progress=None, 
                 msg = str(getattr(e, 'body', '') or e)[:220]
                 failures.append(f'{label}: {msg}')
                 log(f'Member V50: {label} — GAGAL: {msg}')
+    if item_warn:
+        log(f'Member V51: item per member belum tersimpan untuk {len(item_warn)} cakupan '
+            f'(jalankan MEMBER-SSSG-V51.sql): {item_warn[0]}')
     if failures:
         raise MemberSourceError(f'{len(failures)} cakupan Member gagal ({"; ".join(failures[:3])}). '
                                 f'{done} cakupan lain tersimpan.')

@@ -48,16 +48,28 @@ function freeze(original,clone){
   if(o instanceof HTMLImageElement&&o.currentSrc){c.src=o.currentSrc;c.removeAttribute('srcset');}
  });return {originals:a,copies:b};
 }
-function readableTotals(clone){
- for(const td of clone.querySelectorAll('tfoot th,tfoot td,tr.tot th,tr.tot td')){
-  td.style.setProperty('background','#e9eef6','important');td.style.setProperty('color','#152238','important');td.style.setProperty('font-weight','700','important');
-  for(const n of [td,...td.querySelectorAll('*')]){n.style.setProperty('color','#152238','important');n.style.setProperty('-webkit-text-fill-color','#152238','important');n.style.setProperty('opacity','1','important');n.style.setProperty('visibility','visible','important');n.style.setProperty('text-shadow','none','important');n.style.setProperty('background-image','none','important');if(n!==td)n.style.setProperty('background-color','transparent','important');n.style.setProperty('background-clip','border-box','important');}
+function rgb(v){const m=String(v||'').match(/rgba?\(([^)]+)\)/);if(!m)return null;const p=m[1].split(/[ ,\/]+/).filter(Boolean).map(Number);return p.length>=3?{r:p[0],g:p[1],b:p[2],a:p.length>3?p[3]:1}:null;}
+function lum(c){const f=x=>{x/=255;return x<=.03928?x/12.92:Math.pow((x+.055)/1.055,2.4)};return .2126*f(c.r)+.7152*f(c.g)+.0722*f(c.b);}
+function effectiveBg(n){for(let x=n;x;x=x.parentElement){const c=rgb(getComputedStyle(x).backgroundColor);if(c&&c.a>.5)return c;}return {r:255,g:255,b:255,a:1};}
+/* Baris TOTAL mengikuti warna di layar (header, latar, merah/hijau, pil). Hanya teks yang
+   hampir tidak terbaca (kontras < 3) yang dipertegas; tidak ada warna yang diseragamkan. */
+function readableTotals(clone,originals,copies){
+ const index=new Map(copies.map((c,i)=>[c,i]));
+ for(const td of clone.querySelectorAll('tfoot th,tfoot td,tr.tot th,tr.tot td,thead th')){
+  const o=originals[index.get(td)];if(!o)continue;const bg=effectiveBg(o);
+  if(!rgb(getComputedStyle(o).backgroundColor)||rgb(getComputedStyle(o).backgroundColor).a<=.5)td.style.setProperty('background-color',`rgb(${bg.r},${bg.g},${bg.b})`,'important');
+  for(const n of [td,...td.querySelectorAll('*')]){const src=originals[index.get(n)];if(!src)continue;const fg=rgb(getComputedStyle(src).color);if(!fg)continue;
+   const L1=lum(fg),L2=lum(effectiveBg(src)),ratio=(Math.max(L1,L2)+.05)/(Math.min(L1,L2)+.05);
+   if(ratio<3){const dark=L2>.4;n.style.setProperty('color',dark?'#152238':'#ffffff','important');n.style.setProperty('-webkit-text-fill-color',dark?'#152238':'#ffffff','important');}
+   n.style.setProperty('opacity','1','important');n.style.setProperty('visibility','visible','important');}
  }
 }
+function resolveNode(node){if(node?.isConnected)return node;const title=node?.querySelector?.(':scope>header h2')?.textContent?.trim();if(!title)return node;const fresh=[...document.querySelectorAll('.page.on .card')].find(c=>c.querySelector(':scope>header h2')?.textContent?.trim()===title);return fresh||node;}
 X.prepare=function(node){
+ node=resolveNode(node);
  if(!node?.isConnected)throw Error('Bagian data sudah berubah. Tunggu filter selesai, lalu salin kembali.');
  const clone=node.cloneNode(true),tables=node.matches('table')?[node]:[...node.querySelectorAll('table')],copies=clone.matches('table')?[clone]:[...clone.querySelectorAll('table')],geometry=tables.map(tableGeometry),caption=context(node);
- freeze(node,clone);
+ const frozen=freeze(node,clone);
  for(const n of [clone,...clone.querySelectorAll('.page.on')])n.classList.remove('on');copies.forEach(t=>{t.dataset.enh='png-v49';t.dataset.csvV39='1'});
  // Remove filtered/hidden nodes structurally so export CSS cannot revive them.
  clone.querySelectorAll('[data-png-remove-v49]').forEach(n=>n.remove());clone.querySelectorAll(REMOVE).forEach(n=>n.remove());
@@ -77,9 +89,11 @@ X.prepare=function(node){
   table.removeAttribute('data-mobile-cards');table.querySelectorAll(':scope > colgroup').forEach(n=>n.remove());const cols=document.createElement('colgroup');widths.forEach(w=>{const c=document.createElement('col');c.style.width=w+'px';cols.append(c)});table.prepend(cols);
   table.style.setProperty('display','table','important');table.style.setProperty('table-layout','fixed','important');table.style.setProperty('width',width+'px','important');table.style.setProperty('min-width',width+'px','important');table.style.setProperty('max-width','none','important');
   for(const [sel,display]of [['thead','table-header-group'],['tbody','table-row-group'],['tfoot','table-footer-group'],['tr','table-row'],['th,td','table-cell']])table.querySelectorAll(sel).forEach(n=>{n.style.setProperty('display',display,'important');n.style.setProperty('width','auto','important');n.style.setProperty('min-width','0','important');n.style.setProperty('max-width','none','important');n.style.setProperty('height','auto','important');n.style.setProperty('margin','0','important');n.style.setProperty('border-radius','0','important');n.style.setProperty('visibility','visible','important');});
-  table.querySelectorAll('th,td').forEach(n=>{n.style.setProperty('padding','9px 10px','important');n.style.setProperty('white-space','normal','important');n.style.setProperty('overflow-wrap','anywhere','important');});
+  /* padding, font & white-space tetap mengikuti tabel di layar (sudah dibekukan oleh freeze) */
  });
- readableTotals(clone);
+ /* html2canvas tidak menggambar teks blok di dalam pil inline-flex (mis. total GROWTH). */
+ clone.querySelectorAll('td .pill,th .pill').forEach(p=>{const kids=[...p.children];if(!kids.length||p.querySelector('svg,img,canvas'))return;const inner=kids.find(k=>k.textContent.trim())||kids[0];const color=inner.style.getPropertyValue('color');const text=p.textContent.replace(/\s+/g,' ').trim();p.textContent=text;if(color)p.style.setProperty('color',color,'important');p.style.setProperty('font-weight','700','important');});
+ readableTotals(clone,frozen.originals,frozen.copies);
  const root=document.createElement('div');root.className='png-export-v49';root.style.cssText='display:flow-root;box-sizing:border-box;padding:0;margin:0;color:#152238;background:#fff;';
  clone.style.setProperty('height','auto','important');clone.style.setProperty('min-height','0','important');clone.style.setProperty('max-height','none','important');clone.style.setProperty('margin','0','important');clone.style.setProperty('position','relative','important');clone.style.setProperty('transform','none','important');clone.style.setProperty('box-sizing','border-box','important');
  const rect=node.getBoundingClientRect(),graphicWidth=Math.max(0,...[...node.querySelectorAll('svg,canvas,.number-chart-scroll')].map(n=>Math.max(n.scrollWidth,n.getBoundingClientRect().width)+Math.max(0,n.getBoundingClientRect().left-rect.left)+20));
@@ -100,7 +114,7 @@ window.capturePngOfNode=async function(node){
  }finally{host.remove();}
 };
 window.copyNodeAsImage=async function(node,button){
- const old=button?.textContent;try{if(button){button.disabled=true;button.textContent='Menyiapkan…';}const blob=await capturePngOfNode(node);
+ const old=button?.textContent;try{node=resolveNode(node);if(button){button.disabled=true;button.textContent='Menyiapkan…';}const blob=await capturePngOfNode(node);
   try{await navigator.clipboard.write([new ClipboardItem({'image/png':blob})]);toast('PNG disalin sesuai filter dan urutan yang tampil.');}
   catch{const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='data-sesuai-filter.png';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);toast('PNG diunduh karena clipboard gambar tidak tersedia.');}
  }catch(e){toast('Gagal membuat PNG: '+e.message);}finally{if(button){button.disabled=false;button.textContent=old;}}
@@ -110,7 +124,7 @@ const css=document.createElement('style');css.id='png-layout-v49';css.textConten
 .png-export-v49 header{display:flex!important;align-items:center!important;flex-wrap:wrap!important;gap:6px!important}.png-export-v49 header .png-context-v49{flex:1 0 100%}
 .png-export-v49 .page{display:block!important;width:100%!important}.png-export-v49 .tw{width:100%!important;max-width:none!important;max-height:none!important;min-height:0!important;height:auto!important;overflow:visible!important}
 .page.on table tr[hidden],.page.on table tr.hidden,.page.on table tr[style*="display: none"],.page.on table tr[style*="display:none"]{display:none!important}
-.page.on{width:100%;min-width:0;max-width:100%;box-sizing:border-box}.page.on .card,.page.on .grid>*{min-width:0;box-sizing:border-box}.page.on .card>header{flex-wrap:wrap;align-items:center;gap:8px}.page.on .card>header h2{min-width:0;overflow-wrap:anywhere}.page.on .tbar{flex-wrap:wrap;min-width:0}.page.on .tw{max-width:100%;box-sizing:border-box;overscroll-behavior:contain}.page.on .chart{min-width:0;max-width:100%}
+.page.on{width:100%;min-width:0;max-width:100%;box-sizing:border-box}.page.on .card,.page.on .grid>*{min-width:0;box-sizing:border-box}.page.on .card>header{flex-wrap:wrap;align-items:center;gap:8px}.page.on .card>header h2{min-width:0;overflow-wrap:anywhere}.page.on .tbar{flex-wrap:wrap;min-width:0}.page.on .tw{max-width:100%;box-sizing:border-box;overscroll-behavior-x:contain;overscroll-behavior-y:auto}.page.on .chart{min-width:0;max-width:100%}
 @media(max-width:760px){.page.on .card{padding:12px!important}.page.on .tbar .tsearch{width:100%;flex:1 1 100%;max-width:none}.page.on .grid{gap:10px!important}.page.on .card>header .btn{max-width:100%;white-space:normal}.page.on .card>header>.sub{flex:1 0 100%}.page.on .pagefilters{gap:8px!important}}
 `;document.head.append(css);
 })();
