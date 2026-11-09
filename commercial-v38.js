@@ -42,7 +42,7 @@
  // profiling only as an explicit reference; no name-based customer joins.
  renderMembersV27=async function(){
   parkFilters();MEM27.view='monthly';const p=$('#p-members');p.replaceChildren(el('div',{class:'phead'},el('div',{},el('h1',{},'Member'),el('p',{},'Analisis Member · tren bulanan/tahunan · repeat · cabang · detail Customer List'))));
-  const actions=el('div',{class:'rowline',style:'margin-bottom:12px'}),host=el('div');p.append(actions,host);
+  const actions=el('div',{class:'rowline',style:'margin-bottom:12px'}),host=el('div');p.append(actions);if(typeof memberDataGuideV49==='function')p.append(memberDataGuideV49(host));p.append(host);
   actions.append(el('button',{class:'btn',onclick:()=>renderMembersV27()},'Muat ulang'),el('button',{class:'btn','data-export-control':'',onclick:e=>copyNodeAsImage(p,e.currentTarget,host)},'Salin PNG analisis')); 
 
   if(!MASTER.verified){host.append(masterLoginForm(async()=>renderMembersV27()).node);return}await V28.renderMemberTransactions(host);

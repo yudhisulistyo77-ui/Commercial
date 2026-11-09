@@ -311,7 +311,7 @@ td.sticky1{overflow-wrap:break-word}
     const periodBox=el('div',{class:'v28-tools'},opsField('Periode',selection),opsField('Tahun',year),opsField('Bulan',month),opsField('Dari',from),opsField('Sampai',to));
     const syncFields=()=>{year.closest('.fld').hidden=selection.value==='range';month.closest('.fld').hidden=selection.value!=='month';from.closest('.fld').hidden=to.closest('.fld').hidden=selection.value!=='range';};selection.onchange=syncFields;syncFields();
     const library=el('input',{type:'checkbox'});library.checked=priceOnly;library.disabled=priceOnly;if(priceOnly)periodBox.hidden=true;
-    const componentInputs=[['sales_type','Sales Type'],['item_sales','Item Sales'],['transactions','Transaksi'],['members','Member · Customer List / Purchase History']].map(([key,label])=>{const input=el('input',{type:'checkbox','data-sync-component':key});input.checked=key!=='members';if(key==='members')label+=' · Customer Service';return {key,label,input}});
+    const componentInputs=[['sales_type','Sales Type'],['item_sales','Item Sales'],['transactions','Transaksi'],['members','Member · Customer List / Purchase History']].map(([key,label])=>{const input=el('input',{type:'checkbox','data-sync-component':key});input.checked=options.memberOnly===true?key==='members':key!=='members';if(key==='members')label+=' · Customer Service';return {key,label,input}});
     const componentBox=el('div',{class:'v28-tools'},...componentInputs.map(c=>el('label',{class:'rowline'},c.input,c.label)));componentBox.hidden=priceOnly;
     const skip=el('input',{type:'checkbox'});skip.checked=true;const force=el('input',{type:'checkbox'});
     const err = el('p', { class: 'note warn', role: 'alert' });
