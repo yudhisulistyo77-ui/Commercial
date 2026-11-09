@@ -17,16 +17,46 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self,req,fp,code,msg,headers,newurl):
         return None
 
+# Only approved structural/property names are exposed. Unknown keys may be names/IDs.
+FIELDS.update("result results response payload content body list records rows entries meta metadata pagination paging page_info pageInfo total totalCount totalPages count offset limit has_more hasMore next_page nextPage code msg status_code statusCode error_code errorCode error_type errorType error_message errorMessage error_description errorDescription response_code responseCode response_message responseMessage full_name first_name last_name mobile customerId customerName phoneNumber createdAt updatedAt".split())
+WRAPPERS=('data','result','response','payload','content','body')
+
 def shape(value,depth=0):
-    if depth>5:return 'nested'
+    if depth>8:return 'nested_limit'
     if isinstance(value,dict):
-        result={k:shape(v,depth+1) for k,v in value.items() if k in FIELDS}
-        unknown=sum(k not in FIELDS for k in value)
-        if unknown:result['unlisted_field_count']=unknown
+        result={};unknown=[]
+        for index,(key,child) in enumerate(value.items()):
+            if index>=64:
+                result['remaining_field_count']=len(value)-index;break
+            if key in FIELDS:result[key]=shape(child,depth+1)
+            else:unknown.append(shape(child,depth+1))
+        if unknown:
+            result['unlisted_field_count']=sum(k not in FIELDS for k in value)
+            # Position-only descriptors retain nested structure without exposing dynamic keys.
+            result['unlisted_field_shapes']=unknown
         return result
     if isinstance(value,list):return {'type':'array','returned_count':len(value),'first_row_fields':shape(value[0],depth+1) if value else None}
     if value is None:return 'null'
     return type(value).__name__
+
+def application_signals(body):
+    """Categorical diagnostics only, never copy arbitrary message/code values."""
+    nodes=[body];statuses=set();auth=False;failure=False;at=0
+    while at<len(nodes) and at<32:
+        node=nodes[at];at+=1
+        if not isinstance(node,dict):continue
+        for key in WRAPPERS:
+            if isinstance(node.get(key),dict):nodes.append(node[key])
+        if node.get('success') is False:failure=True
+        for key in ('code','status','status_code','statusCode','error_code','errorCode','response_code','responseCode'):
+            value=node.get(key)
+            if type(value) is int and 100<=value<=599:statuses.add(value)
+            elif isinstance(value,str) and re.fullmatch(r'[1-5][0-9]{2}',value.strip()):statuses.add(int(value.strip()))
+        for key in ('code','error','error_type','errorType','error_code','errorCode','message','msg','error_message','errorMessage','error_description','errorDescription','response_message','responseMessage'):
+            value=node.get(key)
+            if isinstance(value,str) and len(value)<2048:
+                auth=auth or bool(re.search(r'\bunauthori[sz]ed\b|\bunauthenticated\b|\bforbidden\b|invalid[_ ](?:access[_ ])?token|(?:access[_ ])?token[_ ](?:expired|invalid)|expired[_ ]token|authentication[_ ](?:required|failed)',value,re.IGNORECASE))
+    return {'body_status_codes':sorted(statuses),'auth_error_indicated':auth or bool(statuses & {401,403}),'success_false':failure}
 
 def safe_url(path,params):
     if not path.startswith('/customer/') or path.startswith('//'):raise ValueError('Path sumber tidak valid')
@@ -50,7 +80,7 @@ def request(token,path,params,opener=None):
             raw=response.read(MAX_BYTES+1)
             if len(raw)>MAX_BYTES:return {'status':'response_too_large','body_saved':False},None
             body=json.loads(raw)
-            return {'status':response.status,'schema':shape(body),'body_saved':False},body
+            return {'status':response.status,'schema':shape(body),'application_signals':application_signals(body),'body_saved':False},body
     except urllib.error.HTTPError as e:return {'status':e.code,'body_saved':False},None
     except Exception as e:
         outcome={'status':'request_failed','error_type':type(e).__name__,'timeout_seconds':30,'body_saved':False}
@@ -86,6 +116,8 @@ def history_checks(body,customer_id):
 def classification(results):
     statuses=[r['result']['status'] for r in results]
     if any(s in (401,403) for s in statuses):return 'ACCESS_OR_SCOPE_NEEDS_REVIEW'
+    if any(r['result'].get('application_signals',{}).get('auth_error_indicated') for r in results):return 'SOURCE_REPORTED_AUTH_ERROR'
+    if any(r['result'].get('application_signals',{}).get('success_false') for r in results):return 'SOURCE_REPORTED_FAILURE'
     if len(results)==2 and all(s==200 for s in statuses) and results[-1].get('checks',{}).get('recognized_history_array'):return 'SOURCE_REACHABLE_TEST_SYNC_REQUIRED'
     if 404 in statuses:return 'SOURCE_ROUTE_NOT_FOUND'
     return 'SCHEMA_OR_ACCESS_NEEDS_REVIEW'
@@ -94,14 +126,18 @@ def inspect(token,outlet=None,fetch=request):
     # Global Customer List schema only. No customer values or IDs enter the report.
     outcome,body=fetch(token,'/customer/v3/customers',{'type':'ALL','page':1,'per_page':1})
     results=[{'kind':'customer_list','path_template':'/customer/v3/customers?type=ALL','result':outcome}]
-    cid=first_customer_id(body)
+    signals=application_signals(body)
+    outcome.setdefault('application_signals',signals)
+    cid=None if signals['auth_error_indicated'] or signals['success_false'] else first_customer_id(body)
     if cid:
         outcome,body=fetch(token,'/customer/v1/customers/'+urllib.parse.quote(cid,safe='')+'/payments',{'page':1,'per_page':1})
         results.append({'kind':'purchase_history','path_template':'/customer/v1/customers/{customer_id}/payments','result':outcome,'checks':history_checks(body,cid)})
-    return {'version':'47.1','read_only':True,'contains_customer_values':False,'contains_tokens':False,
+    result_class=classification(results)
+    next_step=('Jalankan sinkron uji Member saja satu bulan; sampel bukan bukti semua halaman lengkap.' if result_class=='SOURCE_REACHABLE_TEST_SYNC_REQUIRED' else 'Kirim laporan struktur ini untuk review. Jangan jalankan sinkron Member sebelum sumber dan struktur terverifikasi.')
+    return {'version':'47.2','schema_reporting_version':2,'http_200_proves_member_data':False,'read_only':True,'contains_customer_values':False,'contains_tokens':False,
       'source_routes_observed_in_browser':True,'production_sync_tested':False,'writes_performed':False,
-      'customer_sample_available':bool(cid),'classification':classification(results),'results':results,
-      'next_step':'Jika sumber terjangkau, jalankan Member saja satu bulan. Pemeriksaan ini hanya sampel, bukan bukti kelengkapan semua halaman.'}
+      'customer_sample_available':bool(cid),'classification':result_class,'results':results,
+      'next_step':next_step}
 
 def choose_outlet(outlets,requested='',allowed=''):
     allow={norm(x) for x in allowed.split(',') if x.strip()}
@@ -122,6 +158,6 @@ def main():
     (output/'source-schema.json').write_text(json.dumps(report,ensure_ascii=False,indent=2))
     print('Pemeriksaan read-only selesai:',report['classification'])
     for row in report['results']:print(row['kind'],row['path_template'],'HTTP',row['result']['status'])
-    print('Belum melakukan sinkron Member. Unduh artifact moka-member-check; HTTP 200 hanya membuktikan akses sampel, belum kelengkapan sinkron.')
+    print('Belum melakukan sinkron Member. Unduh artifact moka-member-check; HTTP 200 belum membuktikan respons berisi data Member. Lihat klasifikasi dan struktur pada artifact.')
 
 if __name__=='__main__':main()
