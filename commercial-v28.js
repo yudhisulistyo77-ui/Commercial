@@ -270,7 +270,7 @@ td.sticky1{overflow-wrap:break-word}
         el('div', { class: 'app-update-caption' }, a ? 'Sinkron sedang berjalan…' : 'Cakupan data tersimpan'),
         el('div', { class: 'big', role: 'status' }, r?.data_until ? 'Data s.d. '+throughLabel(r) : 'Cakupan data belum terkonfirmasi'),
         el('div', { class: 'meta' }, meta),
-        r?.message?.includes('Member belum diperbarui') ? el('div',{class:'meta',style:'color:#b67a00'},'Member belum diperbarui: koneksi Customer List Purchase History belum terverifikasi; data lama dipertahankan.') : null,
+        r?.message?.includes('Member gagal:') ? el('div',{class:'meta',style:'color:#b67a00'},r.message) : null,
         V28.lastError ? el('div', { class: 'meta', style: 'color:#df4255' }, 'Sinkron terakhir gagal: ' + String(V28.lastError.message || '').slice(0, 160)) : null,
         V28.tableMissing ? el('div', { class: 'meta', style: 'color:#b67a00' }, 'Status sinkron tidak terbaca. Periksa akses database dan PANDUAN-MOKA-V35.md.') : null,
         manual ? el('div', { class: 'meta' }, 'Tanggal manual: ' + fmtD.format(new Date(manual + 'T12:00:00Z'))) : null),
@@ -311,13 +311,13 @@ td.sticky1{overflow-wrap:break-word}
     const periodBox=el('div',{class:'v28-tools'},opsField('Periode',selection),opsField('Tahun',year),opsField('Bulan',month),opsField('Dari',from),opsField('Sampai',to));
     const syncFields=()=>{year.closest('.fld').hidden=selection.value==='range';month.closest('.fld').hidden=selection.value!=='month';from.closest('.fld').hidden=to.closest('.fld').hidden=selection.value!=='range';};selection.onchange=syncFields;syncFields();
     const library=el('input',{type:'checkbox'});library.checked=priceOnly;library.disabled=priceOnly;if(priceOnly)periodBox.hidden=true;
-    const componentInputs=[['sales_type','Sales Type'],['item_sales','Item Sales'],['transactions','Transaksi'],['members','Member · Customer List / Purchase History']].map(([key,label])=>{const input=el('input',{type:'checkbox','data-sync-component':key});input.checked=key!=='members';input.disabled=key==='members';if(key==='members')label+=' · belum terhubung';return {key,label,input}});
+    const componentInputs=[['sales_type','Sales Type'],['item_sales','Item Sales'],['transactions','Transaksi'],['members','Member · Customer List / Purchase History']].map(([key,label])=>{const input=el('input',{type:'checkbox','data-sync-component':key});input.checked=key!=='members';if(key==='members')label+=' · Customer Service';return {key,label,input}});
     const componentBox=el('div',{class:'v28-tools'},...componentInputs.map(c=>el('label',{class:'rowline'},c.input,c.label)));componentBox.hidden=priceOnly;
     const skip=el('input',{type:'checkbox'});skip.checked=true;const force=el('input',{type:'checkbox'});
     const err = el('p', { class: 'note warn', role: 'alert' });
     const start = el('button', { class: 'btn pri v28-sync-btn', type: 'button' }, syncIcon(), ' Mulai sinkron');
     box.append(
-      periodBox,componentBox,!priceOnly?el('p',{class:'note warn'},'Member memerlukan koneksi Customer List → Purchase History yang terverifikasi. Pilihan Member belum aktif sampai koneksi tersebut tersedia. Data Member lama tetap tersimpan; sinkron komponen lain tetap tersedia.'):null,el('label',{class:'rowline'},library,'Item Library / Price List · manual saja'),
+      periodBox,componentBox,!priceOnly?el('p',{class:'note warn'},'Member memakai Customer List dan Purchase History. Uji Member saja untuk satu bulan terlebih dahulu. Akses token dan kelengkapan pagination diperiksa sebelum penulisan; seluruh histori sumber mungkin perlu dibaca meskipun periode tampilan dipersempit.'):null,el('label',{class:'rowline'},library,'Item Library / Price List · manual saja'),
       el('label',{class:'rowline'},skip,'Lewati periode lama yang sudah lengkap dan cocok'),el('label',{class:'rowline'},force,'Tarik ulang paksa (abaikan checkpoint)'),el('p',{class:'sub'},'Data terbaru tetap diperbarui. Data lama dicek ke ringkasan Moka dan sidik isi database; validasi detail diulang paling lambat 7 hari. Library & Price List tetap diperiksa jika dipilih.'),
       el('p', {}, priceOnly?'Mengambil Item Library Moka langsung menjadi Price List. Katalog mentah tidak disimpan; harga identik tidak ditulis ulang. DC dilewati.':'Menarik transaksi Moka sampai menit ini untuk toko yang diizinkan. Lama proses mengikuti periode dan jumlah toko.'),
       el('label', { class: 'rowline' }, prev, 'Mode bulan penuh s.d. kemarin (gunakan Tarik ulang paksa untuk mengabaikan checkpoint)'),

@@ -72,8 +72,6 @@ if '|' in RAW_MODE and not selection: raise ValueError('Pilih komponen sinkron.'
 COMPONENTS = set(filter(None, selection.split(','))) if selection else {'sales_type','item_sales','transactions'}
 if not COMPONENTS <= {'sales_type','item_sales','transactions','members'}:
     raise ValueError('Komponen sinkron tidak dikenal.')
-if 'members' in COMPONENTS and MODE != 'price':
-    raise SystemExit('MEMBER_NOT_CONFIGURED: koneksi Customer List Purchase History belum tersedia. Tidak ada data Member yang diubah. Pilih sales_type,item_sales,transactions untuk sinkron yang sudah tersedia.')
 SALES_COMPONENTS = COMPONENTS & {'sales_type','item_sales','transactions'}
 PRICE_ONLY = MODE == "price" or env("SKIP_SALES", "0") == "1"
 if MODE == "price": MODE = "live"
@@ -868,6 +866,18 @@ def main():
                 f"  {res['seconds']:>6}s {'; '.join(res['errors'])}" + (" · dilewati: "+res['skip_reason'] if res.get('skip_reason') else ''))
             results.append(res)
 
+    member_result=None;member_error=None
+    if 'members' in COMPONENTS and not PRICE_ONLY:
+        try:
+            from moka_member_v47 import sync as sync_members,MemberSourceError
+            log('Member: membaca Customer List dan seluruh halaman Purchase History…')
+            member_result=sync_members(db,mapped,stores,aliases,periods,TZ,writing,
+                progress=lambda done,total,receipts:log(f'Member: {done}/{total} customer diperiksa; {receipts} nota pada cakupan pilihan.'))
+            log(f"Member API OK: {member_result['customers']} customer; {member_result['receipts']} nota/refund; {member_result['http_requests']} request sumber.")
+        except Exception as e:
+            member_error=str(e) if type(e).__name__=='MemberSourceError' else 'Pemrosesan Member gagal ('+type(e).__name__+'); periksa SQL V47 dan konfigurasi sumber.'
+            warn(member_error)
+
     if INCLUDE_LIBRARY:
         log("Penjualan selesai diproses. Memproses Item Library langsung menjadi Price List (tanpa menyimpan katalog mentah)…")
         for o, sid in mapped:
@@ -913,17 +923,17 @@ def main():
     bad = sales_bad + library_bad + price_errors
     for r in wr:
         warn(f"{r['outlet']} {r['year']}-{r['month']:02d}: {r['errors'][0]}")
-    member_blocked = 'members' in COMPONENTS and not PRICE_ONLY
+    member_blocked = bool(member_error)
     if member_blocked:
-        warn('Member TIDAK diperbarui: endpoint Customer List Purchase History belum terverifikasi. Data lama dipertahankan; tidak memakai feed pembayaran umum sebagai pengganti.')
+        warn('Member belum selesai: '+member_error)
     actual_end=max(p[3] for p in periods)
     data_until = now if MODE == "live" and actual_end == now.date() else datetime(actual_end.year, actual_end.month, actual_end.day, 23, 59, 59, tzinfo=TZ)
     library_ok = [r for r in item_results if r["status"] == "OK"]
-    run_update(status="error" if bad or rebuild_error or (member_blocked and not SALES_COMPONENTS) else "warn" if wr or member_blocked else "done",
-               finished_at=datetime.now(timezone.utc).isoformat(), data_until=data_until.isoformat() if results else None,
-               data_through=actual_end.isoformat() if results and not sales_bad else None, components=sorted(COMPONENTS) if not PRICE_ONLY else ["price_list"],
-               stores_ok=len(ok)+len(unchanged), stores_warn=len(wr), stores_error=len(bad),
-               message=(("Member belum diperbarui: sumber Customer List Purchase History belum terverifikasi. " if member_blocked else "") + f"Komponen {','.join(sorted(COMPONENTS))}; Sales: {len(ok)} OK, {len(unchanged)} dilewati (sesuai), {len(wr)} menunggu Moka, {len(sales_bad)} gagal; Price List {price_saved} diperbarui, {price_same} sama, {price_skipped} dilewati, {len(price_errors)} gagal; library: {len(library_ok)} OK, {len(library_bad)} gagal" + ("; hitung ulang sales gagal: " + rebuild_error[:160] if rebuild_error else "") +
+    run_update(status="error" if bad or rebuild_error or (member_blocked and not SALES_COMPONENTS) else "warn" if wr or member_blocked or (member_result and member_result["status"]=="WARN") else "done",
+               finished_at=datetime.now(timezone.utc).isoformat(), data_until=data_until.isoformat() if results or member_result else None,
+               data_through=actual_end.isoformat() if (results or member_result) and not sales_bad and not member_error and not (member_result and member_result["status"]!="OK") else None, components=sorted(COMPONENTS) if not PRICE_ONLY else ["price_list"],
+               stores_ok=len(ok)+len(unchanged)+(len(mapped) if member_result and not results else 0), stores_warn=len(wr), stores_error=len(bad),
+               message=(("Member gagal: "+member_error+". " if member_error else (f"Member API OK: {member_result['customers']} customer, {member_result['receipts']} nota/refund, {member_result['unmapped_payments']} pembayaran belum terpetakan. " if member_result else "")) + f"Komponen {','.join(sorted(COMPONENTS))}; Sales: {len(ok)} OK, {len(unchanged)} dilewati (sesuai), {len(wr)} menunggu Moka, {len(sales_bad)} gagal; Price List {price_saved} diperbarui, {price_same} sama, {price_skipped} dilewati, {len(price_errors)} gagal; library: {len(library_ok)} OK, {len(library_bad)} gagal" + ("; hitung ulang sales gagal: " + rebuild_error[:160] if rebuild_error else "") +
                         (f" · library {len([r for r in item_results if r['status'] == 'OK'])} toko" if item_results else "") +
                         ("; " + "; ".join(f"{r['outlet']}: {r['errors'][0][:120]}" for r in bad[:3]) if bad else ""))[:900])
 
@@ -937,7 +947,8 @@ def main():
 
     if STEP_SUMMARY:
         with open(STEP_SUMMARY, "a", encoding="utf-8") as fh:
-            if member_blocked: fh.write("**Member belum diperbarui: sumber Customer List Purchase History belum terverifikasi; data lama dipertahankan.**\n\n")
+            if member_error: fh.write("**Member gagal:** "+member_error+"\n\n")
+            elif member_result: fh.write(f"**Member API OK:** {member_result['customers']} customer, {member_result['receipts']} nota/refund.\n\n")
             fh.write(f"### Sinkron Moka {MODE.upper()} {'(uji coba)' if DRY_RUN else ''} — data s.d. {until_txt}\n\n")
             fh.write("| Toko | Bulan | Net Sales | Transaksi | Sales Type | Item | Status |\n|---|---|---:|---:|---:|---:|---|\n")
             for r in sorted(results, key=lambda r: (r["year"], r["month"], r["outlet"])):
@@ -957,7 +968,7 @@ def main():
             if unm:
                 fh.write(f"\n**Sales Type belum termapping:** {', '.join(unm)} — atur di Pengaturan → Pemetaan Sales Type.\n")
     log(f"Selesai: sales {len(ok)} OK, {len(unchanged)} dilewati, {len(wr)} WARN, {len(sales_bad)} gagal; library {len(library_ok)} OK, {len(library_bad)} gagal; Price List {price_saved} diperbarui, {price_same} sama, {price_skipped} dilewati, {len(price_errors)} gagal")
-    if bad or rebuild_error or (member_blocked and not SALES_COMPONENTS):
+    if bad or rebuild_error or member_error:
         sys.exit(1)
 
 
