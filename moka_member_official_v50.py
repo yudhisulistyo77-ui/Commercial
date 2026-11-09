@@ -214,6 +214,15 @@ def sync(db, mapped, stores, aliases, periods, tz, writing=True, progress=None, 
     if not custs:
         raise MemberSourceError('Customer List resmi kosong; data Member lama dipertahankan.')
     log(f'Member V50: {len(custs):,} customer terdaftar.'.replace(',', '.'))
+    if writing and db is not None:
+        # V51: seluruh Customer List disimpan (juga yang belum bertransaksi) agar semua member bisa dicari.
+        profs_all = [profile(c) for c in custs.values()]
+        try:
+            for at in range(0, len(profs_all), 5000):
+                db.rpc('commercial_member_customers_upsert_v51', {'p_profiles': profs_all[at:at + 5000]})
+            log(f'Member V51: {len(profs_all):,} profil Customer List tersimpan.'.replace(',', '.'))
+        except Exception as e:
+            log(f'Member V51: profil Customer List belum tersimpan (jalankan MEMBER-SSSG-V51.sql): {str(getattr(e, "body", "") or e)[:160]}')
     now = datetime.now(tz)
     total_rows, total_profiles, done, failures, skipped, item_warn = 0, set(), 0, [], 0, []
     for _, _, d1, d2 in periods:

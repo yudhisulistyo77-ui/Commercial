@@ -4,7 +4,7 @@ const money=v=>v==null?'—':compact(v),percentage=v=>v==null?'—':(v*100).toLo
 const complete=y=>V.data?.periods?.[y]?.complete===true;
 const z0=(x,y)=>x==null&&y==null?[null,null]:[x??0,y??0];const gap=(x,y)=>memberGapV29(...z0(x,y)); /* V51: selalu tampil dari data tersedia */
 const growth=(x,y)=>memberGrowthV30(...z0(x,y));
-function analyze(data){const asof=data.asof,pick=window.MEMBER_PICK_V51;if(pick?.keys?.size)data={...data,records:(data.records||[]).filter(r=>pick.keys.has(r.key))};return MEMBER_ENGINE.analyze(data,{year:V.year,compare:V.compare,calc:'source',month:V.month,asof,query:V.query,categories:V.categories,behaviors:V.behaviors,repeat_types:V.repeat?[V.repeat]:[],recency:V.recency})}
+function analyze(data){const asof=data.asof,pick=window.MEMBER_PICK_V51;if(pick?.active?.())data={...data,records:(data.records||[]).filter(r=>(!pick.keys.size||pick.keys.has(r.key))&&pick.sinceOk(r.since)&&pick.cityOk(r.city))};return MEMBER_ENGINE.analyze(data,{year:V.year,compare:V.compare,calc:'source',month:V.month,asof,query:V.query,categories:V.categories,behaviors:V.behaviors,repeat_types:V.repeat?[V.repeat]:[],recency:V.recency})}
 V.analyze=analyze;
 /* V51: Top/Low dipindah ke tab SSSG (acuan tahun, 10/20) agar tidak ganda di Ringkasan. */
 function renderData(host){
@@ -25,9 +25,9 @@ function renderData(host){
 async function show(host){
  const today=opsToday();if(!V.year){V.year=Number(S.year)||+today.slice(0,4);V.compare=V.year-1;V.to=V.year===+today.slice(0,4)?(today.slice(5)==='01-01'?'01-01':new Date(Date.parse(today+'T00:00Z')-864e5).toISOString().slice(5,10)):'12-31';V.month=Number(S.month)||+V.to.slice(0,2)}
  const epoch=++V.epoch;host.replaceChildren();if(V.view==='h2h'||V.view==='customers')V.view='sssg';const nav=el('div',{class:'rowline v40-tabs'});for(const [id,label]of [['summary','Ringkasan'],['sssg','SSSG'],['movement','Pergerakan bulanan & detail']])nav.append(el('button',{class:'btn'+(V.view===id?' pri':''),onclick:()=>{V.view=id;show(host)}},label));host.append(nav);
- if(window.MEMBER_PICK_V51)host.append(MEMBER_PICK_V51.picker(()=>{if(V.view==='summary'&&V.data&&host._paintV51)host._paintV51();else show(host)}));
- if(V.view==='sssg'){const area=el('div');host.append(area);await MEMBER_SSSG_V51.show(area);return}
- if(V.view==='movement'){const area=el('div');host.append(el('p',{class:'note'},'Pergerakan memakai Customer List → Purchase History Moka. Upload detail tersedia sebagai sumber manual terpisah.'),area);if(!['manual_detail','legacy_daily'].includes(MEMBER_ANALYTICS_V39.state.source))MEMBER_ANALYTICS_V39.state.source='customer_list';await MEMBER_ANALYTICS_V39.show(area);return}
+ if(window.MEMBER_PICK_V51)host.append(MEMBER_PICK_V51.picker(kind=>{if(kind!=='stores'&&V.view==='summary'&&V.data&&host._paintV51)host._paintV51();else show(host)}));
+ if(V.view==='sssg'){const area=el('div');host.append(area);await MEMBER_SSSG_V51.show(area,{repaint:()=>show(host)});return}
+ if(V.view==='movement'){const area=el('div');host.append(el('p',{class:'note'},'Pergerakan memakai Customer List → Purchase History Moka. Upload detail tersedia sebagai sumber manual terpisah.'),area);if(!['manual_detail','legacy_daily'].includes(MEMBER_ANALYTICS_V39.state.source))MEMBER_ANALYTICS_V39.state.source='customer_list';await MEMBER_ANALYTICS_V39.show(area);if(window.MEMBER_SSSG_V51?.directory){const dir=el('div');host.append(dir);MEMBER_SSSG_V51.directory(dir)}return}
  const year=opsInput(V.year,'number',{min:2002,max:2099,'aria-label':'Tahun evaluasi Moka'}),compare=opsInput(V.compare,'number',{min:2000,max:2098,'aria-label':'Tahun pembanding Moka'}),from=opsInput(V.year+'-'+V.from,'date',{'aria-label':'Awal rentang profiling Moka'}),to=opsInput(V.year+'-'+V.to,'date',{'aria-label':'Akhir rentang profiling Moka'}),month=opsSelect(MONTHS.map((m,i)=>[i+1,m]),V.month,{'aria-label':'Bulan frekuensi Moka'}),stores=el('div');
  multiSelectDropdown(stores,S.stores.map(s=>({value:String(s.id),label:s.name})),storeList(),arr=>{S.store=arr.join(',')},{allLabel:'Semua cabang yang diizinkan'});
  year.onchange=()=>{const y=+year.value;for(const n of [from,to]){const md=n.value.slice(5),m=+md.slice(0,2),day=Math.min(+md.slice(3),new Date(Date.UTC(y,m,0)).getUTCDate());n.value=y+'-'+String(m).padStart(2,'0')+'-'+String(day).padStart(2,'0')}compare.value=y-1};

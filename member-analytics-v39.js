@@ -17,7 +17,7 @@ function analyze(data,options={}){
   c.stores=[...new Set(c.current.map(r=>r.store))];c.activeMonths=new Set(c.current.filter(r=>num(r.trx)>0).map(r=>r.month)).size;
  }
  const q=(options.query||'').trim().toLowerCase(),group=options.group||'all';
- const pick=window.MEMBER_PICK_V51,customers=[...all.values()].filter(c=>(!pick?.keys?.size||pick.keys.has(c.key))&&(!q||[c.name,c.key,c.city,c.phone,...c.stores].join(' ').toLowerCase().includes(q))&&(group==='all'||group==='b2b'&&c.b2b||group==='other'&&!c.b2b||group==='repeat'&&c.trx>=2||group==='single'&&c.trx===1||group==='inactive'&&c.trx===0&&c.priorTrx>0));
+ const pick=window.MEMBER_PICK_V51,customers=[...all.values()].filter(c=>(!pick?.keys?.size||pick.keys.has(c.key))&&(!pick?.sinceOk||pick.sinceOk(c.since))&&(!pick?.cityOk||pick.cityOk(c.city))&&(!q||[c.name,c.key,c.city,c.phone,...c.stores].join(' ').toLowerCase().includes(q))&&(group==='all'||group==='b2b'&&c.b2b||group==='other'&&!c.b2b||group==='repeat'&&c.trx>=2||group==='single'&&c.trx===1||group==='inactive'&&c.trx===0&&c.priorTrx>0));
  const active=customers.filter(c=>c.trx>0),repeat=active.filter(c=>c.trx>=2),prior=customers.filter(c=>c.priorTrx>0),retained=active.filter(c=>c.priorTrx>0),inactive=prior.filter(c=>c.trx===0),newToPeriod=active.filter(c=>!c.priorTrx);
  const selected=new Set(customers.map(c=>c.key)),rows=(data.records||[]).filter(r=>selected.has(r.customer_key));
  const complete=period=>{const a=(data.coverage||[]).filter(c=>c.period===period);return a.length===monthKeys(period==='current'?data.from:data.compare_from,period==='current'?data.to:data.compare_to).length&&a.length>0&&a.every(c=>num(c.expected)>0&&num(c.covered)===num(c.expected))};
