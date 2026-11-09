@@ -213,13 +213,15 @@ td.sticky1{overflow-wrap:break-word}
   };
 
   /* ------------------------------------------------ data sinkron Moka */
+  const throughDate=r=>r?.data_through||r?.data_until?.slice(0,10)||null;
+  const throughLabel=r=>throughDate(r)?fmtD.format(new Date(throughDate(r)+'T12:00:00Z')):'belum terkonfirmasi';
   async function loadRuns() {
     if (!S.key || S.demo) { V28.run = null; V28.active = null; return; }
     try {
       const rows = await DB.sel('moka_sync_runs?select=*&order=requested_at.desc&limit=20');
       V28.tableMissing = false;
       V28.run = rows.find(r => ['done', 'warn'].includes(r.status) && r.data_until) || null;
-      V28.libraryRun = rows.find(r => ['done', 'warn'].includes(r.status) && /library/i.test(r.message || '')) || null;
+      V28.libraryRun = rows.find(r => ['done', 'warn'].includes(r.status) && /library: [1-9]\d* OK/i.test(r.message || '')) || null;
       const act = rows.find(r => ['requested', 'running'].includes(r.status) && Date.now() - Date.parse(r.requested_at) < 245 * 60000);
       V28.active = act || null;
       V28.lastError = rows.find(r => r.status === 'error' && (!V28.run || Date.parse(r.requested_at) > Date.parse(V28.run.requested_at))) || null;
@@ -242,7 +244,7 @@ td.sticky1{overflow-wrap:break-word}
     bar.replaceChildren();
     if (!S.key || S.demo) return;
     const r = V28.run, a = V28.active;
-    const txt = a ? 'Sinkron Moka berjalan…' : r ? 'Moka: ' + ago(r.finished_at) : 'Moka: belum sinkron';
+    const txt = a ? 'Sinkron Moka berjalan…' : r?.data_until ? 'Moka: data s.d. '+throughLabel(r) : 'Moka: cakupan belum tercatat';
     bar.append(el('span', { class: 'pill v28-badge ' + (a ? 'neu' : r ? 'ok' : 'neu'), title: r ? 'Terakhir diperbarui ' + dt(r.finished_at) + (r.data_until ? ' · data s.d. ' + dt(r.data_until) : '') : 'Belum ada sinkron Moka', onclick: openSync }, txt));
     if (!viewOnly()) bar.append(el('button', { class: 'btn sm v28-sync-btn' + (a ? ' v28-spin' : ''), type: 'button', onclick: openSync, title: 'Tarik data Moka terbaru sampai menit ini' }, syncIcon(), a ? 'Sinkron…' : 'Sinkron Moka'));
     const u = currentUser();
@@ -256,17 +258,19 @@ td.sticky1{overflow-wrap:break-word}
     if (!S.key || S.demo) return origUpdateCard();
     const r = V28.run, a = V28.active;
     const icon = el('div', { class: 'app-update-icon', 'aria-hidden': 'true', html: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/><path d="M12 7v5l3 2"/></svg>' });
-    const until = r?.data_until ? 'Data penjualan s.d. ' + dt(r.data_until) : r ? 'Waktu data belum tercatat' : 'Belum ada sinkron penjualan';
-    const meta = [until, r ? (r.mode === 'live' ? 'sinkron manual (live)' : 'sinkron terjadwal') : null,
+    const until = r?.data_until ? 'Data pilihan s.d. ' + throughLabel(r) : r ? 'Waktu data belum tercatat' : 'Belum ada sinkron penjualan';
+    const meta = [until, r?.components ? 'Jenis: '+r.components.join(', ') : null,
       r && r.stores_ok != null ? r.stores_ok + ' toko OK' + (r.stores_warn ? ', ' + r.stores_warn + ' menunggu Moka' : '') + (r.stores_error ? ', ' + r.stores_error + ' gagal' : '') : null,
-      V28.libraryRun ? 'library diperbarui ' + dt(V28.libraryRun.finished_at) : null].filter(Boolean).join(' · ');
+      S.settings?.commercial_price_last_checked_v45 ? 'Price List terakhir dicek: '+dt(S.settings.commercial_price_last_checked_v45) : 'Price List: waktu pemeriksaan belum tercatat',
+      S.settings?.commercial_price_last_updated_v45 ? 'Harga terakhir berubah: '+dt(S.settings.commercial_price_last_updated_v45) : null].filter(Boolean).join(' · ');
     const manual = appDataUpdateDate();
     const node = el('section', { class: 'app-data-update v28-update', 'data-update-state': r ? 'today' : 'empty', 'data-v28-update': '' }, icon,
       el('div', {},
         el('div', { class: 'app-update-eyebrow' }, 'STATUS DATA · MOKA POS'),
-        el('div', { class: 'app-update-caption' }, a ? 'Sinkron sedang berjalan…' : 'Data terakhir diperbarui'),
-        el('div', { class: 'big', role: 'status' }, r ? dt(r.finished_at) : '—'),
+        el('div', { class: 'app-update-caption' }, a ? 'Sinkron sedang berjalan…' : 'Cakupan data tersimpan'),
+        el('div', { class: 'big', role: 'status' }, r?.data_until ? 'Data s.d. '+throughLabel(r) : 'Cakupan data belum terkonfirmasi'),
         el('div', { class: 'meta' }, meta),
+        r?.message?.includes('Member belum diperbarui') ? el('div',{class:'meta',style:'color:#b67a00'},'Member belum diperbarui: koneksi Customer List Purchase History belum terverifikasi; data lama dipertahankan.') : null,
         V28.lastError ? el('div', { class: 'meta', style: 'color:#df4255' }, 'Sinkron terakhir gagal: ' + String(V28.lastError.message || '').slice(0, 160)) : null,
         V28.tableMissing ? el('div', { class: 'meta', style: 'color:#b67a00' }, 'Status sinkron tidak terbaca. Periksa akses database dan PANDUAN-MOKA-V35.md.') : null,
         manual ? el('div', { class: 'meta' }, 'Tanggal manual: ' + fmtD.format(new Date(manual + 'T12:00:00Z'))) : null),
@@ -306,23 +310,27 @@ td.sticky1{overflow-wrap:break-word}
     const to=opsInput(todayWita(),'date',{'aria-label':'Tanggal akhir sinkron',max:todayWita()});
     const periodBox=el('div',{class:'v28-tools'},opsField('Periode',selection),opsField('Tahun',year),opsField('Bulan',month),opsField('Dari',from),opsField('Sampai',to));
     const syncFields=()=>{year.closest('.fld').hidden=selection.value==='range';month.closest('.fld').hidden=selection.value!=='month';from.closest('.fld').hidden=to.closest('.fld').hidden=selection.value!=='range';};selection.onchange=syncFields;syncFields();
-    const library=el('input',{type:'checkbox'});library.checked=true;library.disabled=priceOnly;if(priceOnly)periodBox.hidden=true;
+    const library=el('input',{type:'checkbox'});library.checked=priceOnly;library.disabled=priceOnly;if(priceOnly)periodBox.hidden=true;
+    const componentInputs=[['sales_type','Sales Type'],['item_sales','Item Sales'],['transactions','Transaksi'],['members','Member · Customer List / Purchase History']].map(([key,label])=>{const input=el('input',{type:'checkbox','data-sync-component':key});input.checked=true;return {key,label,input}});
+    const componentBox=el('div',{class:'v28-tools'},...componentInputs.map(c=>el('label',{class:'rowline'},c.input,c.label)));componentBox.hidden=priceOnly;
     const skip=el('input',{type:'checkbox'});skip.checked=true;const force=el('input',{type:'checkbox'});
     const err = el('p', { class: 'note warn', role: 'alert' });
     const start = el('button', { class: 'btn pri v28-sync-btn', type: 'button' }, syncIcon(), ' Mulai sinkron');
     box.append(
-      periodBox,el('label',{class:'rowline'},library,'Perbarui library item & Price List'),
+      periodBox,componentBox,!priceOnly?el('p',{class:'note warn'},'Member memerlukan koneksi Customer List → Purchase History yang terverifikasi. Saat ini Member belum dapat diperbarui; data lama dipertahankan dan proses akan melaporkan kendalanya.'):null,el('label',{class:'rowline'},library,'Item Library / Price List · manual saja'),
       el('label',{class:'rowline'},skip,'Lewati periode lama yang sudah lengkap dan cocok'),el('label',{class:'rowline'},force,'Tarik ulang paksa (abaikan checkpoint)'),el('p',{class:'sub'},'Data terbaru tetap diperbarui. Data lama dicek ke ringkasan Moka dan sidik isi database; validasi detail diulang paling lambat 7 hari. Library & Price List tetap diperiksa jika dipilih.'),
       el('p', {}, priceOnly?'Mengambil Item Library Moka langsung menjadi Price List. Katalog mentah tidak disimpan; harga identik tidak ditulis ulang. DC dilewati.':'Menarik transaksi Moka sampai menit ini untuk toko yang diizinkan. Lama proses mengikuti periode dan jumlah toko.'),
       el('label', { class: 'rowline' }, prev, 'Mode bulan penuh s.d. kemarin (gunakan Tarik ulang paksa untuk mengabaikan checkpoint)'),
-      el('p', { class: 'note' }, 'Terakhir: ' + (V28.run ? dt(V28.run.finished_at) + ' (' + ago(V28.run.finished_at) + ')' : 'belum ada') + '. Jadwal otomatis dikonfigurasi pukul 04:37 WITA; keberhasilannya mengikuti status proses terakhir.'),
+      el('p', { class: 'note' }, 'Cakupan data terakhir: ' + (V28.run ? throughLabel(V28.run) : 'belum ada') + '. Jadwal otomatis dikonfigurasi pukul 04:37 WITA; keberhasilannya mengikuti status proses terakhir.'),
       err, start);
     if(priceOnly){skip.closest('label').hidden=true;force.closest('label').hidden=true;prev.closest('label').hidden=true;}
     start.onclick = async () => {
       start.disabled = true; err.textContent = '';
       try {
         const y=Number(year.value),m=Number(month.value);
-        const request={mode:priceOnly?'price':prev.checked?'full':'live',include_library:library.checked,skip_unchanged:skip.checked,force_refresh:force.checked,months:'',date_from:'',date_to:''};
+        const selected=componentInputs.filter(c=>c.input.checked).map(c=>c.key);
+        if(!priceOnly&&!selected.length)throw Error('Pilih minimal satu jenis data. Gunakan menu Price List untuk update harga saja.');
+        const request={mode:priceOnly?'price':(prev.checked?'full':'live')+'|'+selected.join(','),include_library:library.checked,skip_unchanged:skip.checked,force_refresh:force.checked,months:'',date_from:'',date_to:''};
         if(!priceOnly&&selection.value==='range'){
           if(!/^\d{4}-\d{2}-\d{2}$/.test(from.value)||!/^\d{4}-\d{2}-\d{2}$/.test(to.value)||from.value>to.value||to.value>todayWita())throw Error('Rentang tanggal tidak valid.');
           request.date_from=from.value;request.date_to=to.value;
