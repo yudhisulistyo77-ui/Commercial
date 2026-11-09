@@ -69,9 +69,11 @@ LOCAL_TZ = timezone(timedelta(hours=float(env("LOCAL_TZ_OFFSET", "8"))))
 RAW_MODE = env("SYNC_MODE", "full").lower()
 MODE, _, selection = RAW_MODE.partition('|')
 if '|' in RAW_MODE and not selection: raise ValueError('Pilih komponen sinkron.')
-COMPONENTS = set(filter(None, selection.split(','))) if selection else {'sales_type','item_sales','transactions','members'}
+COMPONENTS = set(filter(None, selection.split(','))) if selection else {'sales_type','item_sales','transactions'}
 if not COMPONENTS <= {'sales_type','item_sales','transactions','members'}:
     raise ValueError('Komponen sinkron tidak dikenal.')
+if 'members' in COMPONENTS and MODE != 'price':
+    raise SystemExit('MEMBER_NOT_CONFIGURED: koneksi Customer List Purchase History belum tersedia. Tidak ada data Member yang diubah. Pilih sales_type,item_sales,transactions untuk sinkron yang sudah tersedia.')
 SALES_COMPONENTS = COMPONENTS & {'sales_type','item_sales','transactions'}
 PRICE_ONLY = MODE == "price" or env("SKIP_SALES", "0") == "1"
 if MODE == "price": MODE = "live"
