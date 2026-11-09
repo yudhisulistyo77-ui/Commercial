@@ -41,7 +41,7 @@ def envelope(body,kind):
     if isinstance(body,dict) and isinstance(body.get('data'),dict):nodes.append(body['data'])
     for node in reversed(nodes):
         if not isinstance(node,dict):continue
-        for key in (('data','customers') if kind=='customers' else ('data','payments')):
+        for key in (('results','data','customers') if kind=='customers' else ('data','payments')):
             if isinstance(node.get(key),list):
                 pages=node.get('total_pages',body.get('total_pages') if isinstance(body,dict) else None)
                 count=node.get('total_count',body.get('total_count') if isinstance(body,dict) else None)
@@ -51,6 +51,14 @@ def envelope(body,kind):
 def page_number(value,field):
     if isinstance(value,bool) or not isinstance(value,int) or value<0:raise MemberSourceError('Metadata pagination '+field+' tidak valid atau tidak tersedia.')
     return value
+
+def customer_cursor_page(body):
+    if not isinstance(body,dict) or not isinstance(body.get('results'),list) or 'next_cursor' not in body:
+        raise MemberSourceError('Struktur results/next_cursor Customer List berubah; data tidak ditulis.')
+    cursor=body['next_cursor']
+    if cursor is not None and (not isinstance(cursor,str) or len(cursor)>4096 or (cursor and not re.fullmatch(r'[!-~]+',cursor))):
+        raise MemberSourceError('Cursor Customer List tidak valid; data tidak ditulis.')
+    return body['results'],cursor or None
 
 class CustomerService:
     def __init__(self,token,transport=None,max_requests=30000):
@@ -72,10 +80,32 @@ class CustomerService:
             raise MemberSourceError('Customer Service HTTP '+str(e.code)+'. Data lama dipertahankan.') from None
         except MemberSourceError:raise
         except Exception as e:raise MemberSourceError('Permintaan Customer Service gagal ('+type(e).__name__+'); data tidak ditulis.') from None
+    def cursor_pages(self,path,params,body):
+        seen_ids=set();seen_cursors=set()
+        for _ in range(10000):
+            rows,cursor=customer_cursor_page(body)
+            if not rows and cursor:raise MemberSourceError('Halaman cursor kosong tetapi masih berlanjut; data tidak ditulis.')
+            for row in rows:
+                if not isinstance(row,dict):raise MemberSourceError('Baris Customer List tidak valid.')
+                key=identifier(row.get('customer_id',row.get('id')))
+                if key in seen_ids:raise MemberSourceError('Customer ID/halaman cursor berulang; data tidak ditulis.')
+                seen_ids.add(key)
+                if len(seen_ids)>100000:raise MemberSourceError('Lebih dari 100.000 customer; tidak menulis hasil parsial.')
+                yield row
+            if cursor is None:return
+            if cursor in seen_cursors:raise MemberSourceError('Cursor berulang; parameter kelanjutan belum diterima sumber. Data tidak ditulis.')
+            seen_cursors.add(cursor)
+            # Cursor is opaque. Encode the exact returned value; never decode/log it.
+            body=self.get(path,{**params,'per_page':100,'cursor':cursor})
+        raise MemberSourceError('Batas halaman cursor tercapai; data tidak ditulis.')
     def pages(self,path,params,kind):
+        first=self.get(path,{**params,'per_page':100,**({} if kind=='customers' else {'page':1})})
+        if kind=='customers' and isinstance(first,dict) and 'results' in first:
+            yield from self.cursor_pages(path,params,first)
+            return
         expected=None;total_pages=None;seen=set();received=0
         for page in range(1,10001):
-            body=self.get(path,{**params,'page':page,'per_page':100})
+            body=first if page==1 else self.get(path,{**params,'page':page,'per_page':100})
             rows,pages,count=envelope(body,kind)
             pages=page_number(pages,'total_pages');count=page_number(count,'total_count')
             if page==1:

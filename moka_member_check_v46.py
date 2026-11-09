@@ -7,7 +7,7 @@ import json, os, re, time, urllib.request, urllib.error, urllib.parse
 from datetime import datetime, timedelta
 from pathlib import Path
 from moka_sync import norm, LOCAL_TZ
-from moka_member_v47 import member_authorization, MemberSourceError
+from moka_member_v47 import member_authorization, MemberSourceError, customer_cursor_page, identifier
 
 BASE='https://service-goauth.mokapos.com'
 MAX_BYTES=2*1024*1024
@@ -18,7 +18,7 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 # Only approved structural/property names are exposed. Unknown keys may be names/IDs.
-FIELDS.update("result results response payload content body list records rows entries meta metadata pagination paging page_info pageInfo total totalCount totalPages count offset limit has_more hasMore next_page nextPage code msg status_code statusCode error_code errorCode error_type errorType error_message errorMessage error_description errorDescription response_code responseCode response_message responseMessage full_name first_name last_name mobile customerId customerName phoneNumber createdAt updatedAt".split())
+FIELDS.update("next_cursor cursor result results response payload content body list records rows entries meta metadata pagination paging page_info pageInfo total totalCount totalPages count offset limit has_more hasMore next_page nextPage code msg status_code statusCode error_code errorCode error_type errorType error_message errorMessage error_description errorDescription response_code responseCode response_message responseMessage full_name first_name last_name mobile customerId customerName phoneNumber createdAt updatedAt".split())
 WRAPPERS=('data','result','response','payload','content','body')
 
 def shape(value,depth=0):
@@ -118,25 +118,49 @@ def classification(results):
     if any(s in (401,403) for s in statuses):return 'ACCESS_OR_SCOPE_NEEDS_REVIEW'
     if any(r['result'].get('application_signals',{}).get('auth_error_indicated') for r in results):return 'SOURCE_REPORTED_AUTH_ERROR'
     if any(r['result'].get('application_signals',{}).get('success_false') for r in results):return 'SOURCE_REPORTED_FAILURE'
-    if len(results)==2 and all(s==200 for s in statuses) and results[-1].get('checks',{}).get('recognized_history_array'):return 'SOURCE_REACHABLE_TEST_SYNC_REQUIRED'
+    if any(r.get('checks',{}).get('continuation_valid') is False for r in results):return 'CURSOR_CONTINUATION_NEEDS_REVIEW'
+    history=next((r for r in results if r.get('kind')=='purchase_history'),None)
+    if history and all(s==200 for s in statuses) and history.get('checks',{}).get('recognized_history_array'):return 'SOURCE_REACHABLE_TEST_SYNC_REQUIRED'
     if 404 in statuses:return 'SOURCE_ROUTE_NOT_FOUND'
     return 'SCHEMA_OR_ACCESS_NEEDS_REVIEW'
 
 def inspect(token,outlet=None,fetch=request):
     # Global Customer List schema only. No customer values or IDs enter the report.
-    outcome,body=fetch(token,'/customer/v3/customers',{'type':'ALL','page':1,'per_page':1})
+    outcome,body=fetch(token,'/customer/v3/customers',{'type':'ALL','per_page':1})
     results=[{'kind':'customer_list','path_template':'/customer/v3/customers?type=ALL','result':outcome}]
     signals=application_signals(body)
     outcome.setdefault('application_signals',signals)
     cid=None if signals['auth_error_indicated'] or signals['success_false'] else first_customer_id(body)
-    if cid:
+    pagination={'style':'page_metadata','continuation_tested':False,'all_pages_verified':False}
+    continuation_ok=True
+    if isinstance(body,dict) and 'results' in body:
+        pagination['style']='results_next_cursor'
+        try:
+            rows,cursor=customer_cursor_page(body)
+            pagination['next_cursor_present']=cursor is not None
+            if cursor and cid:
+                outcome,second=fetch(token,'/customer/v3/customers',{'type':'ALL','per_page':1,'cursor':cursor})
+                outcome.setdefault('application_signals',application_signals(second))
+                pagination['continuation_tested']=True
+                try:
+                    next_rows,next_cursor=customer_cursor_page(second)
+                    first_ids={identifier(r.get('customer_id',r.get('id'))) for r in rows}
+                    next_ids=[identifier(r.get('customer_id',r.get('id'))) for r in next_rows]
+                    continuation_ok=outcome['status']==200 and not (set(next_ids)&first_ids) and len(next_ids)==len(set(next_ids)) and next_cursor!=cursor and bool(next_rows or next_cursor is None)
+                except Exception:continuation_ok=False
+                results.append({'kind':'customer_list_continuation','path_template':'/customer/v3/customers?type=ALL&cursor={next_cursor}',
+                  'result':outcome,'checks':{'continuation_valid':continuation_ok,'parameter':'cursor','all_pages_verified':False}})
+        except MemberSourceError:
+            continuation_ok=False;pagination['invalid_cursor_envelope']=True
+        if not continuation_ok:pagination['continuation_valid']=False
+    if cid and continuation_ok:
         outcome,body=fetch(token,'/customer/v1/customers/'+urllib.parse.quote(cid,safe='')+'/payments',{'page':1,'per_page':1})
         results.append({'kind':'purchase_history','path_template':'/customer/v1/customers/{customer_id}/payments','result':outcome,'checks':history_checks(body,cid)})
-    result_class=classification(results)
+    result_class=classification(results) if continuation_ok else ('ACCESS_OR_SCOPE_NEEDS_REVIEW' if any(r['result']['status'] in (401,403) for r in results) else 'CURSOR_CONTINUATION_NEEDS_REVIEW')
     next_step=('Jalankan sinkron uji Member saja satu bulan; sampel bukan bukti semua halaman lengkap.' if result_class=='SOURCE_REACHABLE_TEST_SYNC_REQUIRED' else 'Kirim laporan struktur ini untuk review. Jangan jalankan sinkron Member sebelum sumber dan struktur terverifikasi.')
-    return {'version':'47.2','schema_reporting_version':2,'http_200_proves_member_data':False,'read_only':True,'contains_customer_values':False,'contains_tokens':False,
+    return {'version':'47.3','schema_reporting_version':2,'http_200_proves_member_data':False,'read_only':True,'contains_customer_values':False,'contains_tokens':False,
       'source_routes_observed_in_browser':True,'production_sync_tested':False,'writes_performed':False,
-      'customer_sample_available':bool(cid),'classification':result_class,'results':results,
+      'customer_sample_available':bool(cid),'customer_pagination':pagination,'classification':result_class,'results':results,
       'next_step':next_step}
 
 def choose_outlet(outlets,requested='',allowed=''):
