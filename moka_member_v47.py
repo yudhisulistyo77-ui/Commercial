@@ -6,8 +6,9 @@ from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 
 BASE='https://service-goauth.mokapos.com'
-# Small batches; checker imports the same setting as the production worker.
-MEMBER_PAGE_SIZE=6
+# Customer List one-row requests have succeeded in the live diagnostic.
+CUSTOMER_PAGE_SIZE=1
+MEMBER_PAGE_SIZE=6  # Purchase History request size observed in Moka browser.
 class MemberSourceError(RuntimeError):pass
 def member_authorization(value):
     """Customer Service uses a raw authorization token as observed in the user's browser.
@@ -70,7 +71,8 @@ class CustomerService:
         if self.requests>self.max_requests:raise MemberSourceError('Batas permintaan Member tercapai; tidak menulis hasil parsial.')
         if not path.startswith('/customer/') or path.startswith('//'):raise MemberSourceError('Path Customer Service tidak diizinkan.')
         phase='Customer List' if path=='/customer/v3/customers' else 'Purchase History'
-        context=f'{phase}; halaman {self.page_index}; per_page {MEMBER_PAGE_SIZE}; permintaan {self.requests}'
+        size=CUSTOMER_PAGE_SIZE if phase=='Customer List' else MEMBER_PAGE_SIZE
+        context=f'{phase}; halaman {self.page_index}; per_page {size}; permintaan {self.requests}'
         if phase=='Purchase History' and self.customer_ordinal is not None:context+=f'; customer urutan {self.customer_ordinal}'
         url=BASE+path+'?'+urllib.parse.urlencode(params)
         if self.transport:return self.transport(path,params)
@@ -97,23 +99,25 @@ class CustomerService:
                 seen_ids.add(key)
                 if len(seen_ids)>100000:raise MemberSourceError('Lebih dari 100.000 customer; tidak menulis hasil parsial.')
                 yield row
+            if cursor_page%100==0:print(f'Member: Customer List {cursor_page} halaman, {len(seen_ids)} customer terbaca; belum menulis data.',flush=True)
             if cursor is None:return
             if cursor in seen_cursors:raise MemberSourceError('Cursor berulang; parameter kelanjutan belum diterima sumber. Data tidak ditulis.')
             seen_cursors.add(cursor)
             # Cursor is opaque. Encode the exact returned value; never decode/log it.
             self.page_index=cursor_page+1
-            body=self.get(path,{**params,'per_page':MEMBER_PAGE_SIZE,'cursor':cursor})
+            body=self.get(path,{**params,'per_page':CUSTOMER_PAGE_SIZE,'cursor':cursor})
         raise MemberSourceError('Batas halaman cursor tercapai; data tidak ditulis.')
     def pages(self,path,params,kind):
         self.page_index=1
-        first=self.get(path,{**params,'per_page':MEMBER_PAGE_SIZE,**({} if kind=='customers' else {'page':1})})
+        size=CUSTOMER_PAGE_SIZE if kind=='customers' else MEMBER_PAGE_SIZE
+        first=self.get(path,{**params,'per_page':size,**({} if kind=='customers' else {'page':1})})
         if kind=='customers' and isinstance(first,dict) and 'results' in first:
             yield from self.cursor_pages(path,params,first)
             return
         expected=None;total_pages=None;seen=set();received=0
         for page in range(1,10001):
             self.page_index=page
-            body=first if page==1 else self.get(path,{**params,'page':page,'per_page':MEMBER_PAGE_SIZE})
+            body=first if page==1 else self.get(path,{**params,'page':page,'per_page':size})
             rows,pages,count=envelope(body,kind)
             pages=page_number(pages,'total_pages');count=page_number(count,'total_count')
             if page==1:
