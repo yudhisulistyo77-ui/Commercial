@@ -7,7 +7,7 @@ import json, os, re, time, urllib.request, urllib.error, urllib.parse
 from datetime import datetime, timedelta
 from pathlib import Path
 from moka_sync import norm, LOCAL_TZ
-from moka_member_v47 import member_authorization, MemberSourceError, customer_cursor_page, identifier
+from moka_member_v47 import member_authorization, MemberSourceError, customer_cursor_page, identifier, MEMBER_PAGE_SIZE
 
 BASE='https://service-goauth.mokapos.com'
 MAX_BYTES=2*1024*1024
@@ -126,7 +126,7 @@ def classification(results):
 
 def inspect(token,outlet=None,fetch=request):
     # Global Customer List schema only. No customer values or IDs enter the report.
-    outcome,body=fetch(token,'/customer/v3/customers',{'type':'ALL','per_page':1})
+    outcome,body=fetch(token,'/customer/v3/customers',{'type':'ALL','per_page':MEMBER_PAGE_SIZE})
     results=[{'kind':'customer_list','path_template':'/customer/v3/customers?type=ALL','result':outcome}]
     signals=application_signals(body)
     outcome.setdefault('application_signals',signals)
@@ -139,7 +139,7 @@ def inspect(token,outlet=None,fetch=request):
             rows,cursor=customer_cursor_page(body)
             pagination['next_cursor_present']=cursor is not None
             if cursor and cid:
-                outcome,second=fetch(token,'/customer/v3/customers',{'type':'ALL','per_page':1,'cursor':cursor})
+                outcome,second=fetch(token,'/customer/v3/customers',{'type':'ALL','per_page':MEMBER_PAGE_SIZE,'cursor':cursor})
                 outcome.setdefault('application_signals',application_signals(second))
                 pagination['continuation_tested']=True
                 try:
@@ -154,13 +154,13 @@ def inspect(token,outlet=None,fetch=request):
             continuation_ok=False;pagination['invalid_cursor_envelope']=True
         if not continuation_ok:pagination['continuation_valid']=False
     if cid and continuation_ok:
-        outcome,body=fetch(token,'/customer/v1/customers/'+urllib.parse.quote(cid,safe='')+'/payments',{'page':1,'per_page':1})
+        outcome,body=fetch(token,'/customer/v1/customers/'+urllib.parse.quote(cid,safe='')+'/payments',{'page':1,'per_page':MEMBER_PAGE_SIZE})
         results.append({'kind':'purchase_history','path_template':'/customer/v1/customers/{customer_id}/payments','result':outcome,'checks':history_checks(body,cid)})
     result_class=classification(results) if continuation_ok else ('ACCESS_OR_SCOPE_NEEDS_REVIEW' if any(r['result']['status'] in (401,403) for r in results) else 'CURSOR_CONTINUATION_NEEDS_REVIEW')
     next_step=('Jalankan sinkron uji Member saja satu bulan; sampel bukan bukti semua halaman lengkap.' if result_class=='SOURCE_REACHABLE_TEST_SYNC_REQUIRED' else 'Kirim laporan struktur ini untuk review. Jangan jalankan sinkron Member sebelum sumber dan struktur terverifikasi.')
-    return {'version':'47.3','schema_reporting_version':2,'http_200_proves_member_data':False,'read_only':True,'contains_customer_values':False,'contains_tokens':False,
+    return {'version':'47.4','schema_reporting_version':2,'http_200_proves_member_data':False,'read_only':True,'contains_customer_values':False,'contains_tokens':False,
       'source_routes_observed_in_browser':True,'production_sync_tested':False,'writes_performed':False,
-      'customer_sample_available':bool(cid),'customer_pagination':pagination,'classification':result_class,'results':results,
+      'per_page':MEMBER_PAGE_SIZE,'customer_sample_available':bool(cid),'customer_pagination':pagination,'classification':result_class,'results':results,
       'next_step':next_step}
 
 def choose_outlet(outlets,requested='',allowed=''):

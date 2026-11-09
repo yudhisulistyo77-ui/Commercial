@@ -6,6 +6,8 @@ from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 
 BASE='https://service-goauth.mokapos.com'
+# Small batches; checker imports the same setting as the production worker.
+MEMBER_PAGE_SIZE=6
 class MemberSourceError(RuntimeError):pass
 def member_authorization(value):
     """Customer Service uses a raw authorization token as observed in the user's browser.
@@ -62,11 +64,14 @@ def customer_cursor_page(body):
 
 class CustomerService:
     def __init__(self,token,transport=None,max_requests=30000):
-        self.token=member_authorization(token);self.transport=transport;self.requests=0;self.max_requests=max_requests
+        self.token=member_authorization(token);self.transport=transport;self.requests=0;self.max_requests=max_requests;self.page_index=1;self.customer_ordinal=None
     def get(self,path,params):
         self.requests+=1
         if self.requests>self.max_requests:raise MemberSourceError('Batas permintaan Member tercapai; tidak menulis hasil parsial.')
         if not path.startswith('/customer/') or path.startswith('//'):raise MemberSourceError('Path Customer Service tidak diizinkan.')
+        phase='Customer List' if path=='/customer/v3/customers' else 'Purchase History'
+        context=f'{phase}; halaman {self.page_index}; per_page {MEMBER_PAGE_SIZE}; permintaan {self.requests}'
+        if phase=='Purchase History' and self.customer_ordinal is not None:context+=f'; customer urutan {self.customer_ordinal}'
         url=BASE+path+'?'+urllib.parse.urlencode(params)
         if self.transport:return self.transport(path,params)
         req=urllib.request.Request(url,headers={'Authorization':self.token,'Accept':'application/json','User-Agent':'commercial-dashboard-moka-sync'})
@@ -76,13 +81,13 @@ class CustomerService:
                 if len(raw)>8*1024*1024:raise MemberSourceError('Respons Member terlalu besar; tidak menulis data parsial.')
                 return json.loads(raw,parse_float=Decimal)
         except urllib.error.HTTPError as e:
-            if e.code in (401,403):raise MemberSourceError('Customer Service HTTP '+str(e.code)+': token Moka yang digunakan tidak diterima/izin belum cukup. Pasang MOKA_CUSTOMER_ACCESS_TOKEN yang berizin di GitHub Secrets; jangan kirim token ke chat.') from None
-            raise MemberSourceError('Customer Service HTTP '+str(e.code)+'. Data lama dipertahankan.') from None
+            detail=('token ditolak atau tidak berlaku' if e.code==401 else 'permintaan ditolak Moka; batas ukuran, izin, sesi atau pembatasan layanan perlu diperiksa' if e.code==403 else 'permintaan sumber gagal')
+            raise MemberSourceError(f'Customer Service HTTP {e.code} [{context}]: {detail}. Tidak ada data Member parsial ditulis.') from None
         except MemberSourceError:raise
-        except Exception as e:raise MemberSourceError('Permintaan Customer Service gagal ('+type(e).__name__+'); data tidak ditulis.') from None
+        except Exception as e:raise MemberSourceError(f'Customer Service gagal [{context}] ({type(e).__name__}); data tidak ditulis.') from None
     def cursor_pages(self,path,params,body):
         seen_ids=set();seen_cursors=set()
-        for _ in range(10000):
+        for cursor_page in range(1,10001):
             rows,cursor=customer_cursor_page(body)
             if not rows and cursor:raise MemberSourceError('Halaman cursor kosong tetapi masih berlanjut; data tidak ditulis.')
             for row in rows:
@@ -96,16 +101,19 @@ class CustomerService:
             if cursor in seen_cursors:raise MemberSourceError('Cursor berulang; parameter kelanjutan belum diterima sumber. Data tidak ditulis.')
             seen_cursors.add(cursor)
             # Cursor is opaque. Encode the exact returned value; never decode/log it.
-            body=self.get(path,{**params,'per_page':100,'cursor':cursor})
+            self.page_index=cursor_page+1
+            body=self.get(path,{**params,'per_page':MEMBER_PAGE_SIZE,'cursor':cursor})
         raise MemberSourceError('Batas halaman cursor tercapai; data tidak ditulis.')
     def pages(self,path,params,kind):
-        first=self.get(path,{**params,'per_page':100,**({} if kind=='customers' else {'page':1})})
+        self.page_index=1
+        first=self.get(path,{**params,'per_page':MEMBER_PAGE_SIZE,**({} if kind=='customers' else {'page':1})})
         if kind=='customers' and isinstance(first,dict) and 'results' in first:
             yield from self.cursor_pages(path,params,first)
             return
         expected=None;total_pages=None;seen=set();received=0
         for page in range(1,10001):
-            body=first if page==1 else self.get(path,{**params,'page':page,'per_page':100})
+            self.page_index=page
+            body=first if page==1 else self.get(path,{**params,'page':page,'per_page':MEMBER_PAGE_SIZE})
             rows,pages,count=envelope(body,kind)
             pages=page_number(pages,'total_pages');count=page_number(count,'total_count')
             if page==1:
@@ -165,7 +173,9 @@ def collect(api,store_map,scopes,tz,progress=None):
     raw_customers=api.customers()
     if not raw_customers:raise MemberSourceError('Customer List kosong; tidak menghapus data Member lama.')
     profiles=[profile(r) for r in raw_customers];records=[];selected=set();unknown=0
+    if progress:progress(0,len(profiles),0)
     for i,p in enumerate(profiles):
+        api.customer_ordinal=i+1
         for raw in api.payments(p['source_id']):
             row=payment(raw,p,store_map,tz)
             if row['store_id'] is None:
