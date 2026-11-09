@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from signed_amount_v45 import signed_money
 """
 Sinkronisasi Moka POS -> Supabase (Dashboard Commercial / Store Operation) — V2.
 
@@ -65,14 +66,20 @@ def env(name, default=""):
 
 TZ = timezone(timedelta(hours=float(env("MOKA_TZ_OFFSET", "7"))))
 LOCAL_TZ = timezone(timedelta(hours=float(env("LOCAL_TZ_OFFSET", "8"))))
-MODE = env("SYNC_MODE", "full").lower()
+RAW_MODE = env("SYNC_MODE", "full").lower()
+MODE, _, selection = RAW_MODE.partition('|')
+if '|' in RAW_MODE and not selection: raise ValueError('Pilih komponen sinkron.')
+COMPONENTS = set(filter(None, selection.split(','))) if selection else {'sales_type','item_sales','transactions'}
+if not COMPONENTS <= {'sales_type','item_sales','transactions','members'}:
+    raise ValueError('Komponen sinkron tidak dikenal.')
+SALES_COMPONENTS = COMPONENTS & {'sales_type','item_sales','transactions'}
 PRICE_ONLY = MODE == "price" or env("SKIP_SALES", "0") == "1"
 if MODE == "price": MODE = "live"
 if MODE not in ("full", "live"):
-    MODE = "full"
+    raise ValueError("Mode sinkron tidak valid")
 DRY_RUN = env("DRY_RUN", "0").lower() in ("1", "true", "yes")
 LIVE_DAYS = max(1, int(env("LIVE_DAYS", "3")))
-INCLUDE_LIBRARY = PRICE_ONLY or env("INCLUDE_LIBRARY", "1").lower() in ("1","true","yes")
+INCLUDE_LIBRARY = PRICE_ONLY or env("INCLUDE_LIBRARY", "0").lower() in ("1","true","yes")
 WORKERS = max(1, min(3, int(env("WORKERS", "2"))))
 STOCK_BATCH_SIZE = max(50, min(400, int(env("STOCK_BATCH_SIZE", "250"))))
 OUT_DIR = env("OUTPUT_DIR", "moka-sync-output")
@@ -242,9 +249,9 @@ def refund_value(p, seen_refunds):
             continue
         if uid:
             seen_refunds.add(uid)
-        value += float(r.get("refund_amount") or 0)
+        value += abs(signed_money(r.get("refund_amount") or 0))
     if not p.get("payment_refunds"):
-        value = float(p.get("total_collected") or 0)
+        value = abs(signed_money(p.get("total_collected") or 0))
     return value
 
 
@@ -263,9 +270,9 @@ def aggregate(pays):
             for c in lines:
                 t = (c.get("sales_type_name") or "").strip() or NO_SALES_TYPE
                 g = st[d][t]
-                g["amount"] += float(c.get("net_sales") or 0)
+                g["amount"] += signed_money(c.get("net_sales") or 0)
                 g["tx"].add(p["id"])
-            tc = float(p.get("total_collected") or 0)
+            tc = signed_money(p.get("total_collected") or 0)
             qty = sum(float(c.get("quantity") or 0) for c in lines)
             lt = datetime.fromisoformat(p["created_at"]).astimezone(LOCAL_TZ)
             h = hourly[(d, lt.hour)]
@@ -282,10 +289,10 @@ def aggregate(pays):
         value = refund_value(p, seen_refunds)
         if not value:
             continue
-        weights = [(c, float(c.get("net_sales") or 0) * (float(c.get("refunded_quantity") or 0) / float(c["quantity"]))
+        weights = [(c, signed_money(c.get("net_sales") or 0) * (float(c.get("refunded_quantity") or 0) / float(c["quantity"]))
                     if c.get("quantity") else 0.0) for c in lines]
         if sum(w for _, w in weights) <= 0:
-            weights = [(c, float(c.get("net_sales") or 0)) for c in lines]
+            weights = [(c, signed_money(c.get("net_sales") or 0)) for c in lines]
         total_w = sum(w for _, w in weights)
         if total_w <= 0:
             st[d][NO_SALES_TYPE]["amount"] -= value
@@ -444,10 +451,10 @@ def fetch_store_month(ctx, outlet, sid, period):
     try:
         summ = ctx.moka.sales_summary(oid, d1, d2)
         res["summary"] = summ
-        net = float(summ.get("net_sales") or 0)
-        it = ctx.moka.item_sales(oid, d1, d2)
+        net = signed_money(summ.get("net_sales") or 0)
+        it = ctx.moka.item_sales(oid, d1, d2) if "item_sales" in COMPONENTS else {}
         res["items"] = it.get("item_sales") or []
-        res["item_total"] = sum(float(r.get("net_sales") or 0) for r in res["items"])
+        res["item_total"] = sum(signed_money(r.get("net_sales") or 0) for r in res["items"])
 
         # Hari yang perlu ditarik transaksinya
         fetch_from = d1
@@ -480,14 +487,14 @@ def fetch_store_month(ctx, outlet, sid, period):
         since = datetime(fetch_from.year, fetch_from.month, fetch_from.day, tzinfo=TZ)
         until = ctx.now if (MODE == "live" and fetch_to == ctx.now.date()) else \
             datetime(fetch_to.year, fetch_to.month, fetch_to.day, tzinfo=TZ) + timedelta(days=1) - timedelta(seconds=1)
-        pays = ctx.moka.transactions(oid, since, until) if (net or summ.get("number_of_transactions") or fetch_from != d1) else []
+        pays = ctx.moka.transactions(oid, since, until) if COMPONENTS & {"sales_type","transactions"} and (net or summ.get("number_of_transactions") or fetch_from != d1) else []
         res["payments"] = len(pays)
         agg = aggregate(pays)
         res["agg"] = agg
 
         # Sales Type bulanan = hari tersimpan (sebelum fetch_from) + hasil tarikan baru
         monthly = defaultdict(lambda: {"amount": 0.0, "trx_count": 0})
-        if (fetch_from > d1 or fetch_to < d2) and ctx.db:
+        if "sales_type" in COMPONENTS and (fetch_from > d1 or fetch_to < d2) and ctx.db:
             for r in ctx.db.sel(f"moka_sales_type_daily?select=sales_type,trx_count,amount&store_id=eq.{sid}"
                                 f"&sale_date=gte.{d1}&sale_date=lte.{d2}&or=(sale_date.lt.{fetch_from},sale_date.gt.{fetch_to})"):
                 monthly[r["sales_type"]]["amount"] += float(r["amount"] or 0)
@@ -499,9 +506,9 @@ def fetch_store_month(ctx, outlet, sid, period):
         res["sales_types"] = {t: {"amount": round(v["amount"], 2), "trx_count": v["trx_count"]} for t, v in monthly.items()}
         res["sales_type_total"] = sum(v["amount"] for v in res["sales_types"].values())
 
-        if abs(res["item_total"] - net) > max(TOLERANCE, 0.5 * len(res["items"])):
+        if "item_sales" in COMPONENTS and abs(res["item_total"] - net) > max(TOLERANCE, 0.5 * len(res["items"])):
             res["errors"].append(f"Item Sales {res['item_total']:,.0f} != Sales Summary {net:,.0f}")
-        if abs(res["sales_type_total"] - net) > TOLERANCE:
+        if "sales_type" in COMPONENTS and abs(res["sales_type_total"] - net) > TOLERANCE:
             res["errors"].append(f"Sales Type {res['sales_type_total']:,.0f} != Sales Summary {net:,.0f}")
     except HttpError as e:
         if e.code == 403 and "xpired" in e.body:
@@ -542,10 +549,10 @@ def process(ctx, outlet, sid, period):
 def _process(ctx, outlet, sid, period, t0):
     # Only closed, older periods can skip detail. Recent days always refresh.
     y, m, d1, d2 = period
-    if env('SKIP_UNCHANGED','1').lower() in ('1','true','yes') and env('FORCE_REFRESH','0').lower() not in ('1','true','yes') and ctx.db and d2 < ctx.now.date()-timedelta(days=3):
+    if SALES_COMPONENTS and env('SKIP_UNCHANGED','1').lower() in ('1','true','yes') and env('FORCE_REFRESH','0').lower() not in ('1','true','yes') and ctx.db and d2 < ctx.now.date()-timedelta(days=3):
         try:
             summary = ctx.moka.sales_summary(outlet['id'],d1,d2)
-            checkpoint = ctx.db.rpc('commercial_moka_check_v41',{'p_store_id':sid,'p_year':y,'p_month':m,'p_from':d1.isoformat(),'p_to':d2.isoformat(),'p_summary':summary})
+            checkpoint = ctx.db.rpc('commercial_moka_check_v45',{'p_store_id':sid,'p_year':y,'p_month':m,'p_from':d1.isoformat(),'p_to':d2.isoformat(),'p_summary':summary,'p_components':sorted(SALES_COMPONENTS)})
             if checkpoint and checkpoint.get('skip') is True:
                 return {'outlet':outlet['name'],'outlet_id':outlet['id'],'store_id':sid,'year':y,'month':m,'start':d1.isoformat(),'end':d2.isoformat(),'status':'UNCHANGED','summary':summary,'errors':[],'skip_reason':checkpoint.get('reason'),'seconds':round(time.time()-t0,1)}
         except Exception as e:
@@ -631,18 +638,23 @@ def write_store_month(db, res, known_types, stamp):
 
     s = res["summary"]
     trx = {"store_id": sid, "year": y, "month": m, "jumlah_transaksi": int(s.get("number_of_transactions") or 0),
-           "nilai_transaksi": float(res.get("sales_type_total") or 0), "is_manual": True}
+           "nilai_transaksi": signed_money(s.get("net_sales") or 0), "is_manual": True}
     db.insert("transaksi", [trx], "store_id,year,month")
     db.insert("ingest_log", [{"kind": "TRANSAKSI", "file_name": src, "store_id": sid, "year": y, "month": m,
                               "rows_total": 1, "rows_mapped": 1, "rows_unmapped": 0,
                               "total_amount": trx["nilai_transaksi"], "status": "OK", "message": note}])
 
-    target_db.rpc("commercial_moka_replace_v41", {
-        "p_store_id": sid, "p_year": y, "p_month": m,
-        "p_from": f1, "p_to": f2, "p_rows": db.rows,
-        "p_period_from": res["start"], "p_period_to": res["end"],
-        "p_summary": res["summary"], "p_validated": res["status"] == "OK" and not res["errors"],
-    })
+    module_tables = {'sales_type': ['moka_sales_type_daily','sales_type_raw'],
+                     'item_sales':['item_sales'], 'transactions':['transaksi','moka_hourly','moka_walkin_daily']}
+    allowed = {table for component in SALES_COMPONENTS for table in module_tables[component]}
+    payload = {table: db.rows.get(table, []) for table in allowed}
+    kinds = {'sales_type':'SALES_TYPE','item_sales':'ITEM_SALES','transactions':'TRANSAKSI'}
+    payload['ingest_log'] = [row for row in db.rows.get('ingest_log',[]) if row['kind'] in {kinds[c] for c in SALES_COMPONENTS}]
+    target_db.rpc('commercial_moka_replace_v45', {
+        'p_store_id':sid,'p_year':y,'p_month':m,'p_from':f1,'p_to':f2,
+        'p_components':sorted(SALES_COMPONENTS),'p_rows':payload,
+        'p_data_from':res['start'],'p_data_to':res['end'],'p_summary':res['summary'],'p_validated':res['status']=='OK'})
+
 
 
 def brand_name(brand_id, categories):
@@ -817,7 +829,7 @@ def main():
     results, item_results = [], []
 
     with ThreadPoolExecutor(WORKERS) as ex:
-        futs = {} if PRICE_ONLY else {ex.submit(process, ctx, o, sid, p): (o, sid) for p in periods for o, sid in mapped}
+        futs = {} if PRICE_ONLY or not SALES_COMPONENTS else {ex.submit(process, ctx, o, sid, p): (o, sid) for p in periods for o, sid in mapped}
 
         for f in as_completed(futs):
             o, tag = futs[f]
@@ -854,6 +866,19 @@ def main():
                 f"  {res['seconds']:>6}s {'; '.join(res['errors'])}" + (" · dilewati: "+res['skip_reason'] if res.get('skip_reason') else ''))
             results.append(res)
 
+    member_result=None;member_error=None
+    if 'members' in COMPONENTS and not PRICE_ONLY:
+        try:
+            from moka_member_resume_v48 import sync as sync_members
+            from moka_member_v47 import MemberSourceError
+            log('Member: membaca Customer List dan seluruh halaman Purchase History…')
+            member_result=sync_members(db,mapped,stores,aliases,periods,TZ,writing,
+                progress=lambda done,total,receipts:log(f'Member: {done}/{total} customer diperiksa; {receipts} nota pada cakupan pilihan.'))
+            log(f"Member API OK: {member_result['customers']} customer; {member_result['receipts']} nota/refund; {member_result['http_requests']} request sumber.")
+        except Exception as e:
+            member_error=str(e) if type(e).__name__=='MemberSourceError' else 'Pemrosesan Member gagal ('+type(e).__name__+'); periksa SQL V47/V48 dan konfigurasi sumber.'
+            warn(member_error)
+
     if INCLUDE_LIBRARY:
         log("Penjualan selesai diproses. Memproses Item Library langsung menjadi Price List (tanpa menyimpan katalog mentah)…")
         for o, sid in mapped:
@@ -863,6 +888,10 @@ def main():
             log(f"  {mark} {res['outlet']:<26} library item: {res.get('rows', 0):>6} SKU"
                 f"  {res['seconds']:>6}s {'; '.join(res['errors'])}")
 
+    if writing and any(r.get('status') in ('saved','unchanged') for r in [i.get('price_result',{}) for i in item_results]):
+        db.insert('app_settings',[{'key':'commercial_price_last_checked_v45','value':datetime.now(timezone.utc).isoformat()}],'key')
+    if writing and any(i.get('price_result',{}).get('status')=='saved' for i in item_results):
+        db.insert('app_settings',[{'key':'commercial_price_last_updated_v45','value':datetime.now(timezone.utc).isoformat()}],'key')
     price_results=[r['price_result'] for r in item_results if r.get('price_result')]
     price_errors=[{'outlet':r['outlet'],'status':'ERROR','errors':r['errors']} for r in item_results if r.get('phase')=='price_list' and r['status']=='ERROR']
     price_results.extend(price_errors)
@@ -872,7 +901,7 @@ def main():
     rebuild_error = None
     if writing and (any(r["status"] in ("OK", "WARN", "UNCHANGED") for r in results) or any(r["status"] == "OK" for r in item_results)):
         try:
-            if any(r["status"] in ("OK", "WARN", "UNCHANGED") for r in results):
+            if "sales_type" in COMPONENTS and any(r["status"] in ("OK", "WARN", "UNCHANGED") for r in results):
                 db.rpc("rebuild_sales_actual")
                 log("✓ rebuild_sales_actual selesai")
         except HttpError as e:
@@ -895,13 +924,17 @@ def main():
     bad = sales_bad + library_bad + price_errors
     for r in wr:
         warn(f"{r['outlet']} {r['year']}-{r['month']:02d}: {r['errors'][0]}")
+    member_blocked = bool(member_error)
+    if member_blocked:
+        warn('Member belum selesai: '+member_error)
     actual_end=max(p[3] for p in periods)
     data_until = now if MODE == "live" and actual_end == now.date() else datetime(actual_end.year, actual_end.month, actual_end.day, 23, 59, 59, tzinfo=TZ)
     library_ok = [r for r in item_results if r["status"] == "OK"]
-    run_update(status="error" if bad or rebuild_error else "warn" if wr else "done",
-               finished_at=datetime.now(timezone.utc).isoformat(), data_until=data_until.isoformat() if results else None,
-               stores_ok=len(ok)+len(unchanged), stores_warn=len(wr), stores_error=len(bad),
-               message=(f"Sales: {len(ok)} OK, {len(unchanged)} dilewati (sesuai), {len(wr)} menunggu Moka, {len(sales_bad)} gagal; Price List {price_saved} diperbarui, {price_same} sama, {price_skipped} dilewati, {len(price_errors)} gagal; library: {len(library_ok)} OK, {len(library_bad)} gagal" + ("; hitung ulang sales gagal: " + rebuild_error[:160] if rebuild_error else "") +
+    run_update(status="error" if bad or rebuild_error or (member_blocked and not SALES_COMPONENTS) else "warn" if wr or member_blocked or (member_result and member_result["status"]=="WARN") else "done",
+               finished_at=datetime.now(timezone.utc).isoformat(), data_until=data_until.isoformat() if results or member_result else None,
+               data_through=actual_end.isoformat() if (results or member_result) and not sales_bad and not member_error and not (member_result and member_result["status"]!="OK") else None, components=sorted(COMPONENTS) if not PRICE_ONLY else ["price_list"],
+               stores_ok=len(ok)+len(unchanged)+(len(mapped) if member_result and not results else 0), stores_warn=len(wr), stores_error=len(bad),
+               message=(("Member gagal: "+member_error+". " if member_error else (f"Member API OK: {member_result['customers']} customer, {member_result['receipts']} nota/refund, {member_result['unmapped_payments']} pembayaran belum terpetakan. " if member_result else "")) + f"Komponen {','.join(sorted(COMPONENTS))}; Sales: {len(ok)} OK, {len(unchanged)} dilewati (sesuai), {len(wr)} menunggu Moka, {len(sales_bad)} gagal; Price List {price_saved} diperbarui, {price_same} sama, {price_skipped} dilewati, {len(price_errors)} gagal; library: {len(library_ok)} OK, {len(library_bad)} gagal" + ("; hitung ulang sales gagal: " + rebuild_error[:160] if rebuild_error else "") +
                         (f" · library {len([r for r in item_results if r['status'] == 'OK'])} toko" if item_results else "") +
                         ("; " + "; ".join(f"{r['outlet']}: {r['errors'][0][:120]}" for r in bad[:3]) if bad else ""))[:900])
 
@@ -915,6 +948,8 @@ def main():
 
     if STEP_SUMMARY:
         with open(STEP_SUMMARY, "a", encoding="utf-8") as fh:
+            if member_error: fh.write("**Member gagal:** "+member_error+"\n\n")
+            elif member_result: fh.write(f"**Member API OK:** {member_result['customers']} customer, {member_result['receipts']} nota/refund.\n\n")
             fh.write(f"### Sinkron Moka {MODE.upper()} {'(uji coba)' if DRY_RUN else ''} — data s.d. {until_txt}\n\n")
             fh.write("| Toko | Bulan | Net Sales | Transaksi | Sales Type | Item | Status |\n|---|---|---:|---:|---:|---:|---|\n")
             for r in sorted(results, key=lambda r: (r["year"], r["month"], r["outlet"])):
@@ -934,7 +969,7 @@ def main():
             if unm:
                 fh.write(f"\n**Sales Type belum termapping:** {', '.join(unm)} — atur di Pengaturan → Pemetaan Sales Type.\n")
     log(f"Selesai: sales {len(ok)} OK, {len(unchanged)} dilewati, {len(wr)} WARN, {len(sales_bad)} gagal; library {len(library_ok)} OK, {len(library_bad)} gagal; Price List {price_saved} diperbarui, {price_same} sama, {price_skipped} dilewati, {len(price_errors)} gagal")
-    if bad or rebuild_error:
+    if bad or rebuild_error or member_error:
         sys.exit(1)
 
 
