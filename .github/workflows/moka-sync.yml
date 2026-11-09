@@ -1,7 +1,7 @@
 name: Sinkron Moka POS
 
 # Menarik data Moka ke Supabase untuk Dashboard Commercial.
-# - Jadwal harian: sales_type, item_sales, transactions. Member belum terhubung; Item Library hanya manual.
+# - Jadwal harian: sales_type, item_sales, transactions. Member opt-in dengan MOKA_MEMBER_SYNC_ENABLED=true; Item Library hanya manual.
 # - Tombol "Sinkron Moka" di dashboard / Run workflow manual (mode live): data s.d. menit ini.
 # Semua kunci dibaca dari GitHub Secrets, tidak ada token di repo.
 
@@ -76,6 +76,7 @@ jobs:
       - name: Periksa konfigurasi
         env:
           MOKA_ACCESS_TOKEN: ${{ secrets.MOKA_ACCESS_TOKEN }}
+          MOKA_CUSTOMER_ACCESS_TOKEN: ${{ secrets.MOKA_CUSTOMER_ACCESS_TOKEN }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
         run: |
@@ -90,11 +91,12 @@ jobs:
       - name: Tarik data Moka → Supabase
         env:
           MOKA_ACCESS_TOKEN: ${{ secrets.MOKA_ACCESS_TOKEN }}
+          MOKA_CUSTOMER_ACCESS_TOKEN: ${{ secrets.MOKA_CUSTOMER_ACCESS_TOKEN }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           SKIP_UNCHANGED: ${{ (github.event_name == 'schedule' || inputs.skip_unchanged) && '1' || '0' }}
           FORCE_REFRESH: ${{ inputs.force_refresh && '1' || '0' }}
-          SYNC_MODE: ${{ github.event_name == 'schedule' && 'full|sales_type,item_sales,transactions' || inputs.mode }}
+          SYNC_MODE: ${{ github.event_name == 'schedule' && (vars.MOKA_MEMBER_SYNC_ENABLED == 'true' && 'full|sales_type,item_sales,transactions,members' || 'full|sales_type,item_sales,transactions') || inputs.mode }}
           SYNC_MONTHS: ${{ inputs.months }}
           SYNC_FROM: ${{ inputs.date_from }}
           SYNC_TO: ${{ inputs.date_to }}

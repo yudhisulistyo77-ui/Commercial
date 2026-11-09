@@ -27,6 +27,7 @@ jobs:
       - name: Periksa sumber tanpa mengubah database
         env:
           MOKA_ACCESS_TOKEN: ${{ secrets.MOKA_ACCESS_TOKEN }}
+          MOKA_CUSTOMER_ACCESS_TOKEN: ${{ secrets.MOKA_CUSTOMER_ACCESS_TOKEN }}
           AUDIT_OUTLET: ${{ inputs.outlet }}
           ONLY_OUTLETS: ${{ inputs.outlets }}
           SYNC_MODE: live
