@@ -323,6 +323,11 @@ td.sticky1{overflow-wrap:break-word}
       el('label', { class: 'rowline' }, prev, 'Mode bulan penuh s.d. kemarin (gunakan Tarik ulang paksa untuk mengabaikan checkpoint)'),
       el('p', { class: 'note' }, 'Cakupan data terakhir: ' + (V28.run ? throughLabel(V28.run) : 'belum ada') + '. Jadwal otomatis dikonfigurasi pukul 04:37 WITA; keberhasilannya mengikuti status proses terakhir.'),
       err, start);
+    if(!priceOnly){
+      const checkStatus=el('p',{class:'note',role:'status'}),checkButton=el('button',{class:'btn',type:'button'},'Periksa koneksi API Member');
+      checkButton.onclick=async()=>{checkButton.disabled=true;checkStatus.replaceChildren();try{const data=await V28.checkMemberSource();checkStatus.append('Pemeriksaan API diminta. Buka ',el('a',{href:data.workflow_url,target:'_blank',rel:'noopener noreferrer'},'hasil GitHub Actions'),', lalu unduh artifact moka-member-check. Belum melakukan sinkron Member.');}catch(e){checkStatus.textContent=e.message;checkButton.disabled=false;}};
+      box.append(checkButton,checkStatus);
+    }
     if(priceOnly){skip.closest('label').hidden=true;force.closest('label').hidden=true;prev.closest('label').hidden=true;}
     start.onclick = async () => {
       start.disabled = true; err.textContent = '';
@@ -363,6 +368,15 @@ td.sticky1{overflow-wrap:break-word}
     };
   }
   V28.openSync = openSync;
+  V28.checkMemberSource=async function(){
+    const token=await masterToken();const headers={apikey:S.key,'Content-Type':'application/json','x-commercial-pin-session':token};
+    if(/^eyJ/.test(S.key))headers.Authorization='Bearer '+S.key;
+    const response=await fetch(S.url.replace(/\/$/,'')+'/functions/v1/moka-sync',{method:'POST',headers,body:JSON.stringify({mode:'member_check'}),signal:AbortSignal.timeout(45000)});
+    const data=await response.json().catch(()=>({}));
+    if(!response.ok||!data.ok||!data.audit_dispatched)throw Error(data.error||'Pemeriksaan Member belum dapat dimulai.');
+    return data;
+  };
+
 
   function watchRun(id, box) {
     const steps = el('div', { class: 'v28-steps' });
