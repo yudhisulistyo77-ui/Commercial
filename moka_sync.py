@@ -869,9 +869,13 @@ def main():
     member_result=None;member_error=None
     if 'members' in COMPONENTS and not PRICE_ONLY:
         try:
-            from moka_member_resume_v48 import sync as sync_members
             from moka_member_v47 import MemberSourceError
-            log('Member: membaca Customer List dan seluruh halaman Purchase History…')
+            if env("MEMBER_SOURCE", "official").lower() == "legacy":
+                from moka_member_resume_v48 import sync as sync_members  # jalur lama (token sesi browser)
+                log('Member: membaca Customer List dan seluruh halaman Purchase History (jalur lama)…')
+            else:
+                from moka_member_official_v50 import sync as sync_members  # API resmi Moka
+                log('Member: API resmi Moka (Customer List resmi + transaksi resmi)…')
             member_result=sync_members(db,mapped,stores,aliases,periods,TZ,writing,
                 progress=lambda done,total,receipts:log(f'Member: {done}/{total} customer diperiksa; {receipts} nota pada cakupan pilihan.'))
             log(f"Member API OK: {member_result['customers']} customer; {member_result['receipts']} nota/refund; {member_result['http_requests']} request sumber.")
