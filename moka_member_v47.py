@@ -7,6 +7,19 @@ from decimal import Decimal, InvalidOperation
 
 BASE='https://service-goauth.mokapos.com'
 class MemberSourceError(RuntimeError):pass
+def member_authorization(value):
+    """Customer Service uses a raw authorization token as observed in the user's browser.
+    Normalize outer clipboard whitespace and one accidental Bearer prefix only.
+    Never log, decode, persist or return credentials in errors.
+    """
+    if not isinstance(value,str):raise MemberSourceError('Token Customer Service belum tersedia.')
+    token=value.strip()
+    token=re.sub(r'^Bearer[ \t]+','',token,flags=re.IGNORECASE).strip()
+    if not token or token.lower()=='bearer':raise MemberSourceError('Token Customer Service belum tersedia.')
+    if not re.fullmatch(r'[!-~]+',token) or token[0] in ('"',"'") or token[-1] in ('"',"'"):
+        raise MemberSourceError('Format token Customer Service tidak valid: gunakan satu baris token tanpa kutip atau spasi di dalamnya.')
+    return token
+
 class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self,*args,**kwargs):return None
 
@@ -41,15 +54,14 @@ def page_number(value,field):
 
 class CustomerService:
     def __init__(self,token,transport=None,max_requests=30000):
-        if not token:raise MemberSourceError('Token Customer Service belum tersedia.')
-        self.token=token;self.transport=transport;self.requests=0;self.max_requests=max_requests
+        self.token=member_authorization(token);self.transport=transport;self.requests=0;self.max_requests=max_requests
     def get(self,path,params):
         self.requests+=1
         if self.requests>self.max_requests:raise MemberSourceError('Batas permintaan Member tercapai; tidak menulis hasil parsial.')
         if not path.startswith('/customer/') or path.startswith('//'):raise MemberSourceError('Path Customer Service tidak diizinkan.')
         url=BASE+path+'?'+urllib.parse.urlencode(params)
         if self.transport:return self.transport(path,params)
-        req=urllib.request.Request(url,headers={'Authorization':'Bearer '+self.token,'Accept':'application/json','User-Agent':'commercial-dashboard-moka-sync'})
+        req=urllib.request.Request(url,headers={'Authorization':self.token,'Accept':'application/json','User-Agent':'commercial-dashboard-moka-sync'})
         try:
             with urllib.request.build_opener(NoRedirect()).open(req,timeout=45) as r:
                 raw=r.read(8*1024*1024+1)

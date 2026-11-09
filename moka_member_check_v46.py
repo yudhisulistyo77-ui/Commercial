@@ -7,6 +7,7 @@ import json, os, re, time, urllib.request, urllib.error, urllib.parse
 from datetime import datetime, timedelta
 from pathlib import Path
 from moka_sync import norm, LOCAL_TZ
+from moka_member_v47 import member_authorization, MemberSourceError
 
 BASE='https://service-goauth.mokapos.com'
 MAX_BYTES=2*1024*1024
@@ -37,7 +38,9 @@ def safe_url(path,params):
 def request(token,path,params,opener=None):
     url=safe_url(path,params)
     opener=opener or urllib.request.build_opener(NoRedirect())
-    req=urllib.request.Request(url,headers={'Authorization':'Bearer '+token,'Accept':'application/json','User-Agent':'commercial-dashboard-moka-sync'})
+    try:token=member_authorization(token)
+    except MemberSourceError:return {'status':'invalid_token_format','body_saved':False},None
+    req=urllib.request.Request(url,headers={'Authorization':token,'Accept':'application/json','User-Agent':'commercial-dashboard-moka-sync'})
     response_status=None;content_kind=None
     try:
         with opener.open(req,timeout=30) as response:
@@ -95,7 +98,7 @@ def inspect(token,outlet=None,fetch=request):
     if cid:
         outcome,body=fetch(token,'/customer/v1/customers/'+urllib.parse.quote(cid,safe='')+'/payments',{'page':1,'per_page':1})
         results.append({'kind':'purchase_history','path_template':'/customer/v1/customers/{customer_id}/payments','result':outcome,'checks':history_checks(body,cid)})
-    return {'version':'47','read_only':True,'contains_customer_values':False,'contains_tokens':False,
+    return {'version':'47.1','read_only':True,'contains_customer_values':False,'contains_tokens':False,
       'source_routes_observed_in_browser':True,'production_sync_tested':False,'writes_performed':False,
       'customer_sample_available':bool(cid),'classification':classification(results),'results':results,
       'next_step':'Jika sumber terjangkau, jalankan Member saja satu bulan. Pemeriksaan ini hanya sampel, bukan bukti kelengkapan semua halaman.'}
