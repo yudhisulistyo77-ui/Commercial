@@ -54,11 +54,11 @@ async function renderSalesType(){
  const controls=comparisonControls(st,'stype',rerender);page.append(controls);
  const segs=[...new Set((S.map||[]).map(r=>r.segmen).filter(Boolean))].sort();
  const seg=opsSelect([['all','Semua segmen'],...segs.map(s=>[s,s]),[UNMAPPED,UNMAPPED]],X.segment,{'aria-label':'Segmen sales type'});seg.onchange=()=>{X.segment=seg.value;rerender()};
- const typeBox=el('div',{style:'min-width:260px'});
+ const typeBox=el('div');
  const paintTypes=list=>multiSelectDropdown(typeBox,list.map(n=>({value:n,label:n})),X.picked.filter(n=>list.includes(n)),arr=>{X.picked=arr;rerender()},{allLabel:'Semua sales type'});
  paintTypes(X.picked.slice());
  const top=opsSelect([[10,'Top 10'],[20,'Top 20'],[50,'Top 50'],[0,'Semua']],X.top,{'aria-label':'Jumlah sales type'});top.onchange=()=>{X.top=+top.value;rerender()};
- page.append(el('div',{class:'member-filters-v27'},opsField('Segmen',seg),el('div',{class:'fld'},el('label',{},'Sales type (pilih beberapa / cari)'),typeBox),opsField('Tampilkan',top)));
+ page.append(el('div',{class:'member-filters-v27'},opsField('Segmen',seg),el('div',{class:'fld',style:'grid-column:span 2'},el('label',{},'Sales type (pilih beberapa / cari)'),typeBox),opsField('Tampilkan',top)));
  const status=el('p',{class:'note'},'Memuat data sales type…');page.append(status);
  let rows;try{rows=await load(y1)}catch(e){status.classList.add('warn');status.textContent='Data sales type belum dapat dimuat: '+e.message;return}
  if(epoch!==EPOCH||S.page!=='salestype'||!page.isConnected)return;

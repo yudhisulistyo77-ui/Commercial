@@ -6,6 +6,14 @@ const css=document.createElement('style');css.id='ui-v51';
 css.textContent=`
 .pill.ach,.pill.ok,.pill.bad,.member-trend-v30,[data-member-growth],[data-member-gap]{white-space:nowrap!important;display:inline-flex!important;flex-direction:row!important;align-items:center;gap:3px;flex-wrap:nowrap!important;overflow-wrap:normal!important;word-break:normal!important;max-width:none!important}
 td .pill.ach,td .member-trend-v30{vertical-align:middle}
+/* V52: baris filter proporsional — kolom menyesuaikan lebar, dropdown pilih-banyak mengisi kolomnya, tidak menumpuk. */
+.comparison-grid{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))!important}
+.member-filters-v27{grid-template-columns:repeat(auto-fit,minmax(180px,1fr))!important}
+.comparison-grid>.fld,.member-filters-v27>.fld,.member-filters-v27>div{min-width:0}
+.comparison-grid .fld .msd,.member-filters-v27 .fld .msd,.mpick-row-v51 .fld .msd{display:block!important;width:100%!important;min-width:0!important;max-width:100%}
+.comparison-grid .fld .msd-btn,.member-filters-v27 .fld .msd-btn,.mpick-row-v51 .fld .msd-btn{width:100%!important;min-width:0!important;max-width:100%;box-sizing:border-box}
+.comparison-grid .fld>input,.comparison-grid .fld>select,.member-filters-v27 .fld>input,.member-filters-v27 .fld>select{width:100%;min-width:0;box-sizing:border-box}
+
 `;
 document.head.append(css);
 function shade(ratio){

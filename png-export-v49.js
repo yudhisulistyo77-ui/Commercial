@@ -68,7 +68,7 @@ function resolveNode(node){if(node?.isConnected)return node;const title=node?.qu
 X.prepare=function(node){
  node=resolveNode(node);
  if(!node?.isConnected)throw Error('Bagian data sudah berubah. Tunggu filter selesai, lalu salin kembali.');
- const clone=node.cloneNode(true),tables=node.matches('table')?[node]:[...node.querySelectorAll('table')],copies=clone.matches('table')?[clone]:[...clone.querySelectorAll('table')],geometry=tables.map(tableGeometry),caption=context(node);
+ let tableOnly=false;const clone=node.cloneNode(true),tables=node.matches('table')?[node]:[...node.querySelectorAll('table')],copies=clone.matches('table')?[clone]:[...clone.querySelectorAll('table')],geometry=tables.map(tableGeometry),caption=context(node);
  const frozen=freeze(node,clone);
  for(const n of [clone,...clone.querySelectorAll('.page.on')])n.classList.remove('on');copies.forEach(t=>{t.dataset.enh='png-v49';t.dataset.csvV39='1'});
  // Remove filtered/hidden nodes structurally so export CSS cannot revive them.
@@ -77,7 +77,8 @@ X.prepare=function(node){
  clone.querySelectorAll('input,select,textarea').forEach(n=>{if(n.type==='password'||n.type==='hidden'){n.remove();return;}const s=document.createElement('span');s.textContent=n.tagName==='SELECT'?[...n.selectedOptions].map(o=>o.textContent).join(', '):n.type==='checkbox'?(n.checked?'Ya':'Tidak'):n.value;n.replaceWith(s);});
  // A single table card has one content boundary: its heading and its table/footer.
  if(node.classList.contains('card')&&copies.length===1&&!clone.querySelector('svg,canvas,.rank-chart,.tile')){
-  const table=copies[0],head=clone.querySelector(':scope > header');const content=document.createElement('div');content.className='png-table-content';content.append(table);clone.replaceChildren(...(head?[head]:[]),content);
+  /* V52: kartu tabel disalin pas dari atas header kolom sampai bawah baris TOTAL — tanpa judul kartu/keterangan. */
+  const table=copies[0];const content=document.createElement('div');content.className='png-table-content';content.append(table);clone.replaceChildren(content);tableOnly=true;
  }
  clone.querySelectorAll('details').forEach(n=>n.open=true);
  for(const n of [clone,...clone.querySelectorAll('*')]){
@@ -94,13 +95,14 @@ X.prepare=function(node){
  /* html2canvas tidak menggambar teks blok di dalam pil inline-flex (mis. total GROWTH). */
  clone.querySelectorAll('td .pill,th .pill').forEach(p=>{const kids=[...p.children];if(!kids.length||p.querySelector('svg,img,canvas'))return;const inner=kids.find(k=>k.textContent.trim())||kids[0];const color=inner.style.getPropertyValue('color');const text=p.textContent.replace(/\s+/g,' ').trim();p.textContent=text;if(color)p.style.setProperty('color',color,'important');p.style.setProperty('font-weight','700','important');});
  readableTotals(clone,frozen.originals,frozen.copies);
- const root=document.createElement('div');root.className='png-export-v49';root.style.cssText='display:flow-root;box-sizing:border-box;padding:0;margin:0;color:#152238;background:#fff;';
+ const root=document.createElement('div');root.className='png-export-v49';const pageBg=effectiveBg(tables[0]||node),bgCss=`rgb(${pageBg.r},${pageBg.g},${pageBg.b})`;root.dataset.bg=bgCss;root.style.cssText='display:flow-root;box-sizing:border-box;padding:0;margin:0;color:#152238;background:'+bgCss+';';
  clone.style.setProperty('height','auto','important');clone.style.setProperty('min-height','0','important');clone.style.setProperty('max-height','none','important');clone.style.setProperty('margin','0','important');clone.style.setProperty('position','relative','important');clone.style.setProperty('transform','none','important');clone.style.setProperty('box-sizing','border-box','important');
  const rect=node.getBoundingClientRect(),graphicWidth=Math.max(0,...[...node.querySelectorAll('svg,canvas,.number-chart-scroll')].map(n=>Math.max(n.scrollWidth,n.getBoundingClientRect().width)+Math.max(0,n.getBoundingClientRect().left-rect.left)+20));
- const width=Math.ceil(Math.max(rect.width,graphicWidth,contentWidth+(node.matches('.card')?32:0),320));
+ const width=tableOnly?Math.ceil(Math.max(contentWidth,200)):Math.ceil(Math.max(rect.width,graphicWidth,contentWidth+(node.matches('.card')?32:0),320));
  clone.style.setProperty('width',width+'px','important');clone.style.setProperty('max-width','none','important');
- if(node.matches('.card')){clone.style.setProperty('padding','12px','important');clone.querySelector(':scope > header')?.style.setProperty('margin','0 0 10px','important');}
- if(caption){const note=document.createElement('div');note.className='png-context-v49';note.textContent=caption;note.style.cssText='font:11px/1.5 Arial,sans-serif!important;color:#46566f!important;background:#f3f6fa!important;padding:7px 10px!important;white-space:normal!important;';const header=clone.querySelector(':scope > header');if(header)header.append(note);else clone.prepend(note);}
+ if(tableOnly){for(const p of ['padding','border','border-radius','box-shadow'])clone.style.setProperty(p,p==='padding'||p==='border-radius'?'0':'none','important');clone.style.setProperty('background',bgCss,'important');clone.querySelectorAll('.png-table-content,.tw').forEach(n=>{n.style.setProperty('padding','0','important');n.style.setProperty('margin','0','important');n.style.setProperty('border','none','important');n.style.setProperty('border-radius','0','important');});}
+ else if(node.matches('.card')){clone.style.setProperty('padding','12px','important');clone.querySelector(':scope > header')?.style.setProperty('margin','0 0 10px','important');}
+ if(caption&&!tableOnly){const note=document.createElement('div');note.className='png-context-v49';note.textContent=caption;note.style.cssText='font:11px/1.5 Arial,sans-serif!important;color:#46566f!important;background:#f3f6fa!important;padding:7px 10px!important;white-space:normal!important;';const header=clone.querySelector(':scope > header');if(header)header.append(note);else clone.prepend(note);}
  root.append(clone);root.style.width=width+'px';return {root,clone,width};
 };
 window.capturePngOfNode=async function(node){
@@ -109,7 +111,7 @@ window.capturePngOfNode=async function(node){
  try{await document.fonts?.ready;await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
   const height=Math.ceil(root.getBoundingClientRect().height),actualWidth=Math.ceil(Math.max(width,root.scrollWidth));if(actualWidth<1||height<1)throw Error('Bagian data kosong.');
   const scale=Math.min(2,Math.sqrt(24000000/(actualWidth*height)),16000/actualWidth,16000/height);if(scale<.65)throw Error('Terlalu banyak data untuk satu PNG yang terbaca. Persempit filter atau gunakan CSV.');
-  const canvas=await html2canvas(root,{backgroundColor:'#ffffff',scale,useCORS:true,logging:false,width:actualWidth,height,windowWidth:Math.max(1280,actualWidth),windowHeight:Math.max(800,height),scrollX:0,scrollY:0});
+  const canvas=await html2canvas(root,{backgroundColor:root.dataset.bg||'#ffffff',scale,useCORS:true,logging:false,width:actualWidth,height,windowWidth:Math.max(1280,actualWidth),windowHeight:Math.max(800,height),scrollX:0,scrollY:0});
   return await new Promise((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(Error('PNG gagal dibuat.')),'image/png'));
  }finally{host.remove();}
 };
