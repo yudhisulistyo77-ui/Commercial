@@ -4,7 +4,7 @@
    dapat dibandingkan langsung. Data dimuat sekali per sesi lalu dihitung di browser (hemat egress). */
 (function(){'use strict';
 if(window.SALES_TYPE_V52)return;
-const X=window.SALES_TYPE_V52={segment:'all',query:'',top:20,sort:'net',storeYear:0,monthYear:0,cache:null,loading:null};
+const X=window.SALES_TYPE_V52={segment:'all',picked:[],top:20,sort:'net',storeYear:0,monthYear:0,cache:null,loading:null};
 const UNMAPPED='Belum dipetakan';
 const money=v=>v==null?'—':compact(v),pctTxt=v=>v==null||!isFinite(v)?'—':(v*100).toLocaleString('id-ID',{maximumFractionDigits:2})+'%';
 const z=(a,b)=>a==null&&b==null?[null,null]:[a??0,b??0];
@@ -32,7 +32,7 @@ function aggregate(rows,w,years){
   const net=comparisonSalesValue(r.amount,w,y,m),trx=Number(r.trx_count||0)*f;
   const name=String(r.sales_type||'(kosong)').trim(),seg=segOf(map,name);
   if(X.segment!=='all'&&seg!==X.segment)continue;
-  if(X.query&&!name.toUpperCase().includes(X.query.toUpperCase()))continue;
+  if(X.picked.length&&!X.picked.includes(name))continue;
   const t=types.get(name)||{name,seg,info:map.get(name.toUpperCase())||null,y:{}};types.set(name,t);
   const ty=t.y[y]||(t.y[y]={net:0,trx:0,months:{},stores:{}});ty.net+=net;ty.trx+=trx;ty.months[m]=(ty.months[m]||0)+net;ty.stores[sid]=(ty.stores[sid]||0)+net;
   const mk=y+'-'+m;byMonth.set(mk,(byMonth.get(mk)||0)+net);
@@ -54,16 +54,20 @@ async function renderSalesType(){
  const controls=comparisonControls(st,'stype',rerender);page.append(controls);
  const segs=[...new Set((S.map||[]).map(r=>r.segmen).filter(Boolean))].sort();
  const seg=opsSelect([['all','Semua segmen'],...segs.map(s=>[s,s]),[UNMAPPED,UNMAPPED]],X.segment,{'aria-label':'Segmen sales type'});seg.onchange=()=>{X.segment=seg.value;rerender()};
- const q=opsInput(X.query,'search',{placeholder:'Cari sales type…','aria-label':'Cari sales type'});let qt;q.oninput=()=>{clearTimeout(qt);qt=setTimeout(()=>{X.query=q.value.trim();rerender().then(()=>$('#p-salestype input[aria-label="Cari sales type"]')?.focus())},400)};
+ const typeBox=el('div',{style:'min-width:260px'});
+ const paintTypes=list=>multiSelectDropdown(typeBox,list.map(n=>({value:n,label:n})),X.picked.filter(n=>list.includes(n)),arr=>{X.picked=arr;rerender()},{allLabel:'Semua sales type'});
+ paintTypes(X.picked.slice());
  const top=opsSelect([[10,'Top 10'],[20,'Top 20'],[50,'Top 50'],[0,'Semua']],X.top,{'aria-label':'Jumlah sales type'});top.onchange=()=>{X.top=+top.value;rerender()};
- page.append(el('div',{class:'member-filters-v27'},opsField('Segmen',seg),opsField('Cari sales type',q),opsField('Tampilkan',top)));
+ page.append(el('div',{class:'member-filters-v27'},opsField('Segmen',seg),el('div',{class:'fld'},el('label',{},'Sales type (pilih beberapa / cari)'),typeBox),opsField('Tampilkan',top)));
  const status=el('p',{class:'note'},'Memuat data sales type…');page.append(status);
  let rows;try{rows=await load(y1)}catch(e){status.classList.add('warn');status.textContent='Data sales type belum dapat dimuat: '+e.message;return}
  if(epoch!==EPOCH||S.page!=='salestype'||!page.isConnected)return;
+ /* Daftar pilihan = semua sales type pada 3 tahun & toko yang diizinkan (sebelum filter segmen/pilihan). */
+ {const ok=new Set((S.stores||[]).filter(s=>storeOk(s.id)).map(s=>Number(s.id))),map=mapOf(),names=new Set();for(const r of rows)if(years.includes(Number(r.year))&&ok.has(Number(r.store_id))){const n=String(r.sales_type||'(kosong)').trim();if(X.segment==='all'||segOf(map,n)===X.segment)names.add(n)}paintTypes([...names].sort((a,b)=>a.localeCompare(b,'id')));}
  const A=aggregate(rows,w,years),tot=y=>A.totals[y]?.net??null,trxT=y=>A.totals[y]?.trx??null;
  const label=y=>{const parts=[];for(let m=w.m1;m<=w.m2;m++){const d=comparisonMonthDays(w,y,m);if(d>0)parts.push(m)}return parts.length?MON3[parts[0]-1]+(parts.length>1?'–'+MON3[parts.at(-1)-1]:'')+' '+y:'—'};
  const [cy,cm]=opsToday().split('-').map(Number);
- status.textContent='Periode: '+years.map(label).join(' · ')+(w.m1<=cm&&cm<=w.m2&&window.SSSG_CURRENT_V52?' · '+SSSG_CURRENT_V52.explain():'')+' · filter brand/SPV/toko mengikuti filter atas.';
+ status.textContent='Periode: '+years.map(label).join(' · ')+(w.m1<=cm&&cm<=w.m2&&window.SSSG_CURRENT_V52?' · '+SSSG_CURRENT_V52.explain():'')+(X.picked.length?' · '+X.picked.length+' sales type dipilih':'')+' · filter brand/SPV/toko mengikuti filter atas.';
  if(!A.types.length){page.append(el('p',{class:'note'},'Belum ada data sales type pada filter ini.'));return}
  const unm=A.types.filter(t=>t.seg===UNMAPPED&&(t.y[y3]?.net||0)!==0);
  // Ringkasan
