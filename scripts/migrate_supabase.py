@@ -22,7 +22,17 @@ class MigrationError(Exception):
 
 def connection(raw, project, readonly):
     try:
+        raw = raw.strip()
+        if any(c in raw for c in ('\n','\r','\t')):
+            raise MigrationError('Connection string mengandung baris baru/tab. Salin URI dalam satu baris.')
+        if any(x in raw.lower() for x in ('[your-password]','[password]','<password>')):
+            raise MigrationError('Placeholder password belum diganti pada connection string.')
         u = urlsplit(raw)
+        raw_password = u.password or ''
+        if any(x in raw_password.lower() for x in ('[your-password]','[password]','<password>')):
+            raise MigrationError('Placeholder password belum diganti pada connection string.')
+        if re.search(r'%(?![0-9a-fA-F]{2})',raw_password):
+            raise MigrationError('Karakter persen pada password belum di-URL-encode. Persen literal harus %25.')
         user = unquote(u.username or '')
         password = unquote(u.password or '')
         port = u.port or 5432
@@ -57,7 +67,11 @@ def run(args, env, *, data=None, timeout=1800):
     if p.returncode:
         # Raw stderr may contain connection strings, SQL statements, or customer rows.
         err = (p.stderr or '').lower()
-        if 'password authentication failed' in err: message='Password database ditolak. Periksa Secret, bukan publishable/service-role key.'
+        if 'maxclientsinsessionmode' in err or 'max clients reached' in err: message='Kapasitas Session pooler sedang penuh. Tutup koneksi lain dan coba lagi setelah tersedia.'
+        elif 'tenant or user not found' in err: message='Tenant/user pooler tidak ditemukan. Salin ulang HOST dan username dari Connect pada project yang benar.'
+        elif 'too many authentication failures' in err: message='Terlalu banyak kegagalan autentikasi. Hentikan percobaan berulang; periksa password dan pembatasan koneksi di Dashboard.'
+        elif 'connection timed out' in err or 'timeout expired' in err: message='Koneksi timeout. Periksa host, port dan Network Restrictions project.'
+        elif 'password authentication failed' in err: message='Password database ditolak. Periksa Secret, bukan publishable/service-role key.'
         elif 'could not translate host' in err or 'network is unreachable' in err: message='Host tidak terjangkau. Gunakan Session pooler 5432 untuk runner IPv4.'
         elif 'version mismatch' in err: message='Versi pg_dump lebih tua dari server. Perbarui image PostgreSQL pada workflow.'
         elif 'permission denied' in err: message='Izin database tidak cukup. Gunakan koneksi postgres dari panel Connect.'
@@ -166,17 +180,34 @@ def verify(a,b,label):
     if a!=b:raise MigrationError('Verifikasi '+label+' tidak cocok. Jangan alihkan aplikasi; tujuan perlu diperiksa. Sumber tetap dipertahankan.')
 
 
+def inspect_connections():
+    result={};failures=[]
+    for label,project,secret,readonly in (
+        ('LAMA',SOURCE,'MIGRATION_SOURCE_DB_URL',True),
+        ('BARU',TARGET,'MIGRATION_TARGET_DB_URL',False)):
+        print('Memeriksa '+label+' ('+project+') — Secret '+secret+'...',flush=True)
+        try:
+            env=connection(os.environ.get(secret,''),project,readonly)
+            version=int(sql(env,'SHOW server_version_num;'))
+            print(label+': KONEKSI OK (PostgreSQL '+str(version//10000)+').',flush=True)
+            result[label]=(env,version)
+        except MigrationError as error:
+            print(label+': GAGAL — '+str(error),flush=True)
+            failures.append(label+' / '+secret)
+    if failures:
+        raise MigrationError('Perbaiki hanya koneksi yang gagal: '+', '.join(failures)+'. Belum ada proses restore.')
+    return result['LAMA'],result['BARU']
+
+
 def main():
     mode=os.environ.get('MIGRATION_MODE','check')
     if mode not in ('check','migrate'):raise MigrationError('Mode harus check atau migrate.')
     if mode=='migrate' and (os.environ.get('MIGRATION_WRITES_PAUSED','').lower()!='true' or os.environ.get('MIGRATION_TARGET_CONFIRMATION','')!=TARGET):
         raise MigrationError('Untuk migrate, hentikan semua penulisan dan isi konfirmasi project tujuan.')
-    source=connection(os.environ.get('MIGRATION_SOURCE_DB_URL',''),SOURCE,True)
-    target=connection(os.environ.get('MIGRATION_TARGET_DB_URL',''),TARGET,False)
     for tool in ('psql','pg_dump','pg_restore'):
         if not shutil.which(tool):raise MigrationError('Alat PostgreSQL tidak tersedia pada runner: '+tool)
     print('Memeriksa koneksi lama dan baru; sumber hanya dibaca.',flush=True)
-    source_version=int(sql(source,'SHOW server_version_num;'));target_version=int(sql(target,'SHOW server_version_num;'))
+    (source,source_version),(target,target_version)=inspect_connections()
     if target_version//10000 < source_version//10000:raise MigrationError('Versi major PostgreSQL tujuan lebih lama dari sumber.')
     schemas=user_schemas(source)
     if not schemas or 'public' not in schemas:raise MigrationError('Schema public sumber tidak ditemukan.')
