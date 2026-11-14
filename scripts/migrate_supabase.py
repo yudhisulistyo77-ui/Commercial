@@ -6,6 +6,7 @@ import json
 import os
 import re
 import shutil
+import shlex
 import subprocess
 import tempfile
 from pathlib import Path
@@ -15,6 +16,11 @@ SOURCE = 'qrabkayuwglmlaouliwn'
 TARGET = 'qtgybtbzebmahzyqhkfd'
 MANAGED = ('auth','storage','extensions','graphql','graphql_public','realtime',
            'supabase_migrations','_realtime','_analytics','supabase_internal','pgbouncer','vault','pgsodium','pgsodium_masks','net','cron','supabase_functions')
+
+# Preserve the target platform's own future-object defaults for these built-in roles.
+PLATFORM_DEFAULT_ROLES=frozenset(('supabase_admin','supabase_auth_admin','supabase_storage_admin',
+    'supabase_replication_admin','supabase_read_only_user','supabase_functions_admin',
+    'anon','authenticated','service_role','authenticator'))
 
 class MigrationError(Exception):
     pass
@@ -193,8 +199,64 @@ def extension_list(env):
 
 
 def filter_toc(text):
-    # Fresh Supabase already owns public. Keep its ACL/comment; omit only CREATE SCHEMA public.
-    return '\n'.join(line for line in text.splitlines() if not re.match(r'^\d+; \d+ \d+ SCHEMA - public(?: |$)',line))+'\n'
+    # Do NOT use --no-acl: existing application GRANT/REVOKE entries must survive.
+    kept=[];skipped=0
+    for line in text.splitlines():
+        if re.match(r'^\d+; \d+ \d+ SCHEMA - public(?: |$)',line):continue
+        if re.match(r'^\d+; \d+ \d+ DEFAULT ACL ',line):
+            try:owner=shlex.split(line)[-1]
+            except ValueError:raise MigrationError('Format DEFAULT ACL tidak dapat dibaca; restore tidak dijalankan.') from None
+            if owner in PLATFORM_DEFAULT_ROLES:
+                skipped+=1;continue
+            if owner!='postgres':
+                raise MigrationError('DEFAULT ACL milik role aplikasi custom ditemukan. Perlukan pemetaan role khusus; tidak dibuang otomatis.')
+        kept.append(line)
+    if skipped:print(str(skipped)+' DEFAULT ACL role bawaan dilewati; default milik platform tujuan dipertahankan. ACL objek dan default postgres tetap disalin.',flush=True)
+    return '\n'.join(kept)+'\n'
+
+
+def default_acl_owners(env,schemas):
+    names=','.join(literal(n) for n in schemas)
+    owners=query(env,"SELECT coalesce(json_agg(DISTINCT pg_get_userbyid(d.defaclrole)),'[]') FROM pg_default_acl d LEFT JOIN pg_namespace n ON n.oid=d.defaclnamespace WHERE d.defaclnamespace=0 OR n.nspname IN ("+names+");")
+    if any(r!='postgres' and r not in PLATFORM_DEFAULT_ROLES for r in owners):
+        raise MigrationError('Default privileges role custom ditemukan. Perlu pemetaan izin role sebelum migrasi; tidak dihapus otomatis.')
+
+
+def postgres_defaults(env,schemas):
+    names=','.join(literal(n) for n in schemas)
+    return query(env,"""SELECT coalesce(json_agg(x ORDER BY x.schema,x.kind,x.grantee,x.privilege),'[]') FROM (
+       SELECT coalesce(n.nspname,'') AS schema,d.defaclobjtype::text AS kind,
+       CASE WHEN a.grantee=0 THEN 'PUBLIC' ELSE pg_get_userbyid(a.grantee) END AS grantee,
+       a.privilege_type AS privilege,a.is_grantable
+       FROM pg_default_acl d LEFT JOIN pg_namespace n ON n.oid=d.defaclnamespace
+       CROSS JOIN LATERAL aclexplode(d.defaclacl) a
+       WHERE pg_get_userbyid(d.defaclrole)='postgres' AND (d.defaclnamespace=0 OR n.nspname IN ("""+names+"""))
+    ) x;""")
+
+
+def object_grants(env,schemas):
+    names=','.join(literal(n) for n in schemas)
+    # Compare explicit/effective ACLs without grantor; ownership is checked separately.
+    return query(env,"""SELECT coalesce(json_agg(x ORDER BY x.kind,x.schema,x.name,x.args,x.grantee,x.privilege),'[]') FROM (
+      SELECT c.relkind::text AS kind,n.nspname AS schema,c.relname AS name,'' AS args,
+       CASE WHEN a.grantee=0 THEN 'PUBLIC' ELSE pg_get_userbyid(a.grantee) END AS grantee,
+       a.privilege_type AS privilege,a.is_grantable
+      FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+      CROSS JOIN LATERAL aclexplode(coalesce(c.relacl,acldefault((CASE WHEN c.relkind='S' THEN 'S' ELSE 'r' END)::"char",c.relowner))) a
+      WHERE n.nspname IN ("""+names+""") AND c.relkind IN ('r','p','v','m','S') AND a.grantee<>c.relowner
+       AND NOT EXISTS(SELECT 1 FROM pg_depend d WHERE d.classid='pg_class'::regclass AND d.objid=c.oid AND d.deptype='e')
+      UNION ALL
+      SELECT 'function',n.nspname,p.proname,pg_get_function_identity_arguments(p.oid),
+       CASE WHEN a.grantee=0 THEN 'PUBLIC' ELSE pg_get_userbyid(a.grantee) END,a.privilege_type,a.is_grantable
+      FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+      CROSS JOIN LATERAL aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a
+      WHERE n.nspname IN ("""+names+""") AND p.prokind IN ('f','p') AND a.grantee<>p.proowner
+       AND NOT EXISTS(SELECT 1 FROM pg_depend d WHERE d.classid='pg_proc'::regclass AND d.objid=p.oid AND d.deptype='e')
+      UNION ALL
+      SELECT 'schema',n.nspname,n.nspname,'',CASE WHEN a.grantee=0 THEN 'PUBLIC' ELSE pg_get_userbyid(a.grantee) END,a.privilege_type,a.is_grantable
+      FROM pg_namespace n CROSS JOIN LATERAL aclexplode(coalesce(n.nspacl,acldefault('n',n.nspowner))) a
+      WHERE n.nspname IN ("""+names+""") AND a.grantee<>n.nspowner
+    ) x;""")
 
 
 def verify(a,b,label):
@@ -234,7 +296,9 @@ def main():
     schemas=user_schemas(source)
     if not schemas or 'public' not in schemas:raise MigrationError('Schema public sumber tidak ditemukan.')
     managed_checks(source);managed_checks(target);target_empty(target,schemas)
+    default_acl_owners(source,schemas)
     objects=inventory(source,schemas);funcs=functions(source,schemas);rules=policies(source,schemas)
+    grants=object_grants(source,schemas);defaults=postgres_defaults(source,schemas)
     custom_definers=query(source,"SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE p.prosecdef AND n.nspname IN ("+','.join(literal(n) for n in schemas)+") AND pg_get_userbyid(p.proowner) <> 'postgres' AND NOT EXISTS(SELECT 1 FROM pg_depend d WHERE d.classid='pg_proc'::regclass AND d.objid=p.oid AND d.deptype='e');")
     if custom_definers:raise MigrationError('Fungsi SECURITY DEFINER dimiliki role selain postgres. Diperlukan migrasi role/owner khusus agar izin tidak berubah.')
     source_bytes=int(sql(source,"SELECT coalesce(sum(pg_total_relation_size(c.oid)),0) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE c.relkind IN ('r','m') AND n.nspname IN ("+','.join(literal(n) for n in schemas)+");"))
@@ -270,6 +334,8 @@ def main():
     verify(objects,inventory(target,schemas),'tabel/view/sequence dan RLS')
     verify(funcs,functions(target,schemas),'definisi fungsi')
     verify(rules,policies(target,schemas),'policy akses')
+    verify(grants,object_grants(target,schemas),'GRANT/REVOKE objek aplikasi')
+    verify(defaults,postgres_defaults(target,schemas),'default privileges postgres')
     verify(before,fingerprints(target,objects),'jumlah baris dan sidik isi')
     verify(seq,sequence_state(target,objects),'sequence ID')
     verify(before,fingerprints(source,objects),'sumber tidak berubah sampai akhir')
