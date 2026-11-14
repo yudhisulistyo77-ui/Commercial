@@ -1,0 +1,30 @@
+{
+  "base_commit": "ea5e605b7af8fb40ea113086318040073acc8bff",
+  "patch_only": true,
+  "files": [
+    "index.html",
+    "commercial-v28.js",
+    "commercial-v38.js",
+    "auth-v58.js",
+    "PANDUAN-LOGIN-V58.md",
+    ".github/workflows/auth-commercial.yml",
+    "scripts/apply_auth.py",
+    "supabase/functions/commercial-users/index.ts",
+    "supabase/functions/moka-sync/index.ts",
+    "auth-v58/03-ROLLBACK-AUTH.sql",
+    "auth-v58/02-AKTIFKAN-AUTH.sql",
+    "auth-v58/expected-functions.json",
+    "auth-v58/VALIDASI.json",
+    "auth-v58/01-PASANG-AUTH.sql",
+    "auth-v58/resources.json",
+    "auth-v58/tests/package.json",
+    "auth-v58/tests/auth-client.cjs",
+    "auth-v58/tests/audit-fixture.json",
+    "auth-v58/tests/test_apply_auth.py",
+    "auth-v58/tests/edge.cjs",
+    "auth-v58/tests/database.mjs",
+    "auth-v58/rollback-frontend/commercial-v28.js",
+    "auth-v58/rollback-frontend/commercial-v38.js",
+    "auth-v58/rollback-frontend/index.html"
+  ]
+}

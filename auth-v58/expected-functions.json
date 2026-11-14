@@ -1,0 +1,236 @@
+[
+  {
+    "schema": "commercial_private",
+    "name": "session_pin",
+    "args": "",
+    "md5": "9f4155e9d9687ef7d7f5c2980d5b9625"
+  },
+  {
+    "schema": "public",
+    "name": "commercial_bazar_write_v10",
+    "args": "p_kind text, p_action text, p_records jsonb",
+    "md5": "a49a8be78df85c58573bb7393c91d9f1"
+  },
+  {
+    "schema": "public",
+    "name": "commercial_brand_stores_v1",
+    "args": "p_exclude text[]",
+    "md5": "dd38734bd725877c87b9506046ba4229"
+  },
+  {
+    "schema": "public",
+    "name": "commercial_coverage_v1",
+    "args": "p_from date, p_to date, p_stores bigint[]",
+    "md5": "727458a2544b860b5ce42e9caafd1f7b"
+  },
+  {
+    "schema": "public",
+    "name": "commercial_customer_freq_v1",
+    "args": "p_from date, p_to date, p_stores bigint[]",
+    "md5": "dc1f29f66f84ba39def3fee092bdff04"
+  },
+  {
+    "schema": "public",
+    "name": "commercial_customer_stats_v1",
+    "args": "p_from date, p_to date, p_stores bigint[]",
+    "md5": "a2e4889bf47c251145116a759b3cced8"
+  },
+  {
+    "schema": "public",
+    "name": "commercial_customers_v1",
+    "args": "p_from date, p_to date, p_stores bigint[], p_query text, p_limit integer",
+    "md5": "d67f6cfc67fc824ec477f759438f480f"
+  },
+  {
+    "schema": "public",
+    "name": "commercial_heatmap_v1",
+    "args": "p_from date, p_to date, p_stores bigint[]",
+    "md5": "46e89cdc208e4b91439eb307c3310c5f"
+  },
+  {
+    "schema": "public",
+    "name": "commercial_is_master_v1",
+    "args": "",
+    "md5": "53e1d8218dafc33d52f437af2048af0a"
+  },
+  {
+    "schema": "public",
+    "name": "commercial_master_mutate_v1",
+    "args": "p_table text, p_action text, p_key jsonb, p_patch jsonb, p_version text",
+    "md5": "9cb852bb78064bf1dde11c4a389d7db3"
+  },
+  {
+    "schema": "public",
+    "name": "commercial_master_rows_v1",
+    "args": "p_table text, p_query text, p_offset integer, p_limit integer",
+    "md5": "8b27aa6c25bdce70c19d5dc5f461b640"
+  },
+  {
+    "schema": "public",
+    "name": "commercial_master_settings_delete_v1",
+    "args": "p_rows jsonb",
+    "md5": "cd1a5743de8dfcbac8a86e8ce06cf27c"
+  },
+  {
+    "schema": "public",
+    "name": "commercial_master_settings_snapshot_v1",
+    "args": "p_keys text[]",
+    "md5": "1b8b632519c9e67ca2175fa943c8e1e5"
+  },
+  {
+    "schema": "public",
+    "name": "commercial_member_customers_upsert_v51",
+    "args": "p_profiles jsonb",
+    "md5": "21ce176cf162f5485af228e2879d3340"
+  },
+  {
+    "schema": "public",
+    "name": "commercial_member_import_v39",
+    "args": "p_from date, p_to date, p_stores bigint[], p_rows jsonb, p_complete boolean, p_file text",
+    "md5": "4255d734206e38cd40e8a99dca2ee627"
+  },
+  {
+    "schema": "public",
+    "name": "commercial_member_items_replace_v51",
+    "args": "p_store_id bigint, p_from date, p_to date, p_rows jsonb, p_reset boolean",
+    "md5": "6c20fbfbbe2f73ad70fc6350e4eaa484"
+  },
+  {
+    "schema": "public",
+    "name": "commercial_member_job_open_v48",
+    "args": "p_key text, p_initial jsonb, p_force boolean",
+    "md5": "f4ceb6fdd23011736af5200a941d129c"
+  },
+  {
+    "schema": "public",
+    "name": "commercial_member_job_publish_v48",
+    "args": "p_key text, p_revision bigint",
+    "md5": "e237b071c70ed027ea4fa94d650e0239"
+  },
+  {
+    "schema": "public",
+    "name": "commercial_member_job_save_v48",
+    "args": "p_key text, p_revision bigint, p_state jsonb, p_profiles jsonb, p_events jsonb, p_finished jsonb, p_reset_customer text",
+    "md5": "21b61a8c784ae622b64e819b9f1b096e"
+  },
+  {
+    "schema": "public",
+    "name": "commercial_member_profiles_save_v37",
+    "args": "p_rows jsonb",
+    "md5": "4852a2d7de2b5a60513fd8ee6baf5599"
+  },
+  {
+    "schema": "public",
+    "name": "commercial_member_replace_v47",
+    "args": "p_scopes jsonb, p_profiles jsonb, p_rows jsonb, p_complete boolean",
+    "md5": "c4b4ed83deebf978f6c0bf8dd655547c"
+  },
+  {
+    "schema": "public",
+    "name": "commercial_member_save_v27",
+    "args": "p_data jsonb, p_version integer",
+    "md5": "2292ebe2b88a7ae90fdd6bd8881032d4"
+  },
+  {
+    "schema": "public",
+    "name": "commercial_member_snapshot_v27",
+    "args": "",
+    "md5": "0e1ac3baac0b8e98eba33538a0388c4e"
+  },
+  {
+    "schema": "public",
+    "name": "commercial_moka_enqueue_v35",
+    "args": "p_mode text, p_requested_by text",
+    "md5": "b5538dfede17866e3536b6e828d34dbe"
+  },
+  {
+    "schema": "public",
+    "name": "commercial_moka_insert_v35",
+    "args": "p_table text, p_rows jsonb",
+    "md5": "de081e9179d174b56941b9770c560622"
+  },
+  {
+    "schema": "public",
+    "name": "commercial_moka_replace_v35",
+    "args": "p_store_id bigint, p_year integer, p_month integer, p_from date, p_to date, p_rows jsonb",
+    "md5": "4b2a249e8d7d3d03a18b0bcae6717226"
+  },
+  {
+    "schema": "public",
+    "name": "commercial_moka_replace_v41",
+    "args": "p_store_id bigint, p_year integer, p_month integer, p_from date, p_to date, p_rows jsonb, p_period_from date, p_period_to date, p_summary jsonb, p_validated boolean",
+    "md5": "bd189a4c89c9bf339f721b92a1b09a78"
+  },
+  {
+    "schema": "public",
+    "name": "commercial_moka_replace_v45",
+    "args": "p_store_id bigint, p_year integer, p_month integer, p_from date, p_to date, p_components text[], p_rows jsonb, p_data_from date, p_data_to date, p_summary jsonb, p_validated boolean",
+    "md5": "5b5e3ef6e4d1609c5c66b774db1ef03a"
+  },
+  {
+    "schema": "public",
+    "name": "commercial_pin_login_v1",
+    "args": "p_pin text, p_remember boolean",
+    "md5": "07d32c7edb7125ef1771f07a42ce5e15"
+  },
+  {
+    "schema": "public",
+    "name": "commercial_pin_logout_v1",
+    "args": "",
+    "md5": "cd13800b1240727ee581a691a39d7845"
+  },
+  {
+    "schema": "public",
+    "name": "commercial_pin_save_v1",
+    "args": "p_id uuid, p_name text, p_pin text, p_role text, p_enabled boolean",
+    "md5": "a9465189a2bef488206613a08f3c5a85"
+  },
+  {
+    "schema": "public",
+    "name": "commercial_pin_session_v1",
+    "args": "",
+    "md5": "a4ee4d890bf25a4fed2bf2f9004eca33"
+  },
+  {
+    "schema": "public",
+    "name": "commercial_price_list_auto_v38",
+    "args": "p_outlet text, p_city text, p_data jsonb, p_version integer",
+    "md5": "4556cc7bdbdb389cb8a4affa1c9c00b5"
+  },
+  {
+    "schema": "public",
+    "name": "commercial_price_list_auto_v42",
+    "args": "p_outlet text, p_city text, p_data jsonb, p_version integer",
+    "md5": "b850e8eb5a7f8acf6547d7dc446ab0ac"
+  },
+  {
+    "schema": "public",
+    "name": "commercial_price_list_save_v24",
+    "args": "p_outlet text, p_city text, p_data jsonb, p_version integer",
+    "md5": "2cc932885d59c446ea96c4600068ae1d"
+  },
+  {
+    "schema": "public",
+    "name": "commercial_price_sync_v43",
+    "args": "p_outlet text, p_city text, p_data jsonb, p_version integer, p_store_id bigint, p_brands jsonb",
+    "md5": "4add4b57560dc3428dcd07806232b38a"
+  },
+  {
+    "schema": "public",
+    "name": "commercial_scope_v38",
+    "args": "p_menu text, p_stores bigint[]",
+    "md5": "36966294c4c910f7c2e453bd4a00f833"
+  },
+  {
+    "schema": "public",
+    "name": "rebuild_sales_actual",
+    "args": "p_year integer, p_month integer",
+    "md5": "b70d07331d3917f01d29e3d1a4024f10"
+  },
+  {
+    "schema": "public",
+    "name": "rebuild_transaksi_from_raw",
+    "args": "p_year integer, p_month integer",
+    "md5": "e0fda0d51c09f130dfdbb19a6554bad5"
+  }
+]

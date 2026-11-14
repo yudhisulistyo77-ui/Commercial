@@ -1,0 +1,10 @@
+{
+  "private": true,
+  "scripts": {
+    "test": "node database.mjs && node auth-client.cjs && node edge.cjs"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.5.16",
+    "typescript": "5.9.3"
+  }
+}

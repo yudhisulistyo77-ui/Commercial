@@ -1,0 +1,17 @@
+{
+  "source_commit": "ea5e605b7af8fb40ea113086318040073acc8bff",
+  "audited_target_project": "qtgybtbzebmahzyqhkfd",
+  "database_fixture_tests_passed": 22,
+  "database_test_engine": "PostgreSQL 18.6 via PGlite 0.5.16; metadata fixtures based on target PostgreSQL 17 audit",
+  "client_session_tests_passed": 7,
+  "edge_handler_tests_passed": 6,
+  "installer_guard_tests_passed": 5,
+  "total_tests_passed": 40,
+  "syntax_and_assets_checked": true,
+  "production_applied": false,
+  "production_auth_login_tested": false,
+  "live_moka_dispatch_tested": false,
+  "browser_visual_qa_run": false,
+  "function_level_write_guards": 24,
+  "future_postgres_public_anon_defaults_closed": true
+}
