@@ -96,7 +96,7 @@ td.sticky1{overflow-wrap:break-word}
   }
   function viewOnly() { return !!userRule()?.view_only; }
   function pageAllowed(id) {
-    if (id === 'akses') return isMaster();
+    if (id === 'akses' || (window.AUTH58 && id === 'set')) return isMaster();
     const r = userRule();
     if (r && r.view_only && ADMIN_PAGES.has(id)) return false;
     if (r && Array.isArray(r.menus) && r.menus.length && !r.menus.includes(id) && !(id === 'members' && r.menus.includes('pelanggan'))) return false;
@@ -344,8 +344,8 @@ td.sticky1{overflow-wrap:break-word}
           request.months=selection.value==='year'?y+'-01..'+y+'-12':y+'-'+String(m).padStart(2,'0');
         }
         const token = await masterToken();
-        const headers = { apikey: S.key, 'Content-Type': 'application/json', 'x-commercial-pin-session': token };
-        if (/^eyJ/.test(S.key)) headers.Authorization = 'Bearer ' + S.key;
+        const headers = window.AUTH58 ? DB.h() : { apikey: S.key, 'Content-Type': 'application/json', 'x-commercial-pin-session': token };
+        if (!window.AUTH58 && /^eyJ/.test(S.key)) headers.Authorization = 'Bearer ' + S.key;
         const res = await fetch(S.url.replace(/\/$/, '') + '/functions/v1/moka-sync', {
           method: 'POST', headers, signal: AbortSignal.timeout(45000), body: JSON.stringify(request)
         });
@@ -369,8 +369,8 @@ td.sticky1{overflow-wrap:break-word}
   }
   V28.openSync = openSync;
   V28.checkMemberSource=async function(){
-    const token=await masterToken();const headers={apikey:S.key,'Content-Type':'application/json','x-commercial-pin-session':token};
-    if(/^eyJ/.test(S.key))headers.Authorization='Bearer '+S.key;
+    const token=await masterToken();const headers=window.AUTH58?DB.h():{apikey:S.key,'Content-Type':'application/json','x-commercial-pin-session':token};
+    if(!window.AUTH58&&/^eyJ/.test(S.key))headers.Authorization='Bearer '+S.key;
     const response=await fetch(S.url.replace(/\/$/,'')+'/functions/v1/moka-sync',{method:'POST',headers,body:JSON.stringify({mode:'member_check'}),signal:AbortSignal.timeout(45000)});
     const data=await response.json().catch(()=>({}));
     if(!response.ok||!data.ok||!data.audit_dispatched)throw Error(data.error||'Pemeriksaan Member belum dapat dimulai.');
@@ -698,6 +698,7 @@ td.sticky1{overflow-wrap:break-word}
   /* ======================== AKSES PENGGUNA ======================== */
   async function renderAkses() {
     const p = $('#p-akses');
+    if(window.AUTH58)return window.AUTH58.renderAccess(p);
     p.replaceChildren(el('div', { class: 'phead' }, el('div', {}, el('h1', {}, 'Akses Pengguna'), el('p', {}, 'Atur siapa yang boleh membuka aplikasi, menu dan toko apa saja yang terlihat.'))));
     if (S.demo || !S.key) { p.append(el('p', { class: 'note' }, 'Hubungkan Supabase terlebih dahulu.')); return; }
     if (!MASTER.verified) { try { await masterResume(); } catch { } }

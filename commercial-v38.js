@@ -3,7 +3,7 @@
  const X=window.V38={brandFacts:null};
  const oldClear=masterClear;masterClear=function(){oldClear.apply(this,arguments);if(window.COMMERCIAL_LOGIN_REQUIRED_V38){S.dash=[];S.dashAll=[];S.trx=[];S.trxAll=[];S.logs=[];S.settings={};S.rollCache.clear();for(const k of ['pdca','pica','entries','mkt','kpiWeekly','people'])S[k]=[];X.brandFacts=null;if(typeof PL24!=='undefined')PL24.docs=null;document.querySelectorAll('.page').forEach(p=>p.replaceChildren());requestAnimationFrame(()=>login())}};
  priceSeedV24=async function(){if(!PL24.seed){const response=await fetch('price-colors-v24.json?v=26');if(response.ok)PRICE_ENGINE.setColors(await response.json());PL24.seed={schema:24,docs:[]}}return PL24.seed};
- const oldHeaders=DB.h;DB.h=function(extra={}){const h=oldHeaders.call(this,extra);if(MASTER.session?.access_token)h['x-commercial-pin-session']=MASTER.session.access_token;return h};
+ const oldHeaders=DB.h;DB.h=function(extra={}){const h=oldHeaders.call(this,extra);if(!window.AUTH58&&MASTER.session?.access_token)h['x-commercial-pin-session']=MASTER.session.access_token;return h};
  const oldBrands=canonicalProductBrand;canonicalProductBrand=function(value){const k=String(value||'').toUpperCase().replace(/[^A-Z0-9]/g,'');return k==='MYNO'?'MYNO':k==='DEFECT'?'DEFECT':oldBrands(value)};
  // Compact axes avoid extremely wide SVGs; source values in tables are unchanged.
  for(const name of ['groupedBars','comboBarsLine','lineChart']){
@@ -56,7 +56,7 @@
   try{await masterResume()}catch{}
   async function boot(){document.querySelector('#login-v38')?.remove();await loadAll();googleResume()}
   if(MASTER.verified){await boot();return}
-  const form=masterLoginForm(boot),gate=el('div',{id:'login-v38',class:'v28-gate'},el('div',{class:'card'},el('h1',{},'Masuk Commercial'),el('p',{},'Gunakan PIN pribadi dari master.'),form.node));document.body.append(gate);
+  const form=masterLoginForm(boot),gate=el('div',{id:'login-v38',class:'v28-gate'},el('div',{class:'card'},el('h1',{},'Masuk Commercial'),el('p',{},'Gunakan email dan password akun dari Master.'),form.node));document.body.append(gate);
  }
  document.head.append(el('style',{id:'responsive-v38'},`
  .mobile-sort-v38{display:none;gap:10px;align-items:center;margin:8px 0}.mobile-sort-v38 select{min-width:0;max-width:70%}
