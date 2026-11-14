@@ -795,7 +795,7 @@ def main():
             warn("Status sinkron tidak tersimpan (periksa SQL V35/V36): " + str(e)[:200])
 
     run_update(status="running", started_at=datetime.now(timezone.utc).isoformat(), github_run_url=run_url,
-               message="Sedang menarik data Moka…")
+               message="Sedang menarik data Moka…",progress={"phase":"starting"})
 
     moka = Moka(token)
     try:
@@ -838,6 +838,7 @@ def main():
     stamp = now.astimezone(LOCAL_TZ).strftime("%Y-%m-%d %H:%M")
     results, item_results = [], []
 
+    run_update(progress={"phase":"sales","done":0,"total":len(mapped)*len(periods)},message="Menarik data toko-periode Moka…")
     with ThreadPoolExecutor(WORKERS) as ex:
         futs = {} if PRICE_ONLY or not SALES_COMPONENTS else {ex.submit(process, ctx, o, sid, p): (o, sid) for p in periods for o, sid in mapped}
 
@@ -875,8 +876,18 @@ def main():
                 f"  {len(res.get('items') or []):>5} item  dari {res.get('fetch_from', '-')}"
                 f"  {res['seconds']:>6}s {'; '.join(res['errors'])}" + (" · dilewati: "+res['skip_reason'] if res.get('skip_reason') else ''))
             results.append(res)
+            run_update(message=f"Sales: {len(results)}/{len(futs)} toko-periode selesai · {res['outlet']} · {res['status']}",
+                progress={"phase":"sales","done":len(results),"total":len(futs),"outlet":res['outlet'],"result":res['status']})
 
     member_result=None;member_error=None
+    member_tick = [0.0]
+    def member_progress_v62(*args):
+        message = str(args[0]) if len(args)==1 else f'Member: {args[0]}/{args[1]} customer diperiksa; {args[2]} transaksi sumber.'
+        log(message)
+        if time.monotonic()-member_tick[0]>=15:
+            member_tick[0]=time.monotonic()
+            run_update(message=message[:900],progress={"phase":"members","detail":message[:300]})
+
     if 'members' in COMPONENTS and not PRICE_ONLY:
         try:
             from moka_member_v47 import MemberSourceError
@@ -887,7 +898,7 @@ def main():
                 from moka_member_official_v50 import sync as sync_members  # API resmi Moka
                 log('Member: API resmi Moka (Customer List resmi + transaksi resmi)…')
             member_result=sync_members(db,mapped,stores,aliases,periods,TZ,writing,
-                progress=lambda done,total,receipts:log(f'Member: {done}/{total} customer diperiksa; {receipts} nota pada cakupan pilihan.'))
+                progress=member_progress_v62)
             log(f"Member API OK: {member_result['customers']} customer; {member_result['receipts']} nota/refund; {member_result['http_requests']} request sumber.")
         except Exception as e:
             member_error=str(e) if type(e).__name__=='MemberSourceError' else 'Pemrosesan Member gagal ('+type(e).__name__+'); periksa SQL V47/V48 dan konfigurasi sumber.'
@@ -945,6 +956,7 @@ def main():
     data_until = now if MODE == "live" and actual_end == now.date() else datetime(actual_end.year, actual_end.month, actual_end.day, 23, 59, 59, tzinfo=TZ)
     library_ok = [r for r in item_results if r["status"] == "OK"]
     run_update(status="error" if bad or rebuild_error or (member_blocked and not SALES_COMPONENTS) else "warn" if wr or member_blocked or (member_result and member_result["status"]=="WARN") else "done",
+               progress={"phase":"finished","done":len(results),"total":len(results)},
                finished_at=datetime.now(timezone.utc).isoformat(), data_until=data_until.isoformat() if (results or member_result) and not bad and not wr and not rebuild_error and not member_blocked and not (member_result and member_result["status"]!="OK") else None,
                data_through=actual_end.isoformat() if (results or member_result) and not bad and not wr and not rebuild_error and not member_error and not (member_result and member_result["status"]!="OK") else None, components=sorted(COMPONENTS) if not PRICE_ONLY else ["price_list"],
                stores_ok=len(ok)+len(unchanged)+(len(mapped) if member_result and not results else 0), stores_warn=len(wr), stores_error=len(bad),

@@ -205,7 +205,9 @@ def write_items(db, sid, d1, d2, rows):
 
 
 def sync(db, mapped, stores, aliases, periods, tz, writing=True, progress=None, api=None):
-    log = (lambda m: print(m, flush=True))
+    def log(m):
+        if progress: progress(m)
+        else: print(m, flush=True)
     api = api or OfficialMoka(os.environ.get('MOKA_ACCESS_TOKEN'))
     log('Member V50: membaca Customer List resmi Moka (±175 halaman, ±10 menit)…')
     try:

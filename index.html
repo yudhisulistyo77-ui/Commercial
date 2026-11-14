@@ -776,6 +776,7 @@ html[data-number-mode="full"] .member-ranking-v29 table{min-width:1560px!importa
 <link rel="stylesheet" href="ui-v59.css?v=59">
 <link rel="stylesheet" href="motion-v60.css?v=60">
 <link rel="stylesheet" href="ui-v61.css?v=61">
+<link rel="stylesheet" href="ui-v62.css?v=62">
 </head>
 <body>
 
@@ -2386,7 +2387,7 @@ function tableFooterRefresh(tbl,filtered=false){const heads=[...tbl.tHead.rows[0
  else if(percent||/GROWTH|KENAIKAN|PORSI|KONTRIBUSI|SHARE|PROGRESS|PERSENTASE|PERSEN|RASIO|MARGIN/.test(h)){note='Rasio tidak dijumlahkan; sumber pembagi diperlukan untuk agregat';}
  else if(/HARGA|PRICE|HARI AKTIF|JUMLAH TOKO|N_STORES|\bTOKO\b|SISA HARI/.test(h)){note='Indikator ini tidak dijumlahkan antar baris';}
  else {v=sum(i);kind=currency?'currency':'number';}
- const text=v==null?'—':kind==='currency'?compact(v):kind==='percent'?pillCell(v):T(fullNumber(v),v);return el('span',{title:note,...(v!=null?{'data-v':v}:{})},text);}
+ const text=v==null?'—':kind==='currency'?compact(v):kind==='percent'?pillCell(v):T(/RATING|BINTANG|SKOR|SCORE|CSL|CSAT|RATA|AVERAGE|\bUPT\b/.test(h)?Number(v).toLocaleString('id-ID',{minimumFractionDigits:2,maximumFractionDigits:2}):fullNumber(v),v);return el('span',{title:note,...(v!=null?{'data-v':v}:{})},text);}
  const computed=el('tr',{class:'tot'},headers.map((h,i)=>el('td',{class:heads[i].className.replace(/sortar/g,''),style:heads[i].getAttribute('style')},value(i))));if(original.length&&!filtered){const copies=original.map(r=>r.cloneNode(true));for(const row of copies)for(let i=1;i<row.cells.length;i++)if(!row.cells[i].textContent.trim())row.cells[i].replaceChildren(...[...computed.cells[i]?.childNodes||[]].map(n=>n.cloneNode(true)));foot.replaceChildren(...copies);}else foot.replaceChildren(computed);labelTableFooter(tbl,rows);
 }
 function removeLegacyPresentLocal(){try{const data=opsDemoSettings();let changed=false;for(const key of Object.keys(data))if(key.startsWith('ops_v1_present_')){delete data[key];changed=true;}if(changed)localStorage.setItem('sc_ops_demo',JSON.stringify(data));}catch{}}
@@ -2696,10 +2697,10 @@ function pillCell(a){return el('span',{class:'pill ach '+achClass(a),'data-v':a,
 
 /* ---------- ITEM SALES ---------- */
 /* V22: bounded read-only RPC queue, project-local cache and cancellable Item Sales loading. */
-const READ_V22={active:0,limit:3,queue:[]};
+const READ_V22={active:0,limit:3,queue:[],controllers:new Map()};
 function readAbortV22(){const e=Error('Pemuatan dibatalkan.');e.name='AbortError';return e;}
 function readRpcV22(fn,args,signal){return new Promise((resolve,reject)=>{if(signal?.aborted){reject(readAbortV22());return;}const job={fn,args,signal,page:S.page,resolve,reject,started:false};job.abort=()=>{if(!job.started){READ_V22.queue=READ_V22.queue.filter(x=>x!==job);reject(readAbortV22());}};signal?.addEventListener('abort',job.abort,{once:true});READ_V22.queue.push(job);readPumpV22();});}
-function readPumpV22(){while(READ_V22.active<READ_V22.limit&&READ_V22.queue.length){const preferred=READ_V22.queue.findIndex(j=>j.page===S.page),job=READ_V22.queue.splice(preferred<0?0:preferred,1)[0];if(job.signal?.aborted){job.reject(readAbortV22());continue;}job.started=true;READ_V22.active++;const controller=new AbortController(),abort=()=>controller.abort();job.signal?.removeEventListener('abort',job.abort);job.signal?.addEventListener('abort',abort,{once:true});const timer=setTimeout(()=>controller.abort(),20000);Promise.resolve().then(()=>DB.rpc(job.fn,job.args,{signal:controller.signal})).then(job.resolve,e=>{if(job.signal?.aborted)job.reject(readAbortV22());else if(controller.signal.aborted)job.reject(Error('Waktu koneksi habis. Coba lagi atau persempit periode.'));else job.reject(e);}).finally(()=>{clearTimeout(timer);job.signal?.removeEventListener('abort',abort);READ_V22.active--;readPumpV22();});}}
+function readPumpV22(){while(READ_V22.active<READ_V22.limit&&READ_V22.queue.length){const preferred=READ_V22.queue.findIndex(j=>j.page===S.page),job=READ_V22.queue.splice(preferred<0?0:preferred,1)[0];if(job.signal?.aborted){job.reject(readAbortV22());continue;}job.started=true;READ_V22.active++;const controller=new AbortController(),abort=()=>controller.abort();READ_V22.controllers.set(controller,job.page);job.signal?.removeEventListener('abort',job.abort);job.signal?.addEventListener('abort',abort,{once:true});const timer=setTimeout(()=>controller.abort(),20000);Promise.resolve().then(()=>DB.rpc(job.fn,job.args,{signal:controller.signal})).then(job.resolve,e=>{if(job.signal?.aborted)job.reject(readAbortV22());else if(controller.signal.aborted)job.reject(Error('Waktu koneksi habis. Coba lagi atau persempit periode.'));else job.reject(e);}).finally(()=>{clearTimeout(timer);READ_V22.controllers.delete(controller);job.signal?.removeEventListener('abort',abort);READ_V22.active--;readPumpV22();});}}
 let ITEM_LOAD_V22=null;
 function cancelItemLoadV22(){if(ITEM_LOAD_V22&&!ITEM_LOAD_V22.done)ITEM_LOAD_V22.controller.abort();}
 function itemTimeoutV22(e){return /57014|statement timeout|canceling statement|Waktu koneksi habis/i.test(e?.message||'');}
@@ -4955,11 +4956,11 @@ function comparisonControls(st,prefix,rerender){
  const month=(k)=>opsSelect(MONTHS.map((n,i)=>[i+1,n]),st[k],{id:prefix+'-'+k,onchange:e=>{st[k]=Number(e.target.value);if(st.m1>st.m2){if(k==='m1')st.m2=st.m1;else st.m1=st.m2;}st.mode='month';st.cutoffFrom=`${y}-${String(st.m1).padStart(2,'0')}-01`;st.cutoffTo=`${y}-${String(st.m2).padStart(2,'0')}-${daysInMonth(y,st.m2)}`;rerender();}});
  const date=k=>opsInput(st[k]||'','date',{id:prefix+(k==='cutoffFrom'?'-cutoff-from':'-cutoff-to'),onchange:e=>{st[k]=e.target.value;st.mode='range';rerender();}});
  const monthly=st.mode!=='range',currentDate=opsToday(),[cy,cm]=currentDate.split('-').map(Number),sourceDate=opsInput(comparisonSalesThrough(cy,cm)||'','date',{id:prefix+'-sales-through','aria-label':'Data sales s.d. '+prefix,min:currentDate.slice(0,8)+'01',max:bazarDateShift(currentDate,-1),onchange:e=>{try{comparisonSetSalesThrough(e.target.value);rerender();}catch(error){toast(error.message);}}});
- return el('div',{class:'comparison-controls'},el('div',{class:'comparison-grid'},opsField('Hitung berdasarkan',mode),monthly?opsField('Dari bulan',month('m1')):opsField('Dari tanggal',date('cutoffFrom')),monthly?opsField('Sampai bulan',month('m2')):opsField('Sampai tanggal',date('cutoffTo')),opsField('Data sales s.d. (bulan berjalan)',sourceDate),el('button',{class:'btn sm',onclick:()=>{Object.assign(st,comparisonInit(st.key),{alignToCurrent:prefix!=='h2h'});rerender();}},'Reset periode')),
+ return el('div',{class:'comparison-controls'},el('div',{class:'comparison-grid'},opsField('Hitung berdasarkan',mode),monthly?opsField('Dari bulan',month('m1')):opsField('Dari tanggal',date('cutoffFrom')),monthly?opsField('Sampai bulan',month('m2')):opsField('Sampai tanggal',date('cutoffTo')),opsField('Data sales s.d.',sourceDate),el('button',{class:'btn sm',onclick:()=>{Object.assign(st,comparisonInit(st.key),{alignToCurrent:prefix!=='h2h'});rerender();}},'Reset periode')),
  el('label',{style:'display:flex;align-items:center;gap:7px;margin-top:10px;font-size:12px'},el('input',{type:'checkbox',id:prefix+'-align-years',checked:st.alignToCurrent!==false?'':null,style:'width:16px;height:16px;min-height:16px',onchange:e=>{st.alignToCurrent=e.target.checked;rerender();}}),'Samakan batas tanggal tahun pembanding dengan tahun berjalan'),
  el('details',{class:'comparison-method'},el('summary',{},'Cara hitung · hari kalender dan ROUNDUP'),el('p',{class:'sub'},'Bulan berjalan: gunakan total sales upload penuh jika rentang mencakup seluruh cakupan data. Jika data sampai tanggal 18, Oktober atau rentang 1–18 memakai total penuh; rentang 1–10 memakai ROUNDUP(total upload ÷ 18 × 10). Tanggal setelah 18 belum dihitung. Target = target bulanan ÷ hari kalender bulan × hari dalam rentang sampai tanggal data. Bulan selesai tetap total ÷ hari kalender × hari rentang. Pembulatan hanya pada estimasi; nilai sumber tidak ditimpa. Tanggal Data sales s.d. tersimpan pada browser ini dan dipakai bersama H2H/SSSG. Perbarui bila ada upload baru tanpa tanggal cakupan yang terbaca.')));
 }
-function comparisonPanel(pf,controls){const grid=controls.querySelector('.comparison-grid');if(pf){const scope=[...pf.childNodes];for(let i=scope.length-1;i>=0;i--)grid.prepend(scope[i]);}return controls;
+function comparisonPanel(pf,controls){if(pf){const scope=el('div',{class:'comparison-scope-v62'},...[...pf.childNodes]);controls.prepend(scope);}return controls;
 }
 function h2hData(years,m1,m2,window=null){
  const w=window&&typeof window==='object'?window:{mode:'month',m1,m2,d1:1,d2:31},out={};
@@ -7030,26 +7031,28 @@ setInterval(masterRevisionCheck,45000);window.addEventListener('focus',masterRev
 <script src="price-list-ui-v24.js?v=26"></script>
 <script src="member-v27.js?v=34"></script>
 <script src="member-ui-v27.js?v=37"></script>
-<script src="commercial-v28.js?v=61"></script>
+<script src="commercial-v28.js?v=62"></script>
 <script src="member-monthly-v37.js?v=38"></script>
 <script src="auth-v58.js?v=61"></script>
-<script src="commercial-v38.js?v=58"></script>
+<script src="commercial-v38.js?v=62"></script>
 <script src="member-analytics-v39.js?v=61"></script>
 <script src="table-csv-v39.js?v=50"></script>
 <script src="member-profiling-moka-v40.js?v=61"></script>
 <script src="tables-v40.js?v=51"></script>
-<script src="ai-agent-v41.js?v=61"></script>
-<script src="egress-v44.js?v=61"></script>
+
+<script src="egress-v44.js?v=62"></script>
 <script src="sssg-mtd-v49.js?v=51"></script>
 <script src="member-data-v49.js?v=49"></script>
 <script src="png-export-v49.js?v=52"></script>
 <script src="navigation-layout-v50.js?v=50"></script>
 <script src="member-sssg-v51.js?v=61"></script>
 <script src="ui-v51.js?v=52"></script>
-<script src="sssg-current-v52.js?v=53"></script>
+<script src="sssg-current-v52.js?v=62"></script>
 <script src="sales-type-v52.js?v=54"></script>
-<script src="ui-v59.js?v=59"></script>
-<script src="motion-v60.js?v=60"></script>
+<script src="ui-v59.js?v=62"></script>
+<script src="motion-v60.js?v=62"></script>
 <script src="ui-v61.js?v=61"></script>
+<script src="traffic-v62.js?v=62"></script>
+<script src="ui-v62.js?v=62"></script>
 </body>
 </html>

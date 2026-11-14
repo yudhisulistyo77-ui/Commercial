@@ -47,12 +47,6 @@ function decorateLogin(gate){
  const password=form.querySelector('input[type=password]');if(password){const field=password.closest('.fld');if(field){field.classList.add('ui59-password-field');const toggle=el('button',{type:'button',class:'ui59-password-toggle','aria-label':'Tampilkan password','aria-pressed':'false',onclick:()=>{const show=password.type==='password';password.type=show?'text':'password';toggle.textContent=show?'Tutup':'Lihat';toggle.setAttribute('aria-label',show?'Sembunyikan password':'Tampilkan password');toggle.setAttribute('aria-pressed',String(show));}},'Lihat');field.append(toggle);}}
  syncAppearance();
 }
-function addNavSearch(){
- const nav=document.querySelector('#nav');if(!nav||document.querySelector('.ui59-nav-search'))return;
- const input=el('input',{type:'search',placeholder:'Cari menu…','aria-label':'Cari menu navigasi',autocomplete:'off'}),clear=el('button',{type:'button','aria-label':'Bersihkan pencarian menu',onclick:()=>{input.value='';filter();input.focus();}},'×'),host=el('div',{class:'ui59-nav-search'},input,clear);nav.before(host);
- function filter(){const query=input.value.trim().toLocaleLowerCase('id-ID');for(const button of nav.querySelectorAll('button[data-p]'))button.hidden=!!query&&!button.textContent.toLocaleLowerCase('id-ID').includes(query);for(const group of nav.querySelectorAll('.navgrp')){let has=false;for(let next=group.nextElementSibling;next&&!next.classList.contains('navgrp');next=next.nextElementSibling)if(next.matches('button')&&!next.hidden&&next.style.display!=='none')has=true;group.hidden=!!query&&!has;}clear.hidden=!query;}
- input.addEventListener('input',filter);input.addEventListener('keydown',e=>{if(e.key==='Escape'){input.value='';filter();}});new MutationObserver(()=>{if(input.value)filter();}).observe(nav,{childList:true});filter();
-}
 U.trendFor=function(label,text){
  if(!/growth|pertumbuhan|gap|selisih|perubahan|kenaikan|penurunan/i.test(label)||!/\d/.test(text))return null;
  const digits=String(text).replace(/[^0-9]/g,'');if(digits&&!/[1-9]/.test(digits))return 'flat';
@@ -61,7 +55,7 @@ U.trendFor=function(label,text){
 const seenCards=new WeakSet(),seenTables=new WeakSet();
 function decorate(scope){
  const shell=document.querySelector('#shell'),gate=document.querySelector('#login-v38');if(shell){if(gate){shell.inert=true;shell.dataset.ui59Inert='true';}else if(shell.dataset.ui59Inert){shell.inert=false;delete shell.dataset.ui59Inert;}}
- decorateLogin(document.querySelector('#login-v38'));addNavSearch();
+ decorateLogin(document.querySelector('#login-v38'));
  for(const tile of scope.querySelectorAll('.tile')){const trend=U.trendFor(tile.querySelector('.k')?.textContent||'',tile.querySelector('.v')?.textContent||'');if(trend)tile.dataset.ui59Trend=trend;else delete tile.dataset.ui59Trend;}
  for(const node of [...scope.querySelectorAll('.tile,:scope >.card')].slice(0,32)){if(!seenCards.has(node)){seenCards.add(node);if(root.dataset.uiMotion==='on')node.classList.add('ui59-enter');}}
  for(const table of scope.querySelectorAll('table')){if(seenTables.has(table))continue;seenTables.add(table);const count=table.tHead?.rows[0]?.cells.length||table.rows[0]?.cells.length||1;table.style.setProperty('--ui59-table-min',(count<=4?460:count<=7?660:count<=10?900:1100)+'px');}
@@ -86,7 +80,7 @@ document.addEventListener('keydown',e=>{const target=e.target;if(!target.matches
  if(e.key==='ArrowRight')next=(i+1)%points.length;else if(e.key==='ArrowLeft')next=(i-1+points.length)%points.length;else if(e.key==='Home')next=0;else if(e.key==='End')next=points.length-1;else if(e.key==='Escape'){if(typeof tipHide==='function')tipHide();return;}else return;e.preventDefault();target.setAttribute('tabindex','-1');points[next].setAttribute('tabindex','0');points[next].focus();});
 let scheduled=false;
 function queue(){if(scheduled)return;scheduled=true;requestAnimationFrame(()=>{scheduled=false;const page=document.querySelector('.page.on');decorate(page||document.body);});}
-new MutationObserver(records=>{if(records.some(r=>[...r.addedNodes,...r.removedNodes].some(n=>n.nodeType===1&&!n.closest?.('[data-png-host-v49]'))||(r.target.nodeType===1?r.target:r.target.parentElement)?.closest('.tile')))queue();}).observe(document.body,{subtree:true,childList:true});
+new MutationObserver(records=>{if(records.some(r=>!((r.target.nodeType===1?r.target:r.target.parentElement)?.closest('table,.tw,.mobile-sort-v38,.tbar'))&&([...r.addedNodes,...r.removedNodes].some(n=>n.nodeType===1&&!n.closest?.('[data-png-host-v49]'))||(r.target.nodeType===1?r.target:r.target.parentElement)?.closest('.tile'))))queue();}).observe(document.body,{subtree:true,childList:true});
 // Explicitly remove stale hover/tooltips when navigating without touching render/loadAll.
 document.addEventListener('animationend',e=>{if(e.animationName==='ui59-enter')e.target.classList.remove('ui59-enter');});
 document.querySelector('#nav')?.addEventListener('click',()=>{if(typeof tipHide==='function')tipHide();queue();});

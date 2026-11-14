@@ -388,12 +388,17 @@ td.sticky1{overflow-wrap:break-word}
   function watchRun(id, box) {
     const steps = el('div', { class: 'v28-steps' });
     const msg = el('p', { class: 'note', role: 'status' });
+    const meter=el('progress',{class:'v62-progress',max:100,'aria-label':'Progres sinkron'}),detail=el('p',{class:'sub v62-progress-label'});
     const link = el('p', { class: 'sub' });
     const t0 = Date.now();
     let polling = false;
-    box.append(el('p', {}, 'Sinkron #' + id + ' — Anda boleh menutup jendela ini; status tetap terlihat di kanan atas.'), steps, msg, link);
+    box.append(el('p', {}, 'Sinkron #' + id + ' — Anda boleh menutup jendela ini; status tetap terlihat di kanan atas.'), steps, meter, detail, msg, link);
     const paint = r => {
-      const st = r?.status || 'requested';
+      const st = r?.status || 'requested',progress=r?.progress||{};
+      const done=Number(progress.done),total=Number(progress.total);
+      if(total>0&&Number.isFinite(done)){meter.value=Math.max(0,Math.min(100,done/total*100));detail.textContent=(progress.phase==='sales'?'Sales · ':'')+int(done)+' / '+int(total)+' cakupan diproses'+(progress.outlet?' · '+progress.outlet:'');}
+      else {meter.removeAttribute('value');detail.textContent=progress.detail||'Menunggu laporan tahap dari worker…';}
+      if(['done','warn','error'].includes(st)){meter.value=100;detail.textContent=st==='done'?'Proses selesai':st==='warn'?'Selesai dengan peringatan':'Proses berhenti dengan error';}
       const s = (txt, state) => el('div', { class: state }, el('i'), txt);
       steps.replaceChildren(
         s('Permintaan diterima', 'ok'),
@@ -406,7 +411,7 @@ td.sticky1{overflow-wrap:break-word}
     };
     paint(null);
     clearInterval(V28.poll);
-    V28.poll = setInterval(async () => {
+    const tick=async () => {
       if (polling || document.hidden) return;
       polling = true;
       let r = null;
@@ -431,7 +436,7 @@ td.sticky1{overflow-wrap:break-word}
         clearInterval(V28.poll); V28.poll = null;
         if (box.isConnected) msg.textContent = 'Pemantauan melewati batas 245 menit. Periksa log GitHub dan status terakhir sebelum mengulang sinkron.';
       }
-    }, 10000);
+    };V28.poll=setInterval(tick,10000);tick();
   }
   function resumeActive() {
     let id = null; try { id = localStorage.getItem('sc_v28_run'); } catch { }

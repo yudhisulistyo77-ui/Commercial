@@ -3,7 +3,7 @@
 'use strict';
 if(window.MOTION60)return;
 const root=document.documentElement,reduce=matchMedia('(prefers-reduced-motion: reduce)');
-const CAP=32,OBSERVE_CAP=64;
+const CAP=12,OBSERVE_CAP=28;
 const running=new Set();let frame=null,current=null,seen=new WeakSet(),observed=0,sequence=0;
 const values=new Set();
 function maxActive(){return window.innerWidth<=680?16:CAP;}
@@ -61,7 +61,7 @@ const changes=new MutationObserver(records=>{
  for(const r of records){
   if(r.type==='attributes'){if(r.target.matches('.page'))relevant=true;continue;}
   const target=r.target.nodeType===1?r.target:r.target.parentElement;
-  if(target?.closest('.png-export-v49,[data-png-host-v49],.tip,.toast'))continue;
+  if(target?.closest('.png-export-v49,[data-png-host-v49],.tip,.toast,table,.tw,.tbar'))continue;
   const value=target?.closest('.tile .v');if(value){values.add(value);relevant=true;}
   if([...r.addedNodes,...r.removedNodes].some(n=>n.nodeType===1))relevant=true;
  }
