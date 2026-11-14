@@ -95,6 +95,8 @@ def run(args, env, *, data=None, timeout=1800):
         elif 'connection timed out' in err or 'timeout expired' in err: message='Koneksi timeout. Periksa host, port dan Network Restrictions project.'
         elif 'password authentication failed' in err: message='Password database ditolak. Periksa Secret, bukan publishable/service-role key.'
         elif 'could not translate host' in err or 'network is unreachable' in err: message='Host tidak terjangkau. Gunakan Session pooler 5432 untuk runner IPv4.'
+        elif 'acl reconciliation failed' in err: message='Perbaikan izin dibatalkan seluruhnya: izin efektif belum cocok. Data tidak diubah; perlu periksa grantor atau dependensi izin.'
+        elif 'dependent privileges exist' in err: message='Perbaikan izin dibatalkan: ada izin turunan yang bergantung pada grant option. Tidak menggunakan CASCADE; diperlukan pemeriksaan khusus.'
         elif 'version mismatch' in err: message='Versi pg_dump lebih tua dari server. Perbarui image PostgreSQL pada workflow.'
         elif 'permission denied' in err or permission_detail(p.stderr,env): message='Operasi PostgreSQL ditolak oleh izin database. Koneksi berhasil bukan berarti semua objek sistem dapat dipulihkan.'
         elif 'already exists' in err: message='Objek tujuan bertabrakan dengan backup. Restore dibatalkan; jangan hapus objek otomatis.'
@@ -234,10 +236,10 @@ def postgres_defaults(env,schemas):
     ) x;""")
 
 
-def object_grants(env,schemas):
+def object_grants_sql(schemas):
     names=','.join(literal(n) for n in schemas)
     # Compare explicit/effective ACLs without grantor; ownership is checked separately.
-    return query(env,"""SELECT coalesce(json_agg(x ORDER BY x.kind,x.schema,x.name,x.args,x.grantee,x.privilege),'[]') FROM (
+    return """SELECT coalesce(json_agg(x ORDER BY x.kind,x.schema,x.name,x.args,x.grantee,x.privilege),'[]') FROM (
       SELECT c.relkind::text AS kind,n.nspname AS schema,c.relname AS name,'' AS args,
        CASE WHEN a.grantee=0 THEN 'PUBLIC' ELSE pg_get_userbyid(a.grantee) END AS grantee,
        a.privilege_type AS privilege,a.is_grantable
@@ -246,7 +248,7 @@ def object_grants(env,schemas):
       WHERE n.nspname IN ("""+names+""") AND c.relkind IN ('r','p','v','m','S') AND a.grantee<>c.relowner
        AND NOT EXISTS(SELECT 1 FROM pg_depend d WHERE d.classid='pg_class'::regclass AND d.objid=c.oid AND d.deptype='e')
       UNION ALL
-      SELECT 'function',n.nspname,p.proname,pg_get_function_identity_arguments(p.oid),
+      SELECT CASE WHEN p.prokind='p' THEN 'procedure' ELSE 'function' END,n.nspname,p.proname,pg_get_function_identity_arguments(p.oid),
        CASE WHEN a.grantee=0 THEN 'PUBLIC' ELSE pg_get_userbyid(a.grantee) END,a.privilege_type,a.is_grantable
       FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
       CROSS JOIN LATERAL aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a
@@ -256,7 +258,11 @@ def object_grants(env,schemas):
       SELECT 'schema',n.nspname,n.nspname,'',CASE WHEN a.grantee=0 THEN 'PUBLIC' ELSE pg_get_userbyid(a.grantee) END,a.privilege_type,a.is_grantable
       FROM pg_namespace n CROSS JOIN LATERAL aclexplode(coalesce(n.nspacl,acldefault('n',n.nspowner))) a
       WHERE n.nspname IN ("""+names+""") AND a.grantee<>n.nspowner
-    ) x;""")
+    ) x;"""
+
+
+def object_grants(env,schemas):
+    return query(env,object_grants_sql(schemas))
 
 
 def verify(a,b,label):
@@ -311,15 +317,16 @@ def compare_report(label,expected,actual,*,grants=False):
     return False
 
 
-def verify_existing(source,target,schemas):
+def verify_existing(source,target,schemas,*,allow_acl_repair=False):
     # Read-only on BOTH databases; never dump, restore, change grants or notify here.
     target=dict(target);target['PGOPTIONS']+=' -c default_transaction_read_only=on'
     print('MODE VERIFY: hanya membaca kedua database yang sudah berisi data. Tidak ada restore atau perubahan izin.',flush=True)
     objects=inventory(source,schemas);target_objects=inventory(target,schemas)
+    source_grants=object_grants(source,schemas);target_grants=object_grants(target,schemas)
     checks=[compare_report('struktur dan status RLS',objects,target_objects),
             compare_report('fungsi',functions(source,schemas),functions(target,schemas)),
             compare_report('policy RLS',policies(source,schemas),policies(target,schemas)),
-            compare_report('GRANT/REVOKE',object_grants(source,schemas),object_grants(target,schemas),grants=True),
+            compare_report('GRANT/REVOKE',source_grants,target_grants,grants=True),
             compare_report('default postgres',postgres_defaults(source,schemas),postgres_defaults(target,schemas),grants=True)]
     if checks[0]:
         before=fingerprints(source,objects)
@@ -328,25 +335,92 @@ def verify_existing(source,target,schemas):
         checks.append(compare_report('sumber tetap stabil selama verify',before,fingerprints(source,objects)))
     else:
         print('Pemeriksaan isi dilewati karena struktur berbeda; jangan gunakan tujuan.',flush=True)
+    if allow_acl_repair and checks[0] and all(value for i,value in enumerate(checks) if i!=3):
+        return source_grants,target_grants
     if not all(checks):raise MigrationError('VERIFY menemukan perbedaan. Target tidak diubah; jangan jalankan migrate ulang atau alihkan produksi. Kirim bagian VERIFIKASI dan rincian izin.')
     print('VERIFY DATABASE LULUS. Uji aplikasi sebelum cutover; tidak ada data/izin yang diubah oleh mode ini.',flush=True)
 
 
+def grant_statements(expected,actual):
+    """Reconcile effective non-owner ACLs. RESTRICT is implicit; never CASCADE."""
+    def indexed(rows):
+        return {json.dumps({k:v for k,v in r.items() if k!='is_grantable'},sort_keys=True):r
+                for r in canonical_grants(rows)}
+    wanted,existing=indexed(expected),indexed(actual)
+    def clause(row):
+        kind=row['kind'];priv=row['privilege']
+        allowed={'r':{'SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER','MAINTAIN'},
+                 'S':{'SELECT','UPDATE','USAGE'},'function':{'EXECUTE'},'procedure':{'EXECUTE'},
+                 'schema':{'USAGE','CREATE'}}
+        category='r' if kind in ('p','v','m') else kind
+        if priv not in allowed.get(category,set()):
+            raise MigrationError('Jenis objek/privilege tidak didukung untuk perbaikan ACL otomatis.')
+        obj=quote(row['schema'])+'.'+quote(row['name'])
+        if category=='r':obj='TABLE '+obj
+        elif kind=='S':obj='SEQUENCE '+obj
+        elif kind in ('function','procedure'):obj=kind.upper()+' '+obj+'('+row['args']+')'
+        elif kind=='schema':obj='SCHEMA '+quote(row['schema'])
+        role='PUBLIC' if row['grantee']=='PUBLIC' else quote(row['grantee'])
+        return priv+' ON '+obj,role
+    revokes=[];grants=[]
+    for key,row in existing.items():
+        item,role=clause(row)
+        if key not in wanted:revokes.append('REVOKE '+item+' FROM '+role+';')
+        elif row['is_grantable'] and not wanted[key]['is_grantable']:
+            revokes.append('REVOKE GRANT OPTION FOR '+item+' FROM '+role+';')
+    for key,row in wanted.items():
+        item,role=clause(row)
+        if key not in existing or (row['is_grantable'] and not existing[key]['is_grantable']):
+            grants.append('GRANT '+item+' TO '+role+(' WITH GRANT OPTION' if row['is_grantable'] else '')+';')
+    return revokes+grants
+
+
+def repair_transaction(expected,actual,schemas):
+    statements=grant_statements(expected,actual)
+    # Compare ACLs inside the transaction, so a failed revoke cannot commit a partial repair.
+    wanted=literal(json.dumps(canonical_grants(expected),ensure_ascii=False))
+    select=object_grants_sql(schemas).strip().rstrip(';')
+    normalized="""SELECT coalesce(jsonb_agg(base || jsonb_build_object('is_grantable',can_grant)),'[]'::jsonb) INTO actual
+      FROM (SELECT item-'is_grantable' AS base,
+                   bool_or(coalesce((item->>'is_grantable')::boolean,false)) AS can_grant
+            FROM jsonb_array_elements(("""+select+""")::jsonb) AS item
+            GROUP BY item-'is_grantable') AS effective_acl"""
+    body="DECLARE wanted jsonb := "+wanted+"::jsonb; actual jsonb; BEGIN "+normalized
+    body+="; IF NOT (wanted @> actual AND actual @> wanted) THEN RAISE EXCEPTION 'ACL reconciliation failed; transaction rolled back'; END IF; END;"
+    tag='$acl_check$'
+    while tag in body:tag=tag[:-1]+'x$'
+    return "BEGIN;\nSET LOCAL lock_timeout = '10s';\nSET LOCAL statement_timeout = '120s';\n"+'\n'.join(statements)+"\nDO "+tag+body+tag+";\nCOMMIT;\n"
+
+
+def repair_grants(source,target,schemas):
+    expected,actual=verify_existing(source,target,schemas,allow_acl_repair=True)
+    statements=grant_statements(expected,actual)
+    if not statements:
+        print('Izin sudah cocok; tidak ada perubahan ACL.',flush=True)
+    else:
+        print('REPAIR_GRANTS: '+str(len(statements))+' penyesuaian izin hanya di tujuan; tanpa restore atau perubahan baris.',flush=True)
+        sql(target,repair_transaction(expected,actual,schemas))
+    verify_existing(source,target,schemas)
+    print('PERBAIKAN IZIN DAN VERIFIKASI LULUS. Izin mengikuti sumber. Login Supabase Auth belum diubah oleh langkah ini.',flush=True)
+
+
 def main():
     mode=os.environ.get('MIGRATION_MODE','check')
-    if mode not in ('check','migrate','verify'):raise MigrationError('Mode harus check, migrate, atau verify.')
-    if mode=='migrate' and (os.environ.get('MIGRATION_WRITES_PAUSED','').lower()!='true' or os.environ.get('MIGRATION_TARGET_CONFIRMATION','')!=TARGET):
-        raise MigrationError('Untuk migrate, hentikan semua penulisan dan isi konfirmasi project tujuan.')
+    if mode not in ('check','migrate','verify','repair_grants'):raise MigrationError('Mode harus check, migrate, verify, atau repair_grants.')
+    if mode in ('migrate','repair_grants') and (os.environ.get('MIGRATION_WRITES_PAUSED','').lower()!='true' or os.environ.get('MIGRATION_TARGET_CONFIRMATION','')!=TARGET):
+        raise MigrationError('Untuk '+mode+', hentikan semua penulisan dan isi konfirmasi project tujuan.')
     for tool in ('psql','pg_dump','pg_restore'):
         if not shutil.which(tool):raise MigrationError('Alat PostgreSQL tidak tersedia pada runner: '+tool)
     print('Memeriksa koneksi lama dan baru; sumber hanya dibaca.',flush=True)
     (source,source_version),(target,target_version)=inspect_connections()
     if target_version//10000 < source_version//10000:raise MigrationError('Versi major PostgreSQL tujuan lebih lama dari sumber.')
-    print('Memeriksa schema aplikasi, layanan managed dan tujuan kosong...',flush=True)
+    print('Memeriksa schema aplikasi dan mode '+mode+'...',flush=True)
     schemas=user_schemas(source)
     if not schemas or 'public' not in schemas:raise MigrationError('Schema public sumber tidak ditemukan.')
     if mode=='verify':
         verify_existing(source,target,schemas);return
+    if mode=='repair_grants':
+        repair_grants(source,target,schemas);return
     managed_checks(source);managed_checks(target);target_empty(target,schemas)
     default_acl_owners(source,schemas)
     objects=inventory(source,schemas);funcs=functions(source,schemas);rules=policies(source,schemas)
