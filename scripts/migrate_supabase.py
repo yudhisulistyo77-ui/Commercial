@@ -59,6 +59,22 @@ def connection(raw, project, readonly):
     return env
 
 
+def permission_detail(stderr, env):
+    # Only PostgreSQL permission diagnostics, never SQL/COPY context or raw stderr.
+    allowed=re.compile(r'permission denied|must be (?:owner|member|superuser|able to set role)|only superusers|not permitted to|must have .*privilege',re.I)
+    details=[]
+    for line in (stderr or '').splitlines():
+        found=re.search(r'(?:ERROR|FATAL):\s*(.+)',line)
+        if not found or not allowed.search(found.group(1)):continue
+        value=found.group(1)
+        value=re.sub(r"'(?:[^']|'')*'", "'[nilai disembunyikan]'",value)
+        value=re.sub(r'postgres(?:ql)?://\S+','[URI disembunyikan]',value)
+        if env.get('PGPASSWORD'):value=value.replace(env['PGPASSWORD'],'[password disembunyikan]')
+        if value not in details:details.append(value[:240])
+        if len(details)>=2:break
+    return ' | '.join(details)
+
+
 def run(args, env, *, data=None, timeout=1800):
     try:
         p = subprocess.run(args, input=data, text=True, capture_output=True, env=env, timeout=timeout)
@@ -74,11 +90,13 @@ def run(args, env, *, data=None, timeout=1800):
         elif 'password authentication failed' in err: message='Password database ditolak. Periksa Secret, bukan publishable/service-role key.'
         elif 'could not translate host' in err or 'network is unreachable' in err: message='Host tidak terjangkau. Gunakan Session pooler 5432 untuk runner IPv4.'
         elif 'version mismatch' in err: message='Versi pg_dump lebih tua dari server. Perbarui image PostgreSQL pada workflow.'
-        elif 'permission denied' in err: message='Izin database tidak cukup. Gunakan koneksi postgres dari panel Connect.'
+        elif 'permission denied' in err or permission_detail(p.stderr,env): message='Operasi PostgreSQL ditolak oleh izin database. Koneksi berhasil bukan berarti semua objek sistem dapat dipulihkan.'
         elif 'already exists' in err: message='Objek tujuan bertabrakan dengan backup. Restore dibatalkan; jangan hapus objek otomatis.'
         elif 'no space left' in err or 'disk full' in err: message='Penyimpanan tujuan tidak cukup; migrasi dibatalkan.'
         elif 'does not exist' in err: message='Dependensi role/extension/objek belum tersedia. Restore dibatalkan; periksa konfigurasi tujuan.'
         else: message='Operasi PostgreSQL gagal. Detail mentah disembunyikan agar password/data pelanggan tidak tercetak. Periksa koneksi, versi, dependensi dan kapasitas melalui Dashboard.'
+        detail=permission_detail(p.stderr,env)
+        if detail:message+=' Detail izin: '+detail
         raise MigrationError(message)
     return p.stdout
 
