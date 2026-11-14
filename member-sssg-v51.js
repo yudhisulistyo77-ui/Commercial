@@ -47,7 +47,7 @@ PICK.picker=function(onChange){
  multiSelectDropdown(storeBox,(S.stores||[]).map(s=>({value:String(s.id),label:s.name})),storeList(),arr=>{S.store=arr.join(',');onChange('stores')},{allLabel:'Semua cabang yang diizinkan'});
  const paintCities=()=>multiSelectDropdown(cityBox,(CITY_LIST||[]).map(c=>({value:c.city,label:c.city+' · '+Number(c.members).toLocaleString('id-ID')})),PICK.cities,arr=>{PICK.cities=arr;onChange('cities')},{allLabel:'Semua kota'});
  paintCities();if(!CITY_LIST)masterRpc('commercial_member_cities_v51',{p_stores:null}).then(list=>{CITY_LIST=list||[];if(cityBox.isConnected)paintCities()}).catch(()=>{});
- box.append(el('div',{class:'mpick-row-v51'},el('div',{class:'fld',style:'min-width:220px'},el('label',{},'Cabang'),storeBox),el('div',{class:'fld',style:'min-width:220px'},el('label',{},'Kota member'),cityBox)),el('div',{class:'mpick-row-v51'},el('div',{class:'fld',style:'flex:1 1 360px'},el('label',{},'Pilih member (bisa lebih dari satu) · berlaku di semua tab Member'),input),el('div',{class:'fld'},el('label',{},'Member sejak · dari bulan'),sf),el('div',{class:'fld'},el('label',{},'sampai bulan'),st),clearSince),results,chips);
+ box.append(el('div',{class:'mpick-row-v51'},el('div',{class:'fld',style:'min-width:220px'},el('label',{},'Cabang'),storeBox),el('div',{class:'fld',style:'min-width:220px'},el('label',{},'Kota member'),cityBox)),el('div',{class:'mpick-row-v51'},el('div',{class:'fld',style:'flex:1 1 360px'},el('label',{},'Pilih member (bisa lebih dari satu) · berlaku di semua tab Member'),input),el('div',{class:'fld'},el('label',{},'Member sejak · dari bulan'),sf),el('div',{class:'fld'},el('label',{},'sampai bulan'),st),clearSince),results,chips);const advanced=el('details',{class:'member-advanced-v63'},el('summary',{},'Filter member sejak'));advanced.append(el('div',{class:'mpick-row-v51'},sf.closest('.fld'),st.closest('.fld'),clearSince));box.append(advanced);
  return box;
 };
 
@@ -150,11 +150,8 @@ async function items(host,base,d,epoch){
  const foot=['TOTAL SEMUA ITEM (sesuai filter)','',...years.map(y=>int(tot(y,'qty'))),...years.map(y=>money(tot(y,'net'))),int(tot(ry,'buyers')),...years.slice(0,-1).reverse().flatMap(y=>[gapI(y,tot(yb,'net'),tot(y,'net')),growI(y,tot(yb,'net'),tot(y,'net'))])];
  const note=empty.length?el('p',{class:'note warn'},'Data item untuk '+empty.join(', ')+' belum ada. Item per member mulai tercatat sejak sinkron Member V51; jalankan sinkron Member untuk bulan/tahun tersebut agar perbandingan 3 tahun lengkap.'):null;
  host.append(card('Item yang dibeli member · per warna · acuan '+ry,'Ukuran (S–5XL) dan lengan (PDK/PJG) digabung per warna, mis. "HITAM 24S". Qty & sales item = nilai baris item Moka (refund mengurangi). '+String(int(r.total_groups))+' grup item.',note,el('div',{class:'member-filters-v27'},opsField('Cari item',q),opsField('Tampilkan',lim)),groups.length?memberTableV27(heads,rows,foot,{id:'v51-items'}):el('p',{class:'note'},'Belum ada item pada filter ini.')));
- if(PICK.keys.size){
-  const ms=r.members||[],mh=['Member','Item · grup warna','Kategori',...years.map(y=>'Qty '+y),...years.map(y=>'Sales '+y+(y===ry?' ★':'')),...years.slice(0,-1).reverse().flatMap(y=>['GAP '+yb+'–'+y,'Growth '+yb+' vs '+y])];
-  const mr=ms.map(m=>[el('b',{},m.name),m.grp,m.category||'—',...years.map(y=>int(v(m,y,'qty'))),...years.map(y=>money(v(m,y,'net'))),...years.slice(0,-1).reverse().flatMap(y=>[gapI(y,v(m,yb,'net'),v(m,y,'net')),growI(y,v(m,yb,'net'),v(m,y,'net'))])]);
-  host.append(card('Item per member terpilih · '+PICK.keys.size+' member','Maksimal 30 grup item teratas per member (acuan sales '+ry+'). Pergerakan tahunan per item untuk melihat yang sering dibeli.',ms.length?memberTableV27(mh,mr,[],{id:'v51-member-items'}):el('p',{class:'note'},'Member terpilih belum memiliki data item pada periode ini.')));
- } else host.append(el('p',{class:'note'},'Tip: pilih satu atau beberapa member di kotak "Pilih member" untuk melihat item apa saja yang mereka beli per tahun.'));
+ const people=el('div');host.append(people);const period=d.periods?.[ry];if(period&&window.MEMBER_ITEMS_V63)MEMBER_ITEMS_V63.show(people,{from:period.from,to:period.to,stores:base.p_stores,customers:base.p_customers,sinceFrom:base.p_since_from,sinceTo:base.p_since_to,cities:base.p_cities,kind:base.p_kind});
+
 }
 
 
@@ -177,26 +174,18 @@ async function directory(host){
  host.append(el('div',{class:'v40-profile-result'},card('Semua data member · Customer List Moka · '+String(int(d.total))+' member','Seluruh member terdaftar, termasuk yang belum bertransaksi. Mengikuti filter "Member sejak" & pilihan cabang. Klik Detail untuk pergerakan bulanan 3 tahun dan ringkasan belanja per toko. Analisis item tetap tersedia pada tab SSSG.',el('div',{class:'member-filters-v27'},opsField('Cari member',q),opsField('Status',status),opsField('Kelompok',kind),opsField('Baris',per)),list.length?memberTableV27(heads,rows,foot,{id:'v51-directory'}):el('p',{class:'note'},'Tidak ada member yang cocok.'),nav)));
 }
 async function memberDetail(r){
- const y=+opsToday().slice(0,4),{box}=opsModal('Detail Member · '+(r.name||r.key));box.style.maxWidth='min(1200px,calc(100vw - 24px))';
- box.append(el('p',{class:'note'},[r.key,r.city||'Kota belum tersedia',r.phone||'Telepon tidak tersedia/tidak diizinkan','Member sejak '+(r.since||'—')].join(' · ')));
- const body=el('div');box.append(body);body.append(el('p',{},'Memuat pergerakan & nota…'));
- let d,itemMap={};try{d=await masterRpc('commercial_member_customer_v51',{p_customer_key:r.key,p_year:y,p_stores:stores()});}
- catch(e){body.replaceChildren(el('p',{class:'note warn'},e.message));return}
- body.replaceChildren();const years=[y-2,y-1,y],mon=d.monthly||[],cell=(yy,m)=>{const r=mon.filter(x=>Number(x.y)===yy&&(m==null||Number(x.month)===m));return r.length?r.reduce((s,x)=>s+Number(x.net||0),0):null};
- body.append(card('Pergerakan bulanan · '+years.join(' / '),'Net sales per bulan (refund mengurangi) · seluruh toko yang diizinkan',memberTableV27(['Bulan',...years.map(yy=>'Sales '+yy),...[y-1,y-2].flatMap(c=>['GAP '+y+'–'+c,'Growth '+y+' vs '+c])],MONTHS.map((n,i)=>[n,...years.map(yy=>money(cell(yy,i+1))),...[y-1,y-2].flatMap(c=>[gapZ(cell(y,i+1),cell(c,i+1)),growZ(cell(y,i+1),cell(c,i+1))])]),['TOTAL',...years.map(yy=>money(cell(yy))),...[y-1,y-2].flatMap(c=>[gapZ(cell(y),cell(c)),growZ(cell(y),cell(c))])],{id:'v51-detail-month'})));
- const storeIds=[...new Set(mon.map(x=>Number(x.store_id)))],sname=new Map((d.receipts||[]).map(x=>[Number(x.store_id),x.store]));
- const names=new Map((S.stores||[]).map(s=>[Number(s.id),s.name]));
- if(storeIds.length)body.append(card('Sales per toko · '+years.join(' / '),'',memberTableV27(['Toko',...years.map(yy=>'Sales '+yy)],storeIds.map(id=>[names.get(id)||sname.get(id)||'Toko '+id,...years.map(yy=>{const v=mon.filter(x=>Number(x.y)===yy&&Number(x.store_id)===id);return money(v.length?v.reduce((s,x)=>s+Number(x.net||0),0):null)})]),[],{id:'v51-detail-store'})));
- const rc=d.receipts||[];
- body.append(card('Ringkasan transaksi per toko & tanggal · '+rc.length+' baris (maks. 100)','Ringkasan sale/refund; bukan daftar invoice. Rincian produk tersedia pada analisis item tab SSSG.',rc.length?memberTableV27(['Tanggal','Toko','Jenis','Net sales'],rc.map(x=>[x.sale_date,x.store,x.kind,money(Number(x.net))]),[],{id:'v51-detail-receipts'}):el('p',{class:'note'},'Belum ada ringkasan tersinkron untuk member ini.')));
+ const state=window.MEMBER_ANALYTICS_V39?.state,from=state?.from||opsToday().slice(0,7)+'-01',to=state?.to||opsToday();
+ const {box}=opsModal('Detail Member · '+(r.name||r.key));box.style.maxWidth='min(1200px,calc(100vw - 24px))';box.append(el('p',{class:'note'},from+' – '+to+' · '+(r.city||'')+' · '+(r.phone||'')));const body=el('div'),itemHost=el('div');box.append(body,itemHost);let page=0;
+ async function paint(){body.replaceChildren(el('p',{},'Memuat ringkasan belanja…'));try{const d=await masterRpc('commercial_member_view_detail_v39',{p_customer:r.key,p_from:from,p_to:to,p_stores:stores(),p_offset:page*100});if(!body.isConnected)return;body.replaceChildren(card('Belanja per toko & tanggal',d.total+' baris pada periode pilihan',memberTableV27(['Tanggal','Toko','Jenis','Net sales'],(d.records||[]).map(x=>[x.sale_date,x.store,x.kind,money(x.net)]))),el('div',{class:'rowline'},el('button',{class:'btn sm',disabled:page===0,onclick:()=>{page--;paint()}},'Sebelumnya'),el('button',{class:'btn sm',disabled:(page+1)*100>=d.total,onclick:()=>{page++;paint()}},'Berikutnya')));}catch(e){body.replaceChildren(el('p',{class:'note warn'},e.message))}}
+ await paint();if(window.MEMBER_ITEMS_V63)MEMBER_ITEMS_V63.show(itemHost,{from,to,stores:stores(),customers:[r.key]});
 }
 ST.directory=directory;ST.memberDetail=memberDetail;
 
 /* ---------- Tab Pergerakan: pergerakan bulanan setiap member (pembanding 2024/2025/2026, cut-off sama dengan SSSG) ---------- */
 const MV={year:0,page:0,limit:50,query:'',sort:'top',epoch:0};
-async function monthly(host){
+async function monthly(host,range=null){
  const epoch=++MV.epoch;host.replaceChildren(el('p',{class:'note'},'Memuat pergerakan bulanan setiap member…'));
- const {w,y3}=windowArgs(),again=()=>monthly(host);
+ let {w,y3}=windowArgs();if(range?.from&&range?.to&&range.from.slice(0,4)===range.to.slice(0,4)){y3=Number(range.from.slice(0,4));w={...w,m1:Number(range.from.slice(5,7)),d1:Number(range.from.slice(8,10)),m2:Number(range.to.slice(5,7)),d2:Number(range.to.slice(8,10)),alignToCurrent:false};}const again=()=>monthly(host,range);
  let d;try{d=await masterRpc('commercial_member_sssg_v51',{p_years:[y3],p_m1:w.m1,p_d1:w.d1||1,p_m2:w.m2,p_d2:w.d2||31,p_stores:stores(),p_kind:'all',p_rank:1,p_align:w.alignToCurrent!==false,p_rank_year:y3,p_compare:3,p_customers:PICK.keys.size?PICK.list():null,...PICK.sinceArgs(),...PICK.cityArgs(),p_query:MV.query||null,p_sort:MV.sort,p_limit:MV.limit,p_offset:MV.page*MV.limit})}
  catch(e){if(epoch===MV.epoch)host.replaceChildren(el('p',{class:'note warn'},'Pergerakan per member belum dapat dimuat: '+e.message));return}
  if(epoch!==MV.epoch||(!host.isConnected||S.page!=='members'))return;host.replaceChildren();
@@ -209,7 +198,7 @@ async function monthly(host){
  const per=opsSelect([[50,'50 / halaman'],[100,'100 / halaman'],[200,'200 / halaman']],MV.limit,{'aria-label':'Baris pergerakan'});per.onchange=()=>{MV.limit=+per.value;MV.page=0;again()};
  const my=MV.year,pf=periods[my],months=[];if(pf){for(let m=+pf.from.slice(5,7);m<=+pf.to.slice(5,7);m++)months.push(m)}
  /* Periode satu bulan: kolom bulan sama dengan kolom Sales tahun, jadi disembunyikan agar tidak dobel. */
- if(months.length<=1)months.length=0;
+ // Keep the selected month visible; never add out-of-range months.
  const mk=m=>my+'-'+String(m).padStart(2,'0'),mv=(r,m)=>{const v=r.per_month?.[mk(m)];return v==null?null:Number(v)};
  const keyOf=y=>y===yc?'n3':y===yc-1?'n2':'n1',val=(r,y)=>r[keyOf(y)]==null?null:Number(r[keyOf(y)]),tot=y=>d.totals?.[y]?.net==null?null:Number(d.totals[y].net);
  const monthTot=m=>{const r=(d.months||[]).find(x=>Number(x.y)===my&&Number(x.month)===m);return r?Number(r.net):null};
