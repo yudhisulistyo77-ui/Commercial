@@ -282,9 +282,59 @@ def inspect_connections():
     return result['LAMA'],result['BARU']
 
 
+def canonical_grants(rows):
+    # Grantors/order/duplicate ACL items do not change effective privileges.
+    merged={}
+    for row in rows:
+        base={k:v for k,v in row.items() if k!='is_grantable'}
+        key=json.dumps(base,sort_keys=True,ensure_ascii=False)
+        merged[key]={**base,'is_grantable':bool(row.get('is_grantable')) or merged.get(key,{}).get('is_grantable',False)}
+    return [merged[key] for key in sorted(merged)]
+
+
+def compare_report(label,expected,actual,*,grants=False):
+    if grants:expected,actual=canonical_grants(expected),canonical_grants(actual)
+    encode=lambda rows:{json.dumps(r,sort_keys=True,ensure_ascii=False) for r in rows}
+    a,b=encode(expected),encode(actual)
+    if a==b:
+        print('VERIFIKASI '+label+': COCOK ('+str(len(a))+').',flush=True);return True
+    missing=sorted(a-b);extra=sorted(b-a)
+    print('VERIFIKASI '+label+': BERBEDA — kurang di BARU '+str(len(missing))+', tambahan di BARU '+str(len(extra))+'.',flush=True)
+    if grants:
+        for title,items in [('KURANG_DI_BARU',missing),('TAMBAHAN_DI_BARU',extra)]:
+            for item in items[:12]:print(title+': '+item,flush=True)
+    else:
+        for title,items in [('KURANG_DI_BARU',missing),('BERBEDA_DI_BARU',extra)]:
+            for item in items[:5]:
+                row=json.loads(item);safe={k:row[k] for k in ('schema','schemaname','name','tablename','policyname') if k in row}
+                print(title+': '+json.dumps(safe,ensure_ascii=False),flush=True)
+    return False
+
+
+def verify_existing(source,target,schemas):
+    # Read-only on BOTH databases; never dump, restore, change grants or notify here.
+    target=dict(target);target['PGOPTIONS']+=' -c default_transaction_read_only=on'
+    print('MODE VERIFY: hanya membaca kedua database yang sudah berisi data. Tidak ada restore atau perubahan izin.',flush=True)
+    objects=inventory(source,schemas);target_objects=inventory(target,schemas)
+    checks=[compare_report('struktur dan status RLS',objects,target_objects),
+            compare_report('fungsi',functions(source,schemas),functions(target,schemas)),
+            compare_report('policy RLS',policies(source,schemas),policies(target,schemas)),
+            compare_report('GRANT/REVOKE',object_grants(source,schemas),object_grants(target,schemas),grants=True),
+            compare_report('default postgres',postgres_defaults(source,schemas),postgres_defaults(target,schemas),grants=True)]
+    if checks[0]:
+        before=fingerprints(source,objects)
+        checks.append(compare_report('jumlah dan sidik baris',before,fingerprints(target,target_objects)))
+        checks.append(compare_report('sequence ID',sequence_state(source,objects),sequence_state(target,target_objects)))
+        checks.append(compare_report('sumber tetap stabil selama verify',before,fingerprints(source,objects)))
+    else:
+        print('Pemeriksaan isi dilewati karena struktur berbeda; jangan gunakan tujuan.',flush=True)
+    if not all(checks):raise MigrationError('VERIFY menemukan perbedaan. Target tidak diubah; jangan jalankan migrate ulang atau alihkan produksi. Kirim bagian VERIFIKASI dan rincian izin.')
+    print('VERIFY DATABASE LULUS. Uji aplikasi sebelum cutover; tidak ada data/izin yang diubah oleh mode ini.',flush=True)
+
+
 def main():
     mode=os.environ.get('MIGRATION_MODE','check')
-    if mode not in ('check','migrate'):raise MigrationError('Mode harus check atau migrate.')
+    if mode not in ('check','migrate','verify'):raise MigrationError('Mode harus check, migrate, atau verify.')
     if mode=='migrate' and (os.environ.get('MIGRATION_WRITES_PAUSED','').lower()!='true' or os.environ.get('MIGRATION_TARGET_CONFIRMATION','')!=TARGET):
         raise MigrationError('Untuk migrate, hentikan semua penulisan dan isi konfirmasi project tujuan.')
     for tool in ('psql','pg_dump','pg_restore'):
@@ -295,6 +345,8 @@ def main():
     print('Memeriksa schema aplikasi, layanan managed dan tujuan kosong...',flush=True)
     schemas=user_schemas(source)
     if not schemas or 'public' not in schemas:raise MigrationError('Schema public sumber tidak ditemukan.')
+    if mode=='verify':
+        verify_existing(source,target,schemas);return
     managed_checks(source);managed_checks(target);target_empty(target,schemas)
     default_acl_owners(source,schemas)
     objects=inventory(source,schemas);funcs=functions(source,schemas);rules=policies(source,schemas)
@@ -334,8 +386,8 @@ def main():
     verify(objects,inventory(target,schemas),'tabel/view/sequence dan RLS')
     verify(funcs,functions(target,schemas),'definisi fungsi')
     verify(rules,policies(target,schemas),'policy akses')
-    verify(grants,object_grants(target,schemas),'GRANT/REVOKE objek aplikasi')
-    verify(defaults,postgres_defaults(target,schemas),'default privileges postgres')
+    verify(canonical_grants(grants),canonical_grants(object_grants(target,schemas)),'GRANT/REVOKE objek aplikasi')
+    verify(canonical_grants(defaults),canonical_grants(postgres_defaults(target,schemas)),'default privileges postgres')
     verify(before,fingerprints(target,objects),'jumlah baris dan sidik isi')
     verify(seq,sequence_state(target,objects),'sequence ID')
     verify(before,fingerprints(source,objects),'sumber tidak berubah sampai akhir')
