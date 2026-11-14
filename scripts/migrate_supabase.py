@@ -89,6 +89,9 @@ def sql(env, text):
 
 def query(env, text):
     out = sql(env, text)
+    # psql prints SQL booleans as t/f, not JSON true/false.
+    if out == 't':return True
+    if out == 'f':return False
     return json.loads(out) if out else None
 
 
@@ -209,6 +212,7 @@ def main():
     print('Memeriksa koneksi lama dan baru; sumber hanya dibaca.',flush=True)
     (source,source_version),(target,target_version)=inspect_connections()
     if target_version//10000 < source_version//10000:raise MigrationError('Versi major PostgreSQL tujuan lebih lama dari sumber.')
+    print('Memeriksa schema aplikasi, layanan managed dan tujuan kosong...',flush=True)
     schemas=user_schemas(source)
     if not schemas or 'public' not in schemas:raise MigrationError('Schema public sumber tidak ditemukan.')
     managed_checks(source);managed_checks(target);target_empty(target,schemas)
