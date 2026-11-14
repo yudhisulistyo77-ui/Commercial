@@ -1,0 +1,44 @@
+name: Migrasi Supabase Lama ke Baru
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Mulai dengan check; migrate menulis database baru yang kosong'
+        type: choice
+        options: [check, migrate]
+        default: check
+      writes_paused:
+        description: 'Saya sudah menghentikan sinkron Moka dan semua input/edit aplikasi selama migrasi'
+        type: boolean
+        default: false
+      target_confirmation:
+        description: 'Khusus migrate: ketik qtgybtbzebmahzyqhkfd'
+        type: string
+        default: ''
+permissions:
+  contents: read
+concurrency:
+  group: commercial-supabase-migration
+  cancel-in-progress: false
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    container: postgres:18
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Siapkan Python
+        run: |
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends python3 ca-certificates
+      - name: Periksa atau migrasikan
+        env:
+          MIGRATION_SOURCE_DB_URL: ${{ secrets.MIGRATION_SOURCE_DB_URL }}
+          MIGRATION_TARGET_DB_URL: ${{ secrets.MIGRATION_TARGET_DB_URL }}
+          MIGRATION_MODE: ${{ inputs.mode }}
+          MIGRATION_WRITES_PAUSED: ${{ inputs.writes_paused }}
+          MIGRATION_TARGET_CONFIRMATION: ${{ inputs.target_confirmation }}
+        run: python3 scripts/migrate_supabase.py
+      # Tidak mengunggah dump/database pelanggan ke artifact atau commit.
