@@ -3,9 +3,9 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: 'Mulai dengan check; migrate menulis database baru yang kosong'
+        description: 'check = awal; migrate = salin ke tujuan kosong; verify = periksa hasil tanpa menulis'
         type: choice
-        options: [check, migrate]
+        options: [check, migrate, verify]
         default: check
       writes_paused:
         description: 'Saya sudah menghentikan sinkron Moka dan semua input/edit aplikasi selama migrasi'
