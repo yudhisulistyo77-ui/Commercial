@@ -1,0 +1,52 @@
+name: Pasang Login Commercial
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'prepare = siapkan; activate = tutup anon/PIN; rollback = buka lagi akses lama'
+        type: choice
+        options: [prepare, activate, rollback]
+        default: prepare
+      master_email:
+        description: 'Khusus prepare: email Master yang sudah dibuat di Supabase Auth. BUKAN password.'
+        type: string
+        default: ''
+      master_tested:
+        description: 'Saya sudah berhasil login Master melalui frontend email/password yang baru'
+        type: boolean
+        default: false
+      writes_paused:
+        description: 'Khusus activate/rollback: input dan sinkron sedang dihentikan'
+        type: boolean
+        default: false
+      target_confirmation:
+        description: 'Khusus activate/rollback: ketik qtgybtbzebmahzyqhkfd'
+        type: string
+        default: ''
+permissions:
+  contents: read
+concurrency:
+  group: commercial-supabase-migration
+  cancel-in-progress: false
+jobs:
+  auth:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    container: postgres:18
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Siapkan Python
+        run: |
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends python3 ca-certificates
+      - name: Pasang tahap Auth yang dipilih
+        env:
+          MIGRATION_TARGET_DB_URL: ${{ secrets.MIGRATION_TARGET_DB_URL }}
+          AUTH_MODE: ${{ inputs.mode }}
+          AUTH_MASTER_EMAIL: ${{ inputs.master_email }}
+          AUTH_MASTER_TESTED: ${{ inputs.master_tested }}
+          AUTH_WRITES_PAUSED: ${{ inputs.writes_paused }}
+          AUTH_TARGET_CONFIRMATION: ${{ inputs.target_confirmation }}
+        run: python3 scripts/apply_auth.py
