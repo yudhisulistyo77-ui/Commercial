@@ -1,0 +1,32 @@
+name: Audit Login dan Hak Akses
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: commercial-supabase-migration
+  cancel-in-progress: false
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    container: postgres:18
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Siapkan Python
+        run: |
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends python3 ca-certificates
+      - name: Periksa struktur akses tanpa mengubah database
+        env:
+          MIGRATION_TARGET_DB_URL: ${{ secrets.MIGRATION_TARGET_DB_URL }}
+        run: python3 scripts/audit_access.py
+      - name: Simpan laporan struktur akses
+        uses: actions/upload-artifact@v4
+        with:
+          name: commercial-access-audit
+          path: access-audit-output/commercial-access-audit.json
+          if-no-files-found: error
+          retention-days: 1
