@@ -772,7 +772,10 @@ html[data-number-mode="full"] .member-ranking-v29 table{min-width:1560px!importa
 .page table th,.page table td{vertical-align:middle}
 .page table td[data-col-role=money],.page table td[data-col-role=number],.page table td[data-col-role=date]{white-space:nowrap}
 @media(max-width:760px){.pagefilters>.fld{flex:1 1 145px}.pagefilters .msd-btn,.pagefilters select{max-width:100%;box-sizing:border-box}}
-</style></head>
+</style><script>document.documentElement.dataset.uiVersion="59";</script>
+<link rel="stylesheet" href="ui-v59.css?v=59">
+<link rel="stylesheet" href="motion-v60.css?v=60">
+</head>
 <body>
 
 <div id="shell">
@@ -2342,7 +2345,18 @@ function dashboardSegments(rows){const host=el('section',{class:'dashboard-segme
 /* V20: compact footer labels and table widths independent of summary text. */
 const TABLE_RANK_HEADER=/^(#|NO\.?|NOMOR|RANK|PERINGKAT)$/i;
 let NUMBER_TABLE_STATE=null;const TABLE_LAYOUT_NODES=new Set();
-const TABLE_LAYOUT_OBSERVER=typeof ResizeObserver==='undefined'?null:new ResizeObserver(entries=>{for(const entry of entries){const wrap=entry.target.closest('.tw');if(!wrap)continue;const overflow=wrap.scrollWidth>wrap.clientWidth+2;wrap.dataset.overflow=String(overflow);if(overflow){wrap.tabIndex=0;wrap.setAttribute('role','region');wrap.setAttribute('aria-label','Tabel data; geser ke samping untuk seluruh kolom');}else{wrap.removeAttribute('tabindex');wrap.removeAttribute('role');wrap.removeAttribute('aria-label');}}});
+const TABLE_LAYOUT_PENDING=new Set();let tableLayoutFrame=null;
+const TABLE_LAYOUT_OBSERVER=typeof ResizeObserver==='undefined'?null:new ResizeObserver(entries=>{
+ for(const entry of entries){const wrap=entry.target.closest('.tw');if(wrap)TABLE_LAYOUT_PENDING.add(wrap);}
+ if(tableLayoutFrame!==null)return;
+ tableLayoutFrame=requestAnimationFrame(()=>{tableLayoutFrame=null;
+  const updates=[...TABLE_LAYOUT_PENDING].filter(w=>w.isConnected).map(w=>[w,w.scrollWidth>w.clientWidth+2]);TABLE_LAYOUT_PENDING.clear();
+  for(const [wrap,overflow]of updates){const state=String(overflow);if(wrap.dataset.overflow===state)continue;wrap.dataset.overflow=state;
+   if(overflow){wrap.tabIndex=0;wrap.setAttribute('role','region');wrap.setAttribute('aria-label','Tabel data; geser ke samping untuk seluruh kolom');}
+   else{wrap.removeAttribute('tabindex');wrap.removeAttribute('role');wrap.removeAttribute('aria-label');}
+  }
+ });
+});
 function tableViewKey(tbl){const title=tbl.closest('.card')?.querySelector('header h2')?.textContent||'',heads=[...tbl.tHead?.rows[0]?.cells||[]].map(h=>(h.dataset.t||h.textContent).replace(/[▲▼]/g,'').trim());return title+'|'+heads.join('|');}
 function rememberNumberTables(){const states=new Map();for(const tbl of document.querySelectorAll('.page.on table[data-enh]')){const key=tableViewKey(tbl),heads=[...tbl.tHead.rows[0].cells],sort=heads.findIndex(h=>h.dataset.dir),q=tbl.closest('.tw')?.previousElementSibling?.querySelector('.tsearch')?.value||'';if(!states.has(key))states.set(key,[]);states.get(key).push({q,sort,dir:heads[sort]?.dataset.dir});}NUMBER_TABLE_STATE={page:S.page,states};}
 function restoreNumberTable(tbl,q){if(NUMBER_TABLE_STATE?.page!==S.page)return;const queue=NUMBER_TABLE_STATE.states.get(tableViewKey(tbl)),state=queue?.shift();if(!state)return;if(state.q){q.value=state.q;q.dispatchEvent(new Event('input'));}if(state.sort>=0){const th=tbl.tHead.rows[0].cells[state.sort];if(th){th.dataset.dir=state.dir;th.querySelector('.sortar').textContent=state.dir==='asc'?' ▲':' ▼';sortTable(tbl,state.sort,state.dir);}}}
@@ -7010,7 +7024,7 @@ setInterval(masterRevisionCheck,45000);window.addEventListener('focus',masterRev
 <script src="price-list-ui-v24.js?v=26"></script>
 <script src="member-v27.js?v=34"></script>
 <script src="member-ui-v27.js?v=37"></script>
-<script src="commercial-v28.js?v=58"></script>
+<script src="commercial-v28.js?v=59"></script>
 <script src="member-monthly-v37.js?v=38"></script>
 <script src="auth-v58.js?v=58"></script>
 <script src="commercial-v38.js?v=58"></script>
@@ -7028,5 +7042,7 @@ setInterval(masterRevisionCheck,45000);window.addEventListener('focus',masterRev
 <script src="ui-v51.js?v=52"></script>
 <script src="sssg-current-v52.js?v=53"></script>
 <script src="sales-type-v52.js?v=54"></script>
+<script src="ui-v59.js?v=59"></script>
+<script src="motion-v60.js?v=60"></script>
 </body>
 </html>

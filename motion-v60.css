@@ -1,0 +1,19 @@
+/* Subtle motion shared across every Commercial menu. */
+/* The engine owns entrance motion; no perpetual card/SVG animations. */
+html[data-motion-v60] .ui59-enter,html[data-motion-v60] .ui59-login-art{animation:none!important}
+html[data-motion-v60="on"] .meter > i{transform-origin:left center}
+html[data-motion-v60="on"] .chart rect[data-ui59-point],html[data-motion-v60="on"] .chart rect[style*="cursor: pointer"]{transform-box:fill-box;transform-origin:center bottom}
+html[data-motion-v60="on"] .btn{transition:background-color .16s,border-color .16s,color .16s,transform .12s}
+html[data-motion-v60="on"] .btn:active:not(:disabled){transform:scale(.985)}
+html[data-motion-v60="on"] input:not([type=checkbox]):focus,html[data-motion-v60="on"] select:focus,html[data-motion-v60="on"] textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 12%,transparent);transition:border-color .16s,box-shadow .16s}
+@media(hover:hover) and (pointer:fine){
+ html[data-motion-v60="on"] #nav button svg{transition:transform .16s}
+ html[data-motion-v60="on"] #nav button:hover svg{transform:translateX(2px)}
+ html[data-motion-v60="on"] tbody tr:hover td{transition:background-color .14s}
+}
+/* Visible content is always the base state, including export and unsupported browsers. */
+html[data-motion-v60] .png-export-v49 *,html[data-motion-v60] [data-png-host-v49] *{animation:none!important;transition:none!important}
+@media(prefers-reduced-motion:reduce){html[data-motion-v60] *{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+@media print{html[data-motion-v60] *{animation:none!important;transition:none!important}}
+/* Keep mobile menu hit targets stationary as soon as the drawer opens. */
+@media(max-width:900px){html[data-motion-v60] #rail{transition:none!important}}
