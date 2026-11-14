@@ -3,16 +3,16 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: 'check = awal; migrate = salin ke tujuan kosong; verify = periksa hasil tanpa menulis'
+        description: 'check = awal; migrate = salin; verify = baca saja; repair_grants = samakan izin tujuan'
         type: choice
-        options: [check, migrate, verify]
+        options: [check, migrate, verify, repair_grants]
         default: check
       writes_paused:
         description: 'Saya sudah menghentikan sinkron Moka dan semua input/edit aplikasi selama migrasi'
         type: boolean
         default: false
       target_confirmation:
-        description: 'Khusus migrate: ketik qtgybtbzebmahzyqhkfd'
+        description: 'Khusus migrate/repair_grants: ketik qtgybtbzebmahzyqhkfd'
         type: string
         default: ''
 permissions:
