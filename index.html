@@ -775,6 +775,7 @@ html[data-number-mode="full"] .member-ranking-v29 table{min-width:1560px!importa
 </style><script>document.documentElement.dataset.uiVersion="59";</script>
 <link rel="stylesheet" href="ui-v59.css?v=59">
 <link rel="stylesheet" href="motion-v60.css?v=60">
+<link rel="stylesheet" href="ui-v61.css?v=61">
 </head>
 <body>
 
@@ -1327,7 +1328,10 @@ const FILTER_VISIBILITY={masterinput:[], review:['brand','spv','store'],links:[]
 /* Memindahkan (bukan menyalin) elemen <select> filter yang sudah ada ke dalam baris filter lokal
    milik halaman yang sedang aktif. Karena dipindah (appendChild), tiap elemen cuma ada 1 instance
    di seluruh dokumen — listener onchange yang lama tetap berfungsi apa adanya. */
+const SHARED_FILTERS_V61=new Map(['f-year','f-month','f-range','f-brand','f-spv','f-store','f-custom-wrap','f-clear'].map(id=>{const n=document.getElementById(id);return [id,{node:n,field:n?.closest('.fld')||n}]}));
+function restoreSharedFiltersV61(){const pool=document.getElementById('filterpool');if(!pool)return;for(const {node,field} of SHARED_FILTERS_V61.values())if(node&&field&&!document.documentElement.contains(node))pool.append(field);}
 function pageFilterBar(id){
+  restoreSharedFiltersV61();
   syncStoreOptions();
   const brandLabel=$('#f-brand-label');if(brandLabel)brandLabel.textContent=id==='review'?'Brand toko':'Brand produk';
   const vis=id==='program'&&programIsAov()?['spv','store']:FILTER_VISIBILITY[id]!==undefined?FILTER_VISIBILITY[id]:['year','month','range','brand','spv','store'];
@@ -1449,6 +1453,7 @@ if(!window.__msdDocClick){ window.__msdDocClick=true;
   document.addEventListener('click',e=>{if(activeMultiSelect&&!activeMultiSelect.node.contains(e.target)&&!activeMultiSelect.pop?.contains(e.target))activeMultiSelect.close();}); }
 
 function fillFilters(){
+  restoreSharedFiltersV61();
   multiSelectDropdown($('#f-year'),
     [2024,2025,2026,2027].map(y=>({value:String(y),label:String(y)})),
     S.years.map(String),
@@ -1456,7 +1461,7 @@ function fillFilters(){
       S.year=Math.max(...S.years); S.itemScope=''; loadAll(); },
     {allLabel:'Pilih tahun',allowAll:false});
   const ms = $('#f-month');
-  if(!ms.options.length){
+  if(ms&&!ms.options.length){
     ms.append(el('option',{value:'0'},'Semua (YTD)'));
     MONTHS.forEach((m,i)=>ms.append(el('option',{value:String(i+1)},m)));
   }
@@ -2145,6 +2150,7 @@ function chartCard(title, sub, node, extra){
    berada di dalamnya, bukan sekadar melepasnya, jadi node filter yang sama harus "diselamatkan" dulu
    setiap kali render() dipanggil ulang (termasuk saat merender ulang halaman yang sama). */
 function parkFilters(){
+  restoreSharedFiltersV61();
   const pool=$('#filterpool'); if(!pool) return;
   ['f-year','f-month','f-range','f-brand','f-spv','f-store'].forEach(id=>{
     const n=$('#'+id); if(n) pool.append(n.closest('.fld')); });
@@ -7024,25 +7030,26 @@ setInterval(masterRevisionCheck,45000);window.addEventListener('focus',masterRev
 <script src="price-list-ui-v24.js?v=26"></script>
 <script src="member-v27.js?v=34"></script>
 <script src="member-ui-v27.js?v=37"></script>
-<script src="commercial-v28.js?v=59"></script>
+<script src="commercial-v28.js?v=61"></script>
 <script src="member-monthly-v37.js?v=38"></script>
-<script src="auth-v58.js?v=58"></script>
+<script src="auth-v58.js?v=61"></script>
 <script src="commercial-v38.js?v=58"></script>
-<script src="member-analytics-v39.js?v=55"></script>
+<script src="member-analytics-v39.js?v=61"></script>
 <script src="table-csv-v39.js?v=50"></script>
-<script src="member-profiling-moka-v40.js?v=55"></script>
+<script src="member-profiling-moka-v40.js?v=61"></script>
 <script src="tables-v40.js?v=51"></script>
-<script src="ai-agent-v41.js?v=41"></script>
-<script src="egress-v44.js?v=55"></script>
+<script src="ai-agent-v41.js?v=61"></script>
+<script src="egress-v44.js?v=61"></script>
 <script src="sssg-mtd-v49.js?v=51"></script>
 <script src="member-data-v49.js?v=49"></script>
 <script src="png-export-v49.js?v=52"></script>
 <script src="navigation-layout-v50.js?v=50"></script>
-<script src="member-sssg-v51.js?v=56"></script>
+<script src="member-sssg-v51.js?v=61"></script>
 <script src="ui-v51.js?v=52"></script>
 <script src="sssg-current-v52.js?v=53"></script>
 <script src="sales-type-v52.js?v=54"></script>
 <script src="ui-v59.js?v=59"></script>
 <script src="motion-v60.js?v=60"></script>
+<script src="ui-v61.js?v=61"></script>
 </body>
 </html>

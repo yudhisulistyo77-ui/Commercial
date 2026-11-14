@@ -220,7 +220,7 @@ td.sticky1{overflow-wrap:break-word}
     try {
       const rows = await DB.sel('moka_sync_runs?select=*&order=requested_at.desc&limit=20');
       V28.tableMissing = false;
-      V28.run = rows.find(r => r.status==='done' && throughDate(r)) || null;
+      V28.run = rows.find(r => r.status==='done' && throughDate(r) && (!r.components?.length||r.components.some(c=>['sales_type','item_sales','transactions'].includes(c)))) || null;
       V28.libraryRun = rows.find(r => ['done', 'warn'].includes(r.status) && /library: [1-9]\d* OK/i.test(r.message || '')) || null;
       const latestFinished = rows.find(r => ['done','warn','error'].includes(r.status));
       const act = rows.find(r => ['requested', 'running'].includes(r.status) && (!latestFinished || Date.parse(r.requested_at)>Date.parse(latestFinished.requested_at)) && Date.now() - Date.parse(r.requested_at) < 245 * 60000);
@@ -539,7 +539,7 @@ td.sticky1{overflow-wrap:break-word}
   };
 
   function pageHead(id, title, sub) {
-    const p = $('#p-' + id); p.replaceChildren(el('div', { class: 'phead' }, el('div', {}, el('h1', {}, title), el('p', {}, sub))));
+    parkFilters(); const p = $('#p-' + id); p.replaceChildren(el('div', { class: 'phead' }, el('div', {}, el('h1', {}, title), el('p', {}, sub))));
     const pf = pageFilterBar(id); if (pf) p.append(pf);
     return p;
   }
@@ -571,6 +571,7 @@ td.sticky1{overflow-wrap:break-word}
   /* ======================= JAM RAMAI (heatmap) ======================= */
   V28.jam = { metric: 'trx', avg: true };
   async function renderJam() {
+    const epoch=V28.jamEpoch=(V28.jamEpoch||0)+1;
     S.month = Number(S.month) || Number(todayWita().slice(5,7)); S.monthRange = null;
     const monthSelect = $('#f-month'); if (monthSelect) monthSelect.value = String(S.month);
     const p = pageHead('jam', 'Jam Ramai', 'Heatmap transaksi per jam × hari (jam WITA) dari data Moka · ' + periodLabel());
@@ -585,7 +586,7 @@ td.sticky1{overflow-wrap:break-word}
         DB.rpc('commercial_heatmap_v1', { p_from: from, p_to: to, p_stores: ids }),
         DB.rpc('commercial_coverage_v1', { p_from: from, p_to: to, p_stores: ids })]);
     } catch (e) { body.replaceChildren(); sqlMissing(body, e); return; }
-    if (S.page !== 'jam') return;
+    if (S.page !== 'jam'||epoch!==V28.jamEpoch||!body.isConnected) return;
     body.replaceChildren();
     if (!rows.length) { emptySync(body, 'Belum ada data jam ramai', 'Belum ada transaksi hasil sinkron pada filter ' + from + ' s.d. ' + to + '. Jalankan sinkron, lalu pilih periode/toko yang sudah tercakup.'); return; }
     const firstCov = cov.map(c => c.first_date).sort()[0] || from, lastCov = cov.map(c => c.last_date).sort().slice(-1)[0] || to;
@@ -598,7 +599,7 @@ td.sticky1{overflow-wrap:break-word}
     if (hmax < hmin) { hmin = 0; hmax = 23; }
     const val = (d, h) => { const v = grid[d + '|' + h] || 0; return M.avg ? (dowCount[d - 1] ? v / dowCount[d - 1] : 0) : v; };
     let peak = 0; for (let d = 1; d <= 7; d++) for (let h = hmin; h <= hmax; h++) peak = Math.max(peak, val(d, h));
-    const fmtV = v => M.metric === 'net' ? (NUMBER_MODE === 'compact' || v >= 1e6 ? (v / 1e6).toLocaleString('id-ID', { maximumFractionDigits: 1 }) + ' jt' : Math.round(v).toLocaleString('id-ID')) : (M.avg ? v.toLocaleString('id-ID', { maximumFractionDigits: 1 }) : Math.round(v).toLocaleString('id-ID'));
+    const fmtV = v => M.metric === 'net' ? (NUMBER_MODE === 'compact' || v >= 1e6 ? (v / 1e6).toLocaleString('id-ID', { maximumFractionDigits: 1 }) + ' jt' : Math.round(v).toLocaleString('id-ID')) : Math.round(v).toLocaleString('id-ID');
     const color = v => { const t = peak ? v / peak : 0; if (!v) return 'background:var(--line);color:var(--muted)'; const a = 0.12 + 0.88 * t; return `background:rgba(189,37,121,${a.toFixed(2)});color:${t > 0.55 ? '#fff' : 'inherit'}`; };
 
     const seg = (opts, key) => el('div', { class: 'v28-seg' }, opts.map(([v, t]) => el('button', { type: 'button', 'aria-pressed': String(M[key] === v), onclick: () => { M[key] = v; renderJam(); } }, t)));
@@ -635,7 +636,7 @@ td.sticky1{overflow-wrap:break-word}
       const hourTot = {}; for (const [kk, v] of Object.entries(s.cells)) { const h = kk.split('|')[1]; hourTot[h] = (hourTot[h] || 0) + v; }
       const ph = Object.entries(hourTot).sort((a, b) => b[1] - a[1])[0]?.[0];
       const days = covBy.get(Number(id)) || 0;
-      return [stName(id), ph != null ? String(ph).padStart(2, '0') + ':00' : '—', DAYS[Number(k.split('|')[0]) - 1] + ' ' + String(k.split('|')[1]).padStart(2, '0') + ':00', int(days ? s.trx / days : null), compact(days ? s.net / days : null), pct(s.trx ? s.evening / s.trx : null, 1)];
+      return [stName(id), ph != null ? String(ph).padStart(2, '0') + ':00' : '—', DAYS[Number(k.split('|')[0]) - 1] + ' ' + String(k.split('|')[1]).padStart(2, '0') + ':00', int(days ? Math.round(s.trx / days) : null), compact(days ? s.net / days : null), pct(s.trx ? s.evening / s.trx : null, 1)];
     }).sort((a, b) => String(a[0]).localeCompare(String(b[0])));
     body.append(el('div', { class: 'v28-two-col' },
       card('Slot tersibuk', 'hari & jam dengan nilai tertinggi', mkTable([H('#', { r: 1 }), H('HARI', { s: 1 }), H('JAM'), H(M.metric === 'net' ? 'NET SALES' : M.metric === 'items' ? 'ITEM' : 'TRANSAKSI', { r: 1 })],

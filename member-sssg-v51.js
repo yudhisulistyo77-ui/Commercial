@@ -90,7 +90,7 @@ async function show(host,opts={}){
  const status=el('p',{class:'note',role:'status'},'Memuat SSSG Member…'),result=el('div',{class:'v40-profile-result'});host.append(status,result);
  const base={p_years:[y3],p_m1:w.m1,p_d1:w.d1||1,p_m2:w.m2,p_d2:w.d2||31,p_stores:stores(),p_kind:ST.kind,p_rank:ST.rank,p_align:w.alignToCurrent!==false,p_rank_year:ST.rankYear,p_compare:ST.compare,p_customers:PICK.keys.size?PICK.list():null,...PICK.sinceArgs(),...PICK.cityArgs()};
  let d;try{d=await masterRpc('commercial_member_sssg_v51',{...base,p_query:ST.query||null,p_sort:ST.sort,p_limit:ST.limit,p_offset:ST.page*ST.limit})}catch(e){status.classList.add('warn');status.textContent='SSSG Member belum dapat dimuat: '+e.message+'. Jalankan MEMBER-SSSG-V51.sql di Supabase.';return}
- if(epoch!==ST.epoch||!host.isConnected)return;ST.data=d;
+ if(epoch!==ST.epoch||(!host.isConnected||S.page!=='members'))return;ST.data=d;
  NODATA.clear();for(const y of (d.years||[]).map(Number))if(!(Number(d.periods?.[y]?.covered)>0)&&d.totals?.[y]==null)NODATA.add(y);
  const ys=yearCols(d),ry=Number(d.rank_year),[yb,ya]=[ys.at(-1),ys.at(-2)],periods=d.periods||{},tot=y=>d.totals?.[y]||{};
  const label=y=>{const p=periods[y];return p?p.from.slice(5).split('-').reverse().join('/')+' – '+p.to.slice(5).split('-').reverse().join('/')+'/'+y:''};
@@ -137,7 +137,7 @@ async function items(host,base,d,epoch){
  host.replaceChildren(el('p',{class:'note'},'Memuat item yang dibeli member…'));
  let r;try{r=await masterRpc('commercial_member_items_v51',{p_year:base.p_years[0],p_m1:base.p_m1,p_d1:base.p_d1,p_m2:base.p_m2,p_d2:base.p_d2,p_stores:base.p_stores,p_align:base.p_align,p_compare:base.p_compare,p_customers:base.p_customers,p_kind:base.p_kind,p_query:IT.query||null,p_rank_year:ry,p_limit:IT.limit,p_since_from:base.p_since_from,p_since_to:base.p_since_to,p_cities:base.p_cities})}
  catch(e){if(epoch===ST.epoch)host.replaceChildren(el('p',{class:'note warn'},'Analisa item member belum tersedia: '+e.message+'. Jalankan MEMBER-SSSG-V51.sql lalu sinkron Member.'));return}
- if(epoch!==ST.epoch||!host.isConnected)return;host.replaceChildren();
+ if(epoch!==ST.epoch||(!host.isConnected||S.page!=='members'))return;host.replaceChildren();
  const cov=r.coverage||{},empty=years.filter(y=>!Number(cov[y]?.lines));
  const gapI=(y,a,b)=>empty.includes(y)||NODATA.has(y)?'—':gapZ(a,b),growI=(y,a,b)=>empty.includes(y)||NODATA.has(y)?'—':growZ(a,b);
  const v=(g,y,k)=>{const x=g.years?.[y];return x&&x[k]!=null?Number(x[k]):null};
@@ -164,7 +164,7 @@ async function directory(host){
  const epoch=++DIR.epoch;host.replaceChildren(el('p',{class:'note'},'Memuat seluruh data member…'));
  let d;try{d=await masterRpc('commercial_member_directory_v51',{p_query:DIR.query||null,...PICK.sinceArgs(),...PICK.cityArgs(),p_kind:DIR.kind,p_status:DIR.status,p_stores:stores(),p_limit:DIR.limit,p_offset:DIR.page*DIR.limit})}
  catch(e){if(epoch===DIR.epoch)host.replaceChildren(el('p',{class:'note warn'},'Direktori member belum tersedia: '+e.message+'. Jalankan MEMBER-SSSG-V51.sql lalu sinkron Member (Customer List ikut tersimpan).'));return}
- if(epoch!==DIR.epoch||!host.isConnected)return;host.replaceChildren();
+ if(epoch!==DIR.epoch||(!host.isConnected||S.page!=='members'))return;host.replaceChildren();
  const q=opsInput(DIR.query,'search',{placeholder:'Cari nama, kode MK, key'+(d.pii_allowed?', nomor HP':'')+'…','aria-label':'Cari semua member'});let qt;q.oninput=()=>{clearTimeout(qt);qt=setTimeout(()=>{DIR.query=q.value.trim();DIR.page=0;directory(host).then(()=>host.querySelector('input[aria-label="Cari semua member"]')?.focus())},450)};
  const status=opsSelect([['all','Semua member'],['active','Pernah bertransaksi'],['never','Belum pernah bertransaksi']],DIR.status,{'aria-label':'Status transaksi member'});status.onchange=()=>{DIR.status=status.value;DIR.page=0;directory(host)};
  const kind=opsSelect([['all','Semua kelompok'],['b2b','B2B · kode MK'],['retail','Selain kode MK']],DIR.kind,{'aria-label':'Kelompok direktori'});kind.onchange=()=>{DIR.kind=kind.value;DIR.page=0;directory(host)};
@@ -174,13 +174,13 @@ async function directory(host){
  const heads=['Member','Member sejak','Kota',...(d.pii_allowed?['Telepon']:[]),'Toko belanja','Last Visit','Nota (semua)','Sales '+d.year,'Sales (semua)','Detail'];
  const rows=list.map((r,i)=>[memberCell(r,DIR.page*DIR.limit+i+1),nw(r.since||'—'),nw(r.city||'—'),...(d.pii_allowed?[nw(r.phone||'—')]:[]),el('div',{style:'min-width:150px;white-space:normal'},r.stores||'Belum bertransaksi'),nw(r.last_visit||'—'),int(r.trx),money(r.net_ytd==null?null:Number(r.net_ytd)),money(r.net_all==null?null:Number(r.net_all)),el('button',{class:'btn sm',onclick:()=>memberDetail(r)},'Detail')]);
  const foot=['TOTAL SEMUA MEMBER (sesuai filter) · '+String(int(T.active))+' pernah bertransaksi','','',...(d.pii_allowed?['']:[]),'','',int(T.trx),money(T.net_ytd==null?null:Number(T.net_ytd)),money(T.net_all==null?null:Number(T.net_all)),''];
- host.append(el('div',{class:'v40-profile-result'},card('Semua data member · Customer List Moka · '+String(int(d.total))+' member','Seluruh member terdaftar, termasuk yang belum bertransaksi. Mengikuti filter "Member sejak" & pilihan cabang. Klik Detail untuk pergerakan bulanan 3 tahun dan nota beserta item.',el('div',{class:'member-filters-v27'},opsField('Cari member',q),opsField('Status',status),opsField('Kelompok',kind),opsField('Baris',per)),list.length?memberTableV27(heads,rows,foot,{id:'v51-directory'}):el('p',{class:'note'},'Tidak ada member yang cocok.'),nav)));
+ host.append(el('div',{class:'v40-profile-result'},card('Semua data member · Customer List Moka · '+String(int(d.total))+' member','Seluruh member terdaftar, termasuk yang belum bertransaksi. Mengikuti filter "Member sejak" & pilihan cabang. Klik Detail untuk pergerakan bulanan 3 tahun dan ringkasan belanja per toko. Analisis item tetap tersedia pada tab SSSG.',el('div',{class:'member-filters-v27'},opsField('Cari member',q),opsField('Status',status),opsField('Kelompok',kind),opsField('Baris',per)),list.length?memberTableV27(heads,rows,foot,{id:'v51-directory'}):el('p',{class:'note'},'Tidak ada member yang cocok.'),nav)));
 }
 async function memberDetail(r){
  const y=+opsToday().slice(0,4),{box}=opsModal('Detail Member · '+(r.name||r.key));box.style.maxWidth='min(1200px,calc(100vw - 24px))';
  box.append(el('p',{class:'note'},[r.key,r.city||'Kota belum tersedia',r.phone||'Telepon tidak tersedia/tidak diizinkan','Member sejak '+(r.since||'—')].join(' · ')));
  const body=el('div');box.append(body);body.append(el('p',{},'Memuat pergerakan & nota…'));
- let d,itemMap={};try{d=await masterRpc('commercial_member_customer_v51',{p_customer_key:r.key,p_year:y,p_stores:stores()});try{itemMap=await masterRpc('commercial_member_receipt_items_v51',{p_customer:r.key,p_from:(y-2)+'-01-01',p_to:y+'-12-31',p_stores:stores()})||{}}catch(e){}}
+ let d,itemMap={};try{d=await masterRpc('commercial_member_customer_v51',{p_customer_key:r.key,p_year:y,p_stores:stores()});}
  catch(e){body.replaceChildren(el('p',{class:'note warn'},e.message));return}
  body.replaceChildren();const years=[y-2,y-1,y],mon=d.monthly||[],cell=(yy,m)=>{const r=mon.filter(x=>Number(x.y)===yy&&(m==null||Number(x.month)===m));return r.length?r.reduce((s,x)=>s+Number(x.net||0),0):null};
  body.append(card('Pergerakan bulanan · '+years.join(' / '),'Net sales per bulan (refund mengurangi) · seluruh toko yang diizinkan',memberTableV27(['Bulan',...years.map(yy=>'Sales '+yy),...[y-1,y-2].flatMap(c=>['GAP '+y+'–'+c,'Growth '+y+' vs '+c])],MONTHS.map((n,i)=>[n,...years.map(yy=>money(cell(yy,i+1))),...[y-1,y-2].flatMap(c=>[gapZ(cell(y,i+1),cell(c,i+1)),growZ(cell(y,i+1),cell(c,i+1))])]),['TOTAL',...years.map(yy=>money(cell(yy))),...[y-1,y-2].flatMap(c=>[gapZ(cell(y),cell(c)),growZ(cell(y),cell(c))])],{id:'v51-detail-month'})));
@@ -188,7 +188,7 @@ async function memberDetail(r){
  const names=new Map((S.stores||[]).map(s=>[Number(s.id),s.name]));
  if(storeIds.length)body.append(card('Sales per toko · '+years.join(' / '),'',memberTableV27(['Toko',...years.map(yy=>'Sales '+yy)],storeIds.map(id=>[names.get(id)||sname.get(id)||'Toko '+id,...years.map(yy=>{const v=mon.filter(x=>Number(x.y)===yy&&Number(x.store_id)===id);return money(v.length?v.reduce((s,x)=>s+Number(x.net||0),0):null)})]),[],{id:'v51-detail-store'})));
  const rc=d.receipts||[];
- body.append(card('Nota terakhir · '+rc.length+' (maks. 100)','Qty & item per warna dari baris item Moka (tersedia setelah sinkron Member V51)',rc.length?memberTableV27(['Tanggal','Nota','Toko','Jenis','Net sales','Qty','Item (per warna)'],rc.map(x=>[x.sale_date,x.transaction_id||'—',x.store,x.kind,money(Number(x.net)),itemMap[x.transaction_id]?.qty!=null?int(itemMap[x.transaction_id].qty):'—',itemMap[x.transaction_id]?.items||'—']),[],{id:'v51-detail-receipts'}):el('p',{class:'note'},'Belum ada nota tersinkron untuk member ini.')));
+ body.append(card('Ringkasan transaksi per toko & tanggal · '+rc.length+' baris (maks. 100)','Ringkasan sale/refund; bukan daftar invoice. Rincian produk tersedia pada analisis item tab SSSG.',rc.length?memberTableV27(['Tanggal','Toko','Jenis','Net sales'],rc.map(x=>[x.sale_date,x.store,x.kind,money(Number(x.net))]),[],{id:'v51-detail-receipts'}):el('p',{class:'note'},'Belum ada ringkasan tersinkron untuk member ini.')));
 }
 ST.directory=directory;ST.memberDetail=memberDetail;
 
@@ -199,7 +199,7 @@ async function monthly(host){
  const {w,y3}=windowArgs(),again=()=>monthly(host);
  let d;try{d=await masterRpc('commercial_member_sssg_v51',{p_years:[y3],p_m1:w.m1,p_d1:w.d1||1,p_m2:w.m2,p_d2:w.d2||31,p_stores:stores(),p_kind:'all',p_rank:1,p_align:w.alignToCurrent!==false,p_rank_year:y3,p_compare:3,p_customers:PICK.keys.size?PICK.list():null,...PICK.sinceArgs(),...PICK.cityArgs(),p_query:MV.query||null,p_sort:MV.sort,p_limit:MV.limit,p_offset:MV.page*MV.limit})}
  catch(e){if(epoch===MV.epoch)host.replaceChildren(el('p',{class:'note warn'},'Pergerakan per member belum dapat dimuat: '+e.message));return}
- if(epoch!==MV.epoch||!host.isConnected)return;host.replaceChildren();
+ if(epoch!==MV.epoch||(!host.isConnected||S.page!=='members'))return;host.replaceChildren();
  const ys=yearCols(d),yc=ys.at(-1),periods=d.periods||{},names=storeNames(d);if(!ys.includes(MV.year))MV.year=yc;
  NODATA.clear();for(const y of ys)if(!(Number(periods[y]?.covered)>0)&&d.totals?.[y]==null)NODATA.add(y);
  const label=y=>{const p=periods[y];return p?p.from.slice(5).split('-').reverse().join('/')+' – '+p.to.slice(5).split('-').reverse().join('/')+'/'+y:''};

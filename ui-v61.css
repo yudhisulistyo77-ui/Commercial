@@ -1,0 +1,25 @@
+/* Color belongs to the metric; blue/purple/orange/teal distinguish neutral indicators. */
+html[data-ui-version="59"] .tile{--v61-tone:#429af0}
+html[data-ui-version="59"] .tile[data-v61-tone="good"]{--v61-tone:#20aa77}
+html[data-ui-version="59"] .tile[data-v61-tone="bad"]{--v61-tone:#e75670}
+html[data-ui-version="59"] .tile[data-v61-tone="watch"],html[data-ui-version="59"] .tile[data-v61-tone="orange"]{--v61-tone:#f3a436}
+html[data-ui-version="59"] .tile[data-v61-tone="purple"]{--v61-tone:#a17ae7}
+html[data-ui-version="59"] .tile[data-v61-tone="teal"]{--v61-tone:#28b8b0}
+html[data-ui-version="59"] .tile[data-v61-tone="neutral"]{--v61-tone:#8a96a8}
+html[data-ui-version="59"] .tile[data-v61-tone]{background:linear-gradient(125deg,color-mix(in srgb,var(--v61-tone) 18%,var(--surface)),color-mix(in srgb,var(--v61-tone) 4%,var(--surface)))!important;border-color:color-mix(in srgb,var(--v61-tone) 40%,var(--ring));border-top:3px solid var(--v61-tone)}
+html[data-ui-version="59"][data-ui-tone="dark"] .tile[data-v61-tone]{background:linear-gradient(125deg,color-mix(in srgb,var(--v61-tone) 24%,var(--surface)),color-mix(in srgb,var(--v61-tone) 7%,var(--surface)))!important}
+html[data-ui-version="59"] .tile[data-v61-tone="good"] .v{color:var(--ui59-up)!important}
+html[data-ui-version="59"] .tile[data-v61-tone="bad"] .v{color:var(--ui59-down)!important}
+html[data-ui-version="59"] .tile[data-v61-tone="watch"] .v{color:var(--warn)!important}
+html[data-ui-version="59"] .tile[data-v61-tone] .tile-ico{background:color-mix(in srgb,var(--v61-tone) 20%,transparent);color:var(--v61-tone)}
+html[data-ui-version="59"] .comparison-grid{align-items:start!important;gap:10px!important;grid-template-columns:repeat(auto-fit,minmax(145px,1fr))!important}
+html[data-ui-version="59"] .member-filters-v27{gap:10px!important;grid-template-columns:repeat(auto-fit,minmax(155px,1fr))!important}
+html[data-ui-version="59"] .comparison-controls{padding:0!important;margin:0!important}
+html[data-ui-version="59"] .comparison-controls header{margin-bottom:12px}
+html[data-ui-version="59"] .comparison-grid .fld,html[data-ui-version="59"] .member-filters-v27 .fld{gap:5px;align-self:start;min-width:0}
+html[data-ui-version="59"] .comparison-grid .fld input,html[data-ui-version="59"] .comparison-grid .fld select{min-height:35px}
+html[data-ui-version="59"] .comparison-grid .fld .note,html[data-ui-version="59"] .comparison-grid .fld .sub{font-size:10px;line-height:1.5;margin:4px 0 0}
+html[data-ui-version="59"] .mpick-row-v51{gap:10px!important;align-items:start}
+html[data-ui-version="59"] .v28-heat{overflow-x:auto;max-width:100%;scrollbar-width:thin}
+@media(max-width:680px){html[data-ui-version="59"] .comparison-grid,html[data-ui-version="59"] .member-filters-v27{grid-template-columns:repeat(2,minmax(0,1fr))!important}html[data-ui-version="59"] .comparison-grid .fld input{max-width:100%;width:100%}}
+@media(max-width:360px){html[data-ui-version="59"] .comparison-grid,html[data-ui-version="59"] .member-filters-v27{grid-template-columns:1fr!important}}

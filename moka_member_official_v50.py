@@ -1,3 +1,4 @@
+from moka_member_summary_v61 import daily as summary_daily_v61, items as summary_items_v61
 """Member V50 — dari API RESMI Moka (token OAuth yang sama dengan sinkron Sales).
 
 Menggantikan jalur Customer Service internal (token sesi browser, 1 customer per permintaan)
@@ -240,10 +241,10 @@ def sync(db, mapped, stores, aliases, periods, tz, writing=True, progress=None, 
                 if db is not None:
                     try:
                         old = {r['customer_key'] for r in db.sel(
-                            f"moka_purchase_history_v47?select=customer_key&store_id=eq.{int(sid)}"
+                            f"commercial_member_keys_v61?select=customer_key&store_id=eq.{int(sid)}"
                             f"&sale_date=gte.{d1.isoformat()}&sale_date=lte.{d2.isoformat()}")}
-                    except Exception:
-                        old = set()
+                    except Exception as e:
+                        raise MemberSourceError('Ringkasan Member V61 belum siap. Pasang PERBAIKAN-DATA-V61.sql sebelum sinkron Member.') from e
                 send = sorted(keys | {k for k in old if k[5:] in custs})
                 profs = [profile(custs[k[5:]]) if k[5:] in custs else extra[k] for k in send]
                 if not profs:
@@ -251,15 +252,16 @@ def sync(db, mapped, stores, aliases, periods, tz, writing=True, progress=None, 
                     log(f'Member V50: {label} — tidak ada nota bercustomer, dilewati.')
                     continue
                 scope = [{'store_id': int(sid), 'date_from': d1.isoformat(), 'date_to': d2.isoformat()}]
-                items = item_rows(pays, tz)
+                items = summary_items_v61([{**r,"store_id":int(sid)} for r in item_rows(pays, tz)])
+                summaries=summary_daily_v61(rows)
                 if writing:
-                    db.rpc('commercial_member_replace_v47', {'p_scopes': scope, 'p_profiles': profs, 'p_rows': rows, 'p_complete': True})
+                    db.rpc('commercial_member_summary_replace_v61', {'p_scopes': scope, 'p_profiles': profs, 'p_rows': summaries, 'p_complete': True})
                     try:
                         write_items(db, int(sid), d1, d2, items)
                     except Exception as e:  # SQL item V51 belum dipasang: nota tetap tersimpan
                         item_warn.append(f'{label}: {str(getattr(e, "body", "") or e)[:160]}')
                 total_rows += len(rows); total_profiles |= keys; done += 1
-                log(f'Member V50: {label} — {len(rows)} nota/refund, {len(keys)} customer, {len(items)} baris item'
+                log(f'Member V50: {label} — {len(rows)} transaksi sumber → {len(summaries)} ringkasan customer/toko/hari, {len(keys)} customer, {len(items)} ringkasan item'
                     + ('' if writing else ' (uji coba, tidak ditulis)'))
             except MemberSourceError:
                 raise
