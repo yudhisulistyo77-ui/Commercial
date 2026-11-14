@@ -213,18 +213,21 @@ td.sticky1{overflow-wrap:break-word}
   };
 
   /* ------------------------------------------------ data sinkron Moka */
-  const throughDate=r=>r?.data_through||r?.data_until?.slice(0,10)||null;
+  const throughDate=r=>r?.data_through||(r?.status==='done'?r?.data_until?.slice(0,10):null)||null;
   const throughLabel=r=>throughDate(r)?fmtD.format(new Date(throughDate(r)+'T12:00:00Z')):'belum terkonfirmasi';
   async function loadRuns() {
     if (!S.key || S.demo) { V28.run = null; V28.active = null; return; }
     try {
       const rows = await DB.sel('moka_sync_runs?select=*&order=requested_at.desc&limit=20');
       V28.tableMissing = false;
-      V28.run = rows.find(r => ['done', 'warn'].includes(r.status) && r.data_until) || null;
+      V28.run = rows.find(r => r.status==='done' && throughDate(r)) || null;
       V28.libraryRun = rows.find(r => ['done', 'warn'].includes(r.status) && /library: [1-9]\d* OK/i.test(r.message || '')) || null;
-      const act = rows.find(r => ['requested', 'running'].includes(r.status) && Date.now() - Date.parse(r.requested_at) < 245 * 60000);
+      const latestFinished = rows.find(r => ['done','warn','error'].includes(r.status));
+      const act = rows.find(r => ['requested', 'running'].includes(r.status) && (!latestFinished || Date.parse(r.requested_at)>Date.parse(latestFinished.requested_at)) && Date.now() - Date.parse(r.requested_at) < 245 * 60000);
       V28.active = act || null;
-      V28.lastError = rows.find(r => r.status === 'error' && (!V28.run || Date.parse(r.requested_at) > Date.parse(V28.run.requested_at))) || null;
+      const issue=rows.find(r => ['error','warn'].includes(r.status) && (!V28.run || Date.parse(r.requested_at)>Date.parse(V28.run.requested_at)));
+      V28.lastError=issue?.status==='error'?issue:null;
+      V28.lastWarning=issue?.status==='warn'?issue:null;
     } catch (e) {
       V28.tableMissing = true;
       try {
@@ -246,7 +249,7 @@ td.sticky1{overflow-wrap:break-word}
     const r = V28.run, a = V28.active;
     const txt = a ? 'Sinkron Moka berjalan…' : r?.data_until ? 'Moka: data s.d. '+throughLabel(r) : 'Moka: cakupan belum tercatat';
     bar.append(el('span', { class: 'pill v28-badge ' + (a ? 'neu' : r ? 'ok' : 'neu'), title: r ? 'Terakhir diperbarui ' + dt(r.finished_at) + (r.data_until ? ' · data s.d. ' + dt(r.data_until) : '') : 'Belum ada sinkron Moka', onclick: openSync }, txt));
-    if (!viewOnly()) bar.append(el('button', { class: 'btn sm v28-sync-btn' + (a ? ' v28-spin' : ''), type: 'button', onclick: openSync, title: 'Tarik data Moka terbaru sampai menit ini' }, syncIcon(), a ? 'Sinkron…' : 'Sinkron Moka'));
+    if (!viewOnly()) bar.append(el('button', { class: 'btn sm v28-sync-btn' + (a ? ' v28-spin' : ''), type: 'button', onclick: openSync, title: 'Pilih periode dan jenis data Moka yang diperbarui' }, syncIcon(), a ? 'Sinkron…' : 'Sinkron Moka'));
     const u = currentUser();
     if (u) bar.append(el('span', { class: 'v28-user' }, el('span', { class: 'pill neu' }, u.name + (u.role === 'master' ? ' · master' : viewOnly() ? ' · lihat' : '')),
       el('button', { class: 'btn sm', type: 'button', onclick: async () => { try { await masterLogout(); } catch { masterClear(); } applyAccess(); } }, 'Keluar')));
@@ -267,15 +270,16 @@ td.sticky1{overflow-wrap:break-word}
     const node = el('section', { class: 'app-data-update v28-update', 'data-update-state': r ? 'today' : 'empty', 'data-v28-update': '' }, icon,
       el('div', {},
         el('div', { class: 'app-update-eyebrow' }, 'STATUS DATA · MOKA POS'),
-        el('div', { class: 'app-update-caption' }, a ? 'Sinkron sedang berjalan…' : 'Cakupan data tersimpan'),
+        el('div', { class: 'app-update-caption' }, a ? (a.status==='requested'?'Menunggu GitHub Actions…':'Sinkron sedang berjalan…') : 'Cakupan data tersimpan'),
         el('div', { class: 'big', role: 'status' }, r?.data_until ? 'Data s.d. '+throughLabel(r) : 'Cakupan data belum terkonfirmasi'),
         el('div', { class: 'meta' }, meta),
         r?.message?.includes('Member gagal:') ? el('div',{class:'meta',style:'color:#b67a00'},r.message) : null,
-        V28.lastError ? el('div', { class: 'meta', style: 'color:#df4255' }, 'Sinkron terakhir gagal: ' + String(V28.lastError.message || '').slice(0, 160)) : null,
+        V28.lastError ? el('div', { class: 'meta', style: 'color:#df4255' }, (a?'Percobaan sebelumnya gagal: ':'Sinkron terakhir gagal: ') + String(V28.lastError.message || '').slice(0, 160)) : null,
+        V28.lastWarning ? el('div',{class:'meta',style:'color:var(--warn,#a66a04)'},(a?'Percobaan sebelumnya belum lengkap: ':'Sinkron terakhir belum lengkap: ')+String(V28.lastWarning.message||'Periksa log; data belum cocok tidak ditulis.').slice(0,220)) : null,
         V28.tableMissing ? el('div', { class: 'meta', style: 'color:#b67a00' }, 'Status sinkron tidak terbaca. Periksa akses database dan PANDUAN-MOKA-V35.md.') : null,
         manual ? el('div', { class: 'meta' }, 'Tanggal manual: ' + fmtD.format(new Date(manual + 'T12:00:00Z'))) : null),
       el('div', { class: 'acts' },
-        el('span', { class: 'app-update-badge' }, el('span', { class: 'app-update-dot', 'aria-hidden': 'true' }), a ? 'Berjalan' : r ? ago(r.finished_at) : 'Belum ada'),
+        el('span', { class: 'app-update-badge' }, el('span', { class: 'app-update-dot', 'aria-hidden': 'true' }), a ? (a.status==='requested'?'Menunggu':'Berjalan') : V28.lastError?'Gagal sebagian/seluruhnya':V28.lastWarning?'Belum lengkap':r ? ago(r.finished_at) : 'Belum ada'),
         viewOnly() ? null : el('button', { class: 'btn pri sm v28-sync-btn' + (a ? ' v28-spin' : ''), type: 'button', onclick: openSync }, syncIcon(), a ? 'Lihat progres' : 'Sinkron sekarang'),
         el('button', { class: 'btn sm', type: 'button', onclick: appEditUpdateDate }, 'Edit tanggal manual')));
     return node;
@@ -302,12 +306,15 @@ td.sticky1{overflow-wrap:break-word}
     if (V28.active) { watchRun(V28.active.id, box); return; }
     if (!(await ensurePin(box, () => { modal.remove(); openSync(options); }))) return;
     if (viewOnly()) { box.append(el('p', { class: 'note warn' }, 'Akun Anda hanya untuk melihat data.')); return; }
-    const prev = el('input', { type: 'checkbox' });
+    const prev = el('input', { type: 'checkbox' }); prev.checked=true;
+    const stableEnd=()=>{const d=new Date(todayWita()+'T12:00:00Z');d.setUTCDate(d.getUTCDate()-1);return d.toISOString().slice(0,10);};
     const selection=opsSelect([['month','Bulan'],['year','Tahun penuh'],['range','Rentang tanggal']], 'month', {'aria-label':'Jenis periode sinkron'});
     const year=opsInput(S.year,'number',{min:2000,max:2100,'aria-label':'Tahun sinkron'});
     const month=opsSelect(MONTHS.map((m,i)=>[i+1,m]),S.month||Number(todayWita().slice(5,7)),{'aria-label':'Bulan sinkron'});
     const from=opsInput(todayWita().slice(0,8)+'01','date',{'aria-label':'Tanggal awal sinkron'});
-    const to=opsInput(todayWita(),'date',{'aria-label':'Tanggal akhir sinkron',max:todayWita()});
+    const to=opsInput(stableEnd(),'date',{'aria-label':'Tanggal akhir sinkron',max:stableEnd()});
+    if(Number(todayWita().slice(8))===1){year.value=Number(stableEnd().slice(0,4));month.value=Number(stableEnd().slice(5,7));from.value=stableEnd().slice(0,8)+'01';}
+    prev.onchange=()=>{to.max=prev.checked?stableEnd():todayWita();if(to.value>to.max)to.value=to.max;};
     const periodBox=el('div',{class:'v28-tools'},opsField('Periode',selection),opsField('Tahun',year),opsField('Bulan',month),opsField('Dari',from),opsField('Sampai',to));
     const syncFields=()=>{year.closest('.fld').hidden=selection.value==='range';month.closest('.fld').hidden=selection.value!=='month';from.closest('.fld').hidden=to.closest('.fld').hidden=selection.value!=='range';};selection.onchange=syncFields;syncFields();
     const library=el('input',{type:'checkbox'});library.checked=priceOnly;library.disabled=priceOnly;if(priceOnly)periodBox.hidden=true;
@@ -319,8 +326,8 @@ td.sticky1{overflow-wrap:break-word}
     box.append(
       periodBox,componentBox,!priceOnly?el('p',{class:'note warn'},'Member memakai Customer List dan Purchase History. Uji Member saja untuk satu bulan terlebih dahulu. Akses token dan kelengkapan pagination diperiksa sebelum penulisan; seluruh histori sumber mungkin perlu dibaca meskipun periode tampilan dipersempit.'):null,el('label',{class:'rowline'},library,'Item Library / Price List · manual saja'),
       el('label',{class:'rowline'},skip,'Lewati periode lama yang sudah lengkap dan cocok'),el('label',{class:'rowline'},force,'Tarik ulang paksa (abaikan checkpoint)'),el('p',{class:'sub'},'Data terbaru tetap diperbarui. Data lama dicek ke ringkasan Moka dan sidik isi database; validasi detail diulang paling lambat 7 hari. Library & Price List tetap diperiksa jika dipilih.'),
-      el('p', {}, priceOnly?'Mengambil Item Library Moka langsung menjadi Price List. Katalog mentah tidak disimpan; harga identik tidak ditulis ulang. DC dilewati.':'Menarik transaksi Moka sampai menit ini untuk toko yang diizinkan. Lama proses mengikuti periode dan jumlah toko.'),
-      el('label', { class: 'rowline' }, prev, 'Mode bulan penuh s.d. kemarin (gunakan Tarik ulang paksa untuk mengabaikan checkpoint)'),
+      el('p', {}, priceOnly?'Mengambil Item Library Moka langsung menjadi Price List. Katalog mentah tidak disimpan; harga identik tidak ditulis ulang. DC dilewati.':'Bawaan FULL: data stabil sampai kemarin, sama dengan sinkron GitHub. LIVE hari ini tersedia dengan menonaktifkan opsi di bawah; angka sumber dapat berubah selama penarikan. Data belum cocok tidak disimpan.'),
+      el('label', { class: 'rowline' }, prev, 'FULL · batasi data s.d. kemarin (disarankan). Nonaktifkan untuk LIVE hari ini.'),
       el('p', { class: 'note' }, 'Cakupan data terakhir: ' + (V28.run ? throughLabel(V28.run) : 'belum ada') + '. Jadwal otomatis dikonfigurasi pukul 04:37 WITA; keberhasilannya mengikuti status proses terakhir.'),
       err, start);
     if(!priceOnly){
@@ -337,7 +344,7 @@ td.sticky1{overflow-wrap:break-word}
         if(!priceOnly&&!selected.length)throw Error('Pilih minimal satu jenis data. Gunakan menu Price List untuk update harga saja.');
         const request={mode:priceOnly?'price':(prev.checked?'full':'live')+'|'+selected.join(','),include_library:library.checked,skip_unchanged:skip.checked,force_refresh:force.checked,months:'',date_from:'',date_to:''};
         if(!priceOnly&&selection.value==='range'){
-          if(!/^\d{4}-\d{2}-\d{2}$/.test(from.value)||!/^\d{4}-\d{2}-\d{2}$/.test(to.value)||from.value>to.value||to.value>todayWita())throw Error('Rentang tanggal tidak valid.');
+          if(!/^\d{4}-\d{2}-\d{2}$/.test(from.value)||!/^\d{4}-\d{2}-\d{2}$/.test(to.value)||from.value>to.value||to.value>(prev.checked?stableEnd():todayWita()))throw Error('Rentang tanggal tidak valid atau melewati batas mode yang dipilih.');
           request.date_from=from.value;request.date_to=to.value;
         }else if(!priceOnly){
           if(!Number.isInteger(y)||y<2000||y>2100)throw Error('Tahun tidak valid.');
@@ -391,8 +398,8 @@ td.sticky1{overflow-wrap:break-word}
       steps.replaceChildren(
         s('Permintaan diterima', 'ok'),
         s('GitHub Actions memulai proses', st === 'requested' ? 'on' : 'ok'),
-        s('Menarik data dari Moka & menyimpan', st === 'running' ? 'on' : st === 'requested' ? '' : st === 'error' ? 'bad' : 'ok'),
-        s('Dashboard dimuat ulang', ['done', 'warn'].includes(st) ? 'ok' : ''));
+        s('Menarik data dari Moka & menyimpan', st === 'running' ? 'on' : st === 'requested' ? '' : ['error','warn'].includes(st) ? 'bad' : 'ok'),
+        s('Dashboard dimuat ulang', st==='done'||Number(r?.stores_ok||0)>0 ? 'ok' : ''));
       const secs = Math.round((Date.now() - t0) / 1000);
       msg.textContent = (r?.message || 'Menunggu GitHub Actions (biasanya 20–60 detik)…') + ' · ' + secs + ' detik';
       if (r?.github_run_url) link.replaceChildren(el('a', { href: r.github_run_url, target: '_blank', rel: 'noopener' }, 'Lihat log di GitHub'));
@@ -400,7 +407,7 @@ td.sticky1{overflow-wrap:break-word}
     paint(null);
     clearInterval(V28.poll);
     V28.poll = setInterval(async () => {
-      if (polling) return;
+      if (polling || document.hidden) return;
       polling = true;
       let r = null;
       try { r = (await DB.sel('moka_sync_runs?select=*&id=eq.' + id))[0]; } catch { } finally { polling = false; }
@@ -408,23 +415,23 @@ td.sticky1{overflow-wrap:break-word}
       if (r && ['done', 'warn', 'error'].includes(r.status)) {
         clearInterval(V28.poll); V28.poll = null; V28.active = null;
         try { localStorage.removeItem('sc_v28_run'); } catch { }
-        if (r.status !== 'error' || Number(r.stores_ok || 0) + Number(r.stores_warn || 0) > 0) {
+        if (r.status === 'done' || Number(r.stores_ok || 0) > 0) {
           masterResetCaches(); if (typeof PL24 !== 'undefined') PL24.docs = null;
           await loadAll();
           const unm = (S.unmapped || []).length;
           toast('Data Moka terbaru dimuat' + (unm ? ' · ' + unm + ' Sales Type perlu dipetakan' : '') + '.');
-          if (box.isConnected) box.append(...[el('p', { class: 'note' }, r.status === 'error' ? 'Sebagian data berhasil diperbarui; beberapa toko gagal. Periksa log sebelum mengulang sinkron.' : r.status === 'warn' ? 'Selesai. Sebagian toko menunggu Moka memproses transaksi terbaru; angka akan terkoreksi pada sinkron berikutnya.' : 'Selesai. Data sudah diperbarui.'),
+          if (box.isConnected) box.append(...[el('p', { class: 'note' }, r.status === 'error' ? 'Sebagian data berhasil diperbarui; beberapa toko gagal. Periksa log sebelum mengulang sinkron.' : r.status === 'warn' ? 'Sebagian data belum terverifikasi dan tidak ditulis; data sebelumnya dipertahankan. Periksa log atau gunakan FULL s.d. kemarin.' : 'Selesai. Data sudah diperbarui.'),
             unm ? el('p', { class: 'note warn' }, unm + ' Sales Type belum dipetakan sehingga sales belum lengkap. ', el('button', { class: 'btn sm', onclick: () => { document.querySelectorAll('.modal').forEach(m => m.remove()); go('set'); requestAnimationFrame(() => $('#sales-type-pending')?.scrollIntoView({ block: 'start', behavior: 'smooth' })); } }, 'Sesuaikan pemetaan')) : null].filter(Boolean));
         } else {
           await loadRuns(); repaintUpdateCard();
-          if (box.isConnected) box.append(el('p', { class: 'note warn' }, 'Sinkron gagal: ' + (r.message || '')));
+          if (box.isConnected) box.append(el('p', { class: 'note warn' }, (r.status==='warn'?'Data belum cocok; data sebelumnya dipertahankan: ':'Sinkron gagal: ') + (r.message || '')));
         }
       }
       if (Date.now() - t0 > 245 * 60000) {
         clearInterval(V28.poll); V28.poll = null;
         if (box.isConnected) msg.textContent = 'Pemantauan melewati batas 245 menit. Periksa log GitHub dan status terakhir sebelum mengulang sinkron.';
       }
-    }, 5000);
+    }, 10000);
   }
   function resumeActive() {
     let id = null; try { id = localStorage.getItem('sc_v28_run'); } catch { }

@@ -6,8 +6,8 @@ Sinkronisasi Moka POS -> Supabase (Dashboard Commercial / Store Operation) — V
 Mode
 ----
   full  (jadwal harian)  : bulan berjalan sampai KEMARIN ditarik ulang penuh
-                           (+ bulan lalu pada tanggal 1–3). Juga memperbarui katalog item & harga.
-  live  (tombol Sinkron) : data sampai MENIT INI. Cukup menarik transaksi beberapa hari
+                           (+ bulan lalu pada tanggal 1–3). Item Library/Price List hanya jika dipilih manual.
+  live  (opsi manual)    : data sampai MENIT INI. Cukup menarik transaksi beberapa hari
                            terakhir (LIVE_DAYS, default 3); hari sebelumnya dibaca dari
                            tabel harian yang sudah tersimpan. Periode lama bisa dilewati melalui checkpoint V41.
 
@@ -19,8 +19,8 @@ Tabel yang diisi
   rpc rebuild_sales_actual
 
 Pengaman: setiap toko-bulan dicocokkan dengan Sales Summary Moka. Selisih karena
-transaksi yang baru tersinkron (kasir offline) ditulis dengan status WARN; selisih
-lain berstatus ERROR dan data lama tidak disentuh.
+transaksi yang belum cocok berstatus WARN/ERROR dan tidak ditulis. Data lama
+dipertahankan sampai detail terverifikasi terhadap ringkasan sumber.
 
 Variabel lingkungan
 -------------------
@@ -485,8 +485,9 @@ def fetch_store_month(ctx, outlet, sid, period):
         res["fetch_from"] = fetch_from.isoformat()
         res["fetch_to"] = fetch_to.isoformat()
         since = datetime(fetch_from.year, fetch_from.month, fetch_from.day, tzinfo=TZ)
-        until = ctx.now if (MODE == "live" and fetch_to == ctx.now.date()) else \
+        until = datetime.now(TZ) if (MODE == "live" and fetch_to == ctx.now.date()) else \
             datetime(fetch_to.year, fetch_to.month, fetch_to.day, tzinfo=TZ) + timedelta(days=1) - timedelta(seconds=1)
+        res["captured_until"] = until.isoformat()
         pays = ctx.moka.transactions(oid, since, until) if COMPONENTS & {"sales_type","transactions"} and (net or summ.get("number_of_transactions") or fetch_from != d1) else []
         res["payments"] = len(pays)
         agg = aggregate(pays)
@@ -506,6 +507,12 @@ def fetch_store_month(ctx, outlet, sid, period):
         res["sales_types"] = {t: {"amount": round(v["amount"], 2), "trx_count": v["trx_count"]} for t, v in monthly.items()}
         res["sales_type_total"] = sum(v["amount"] for v in res["sales_types"].values())
 
+        # Day-based reports can move while LIVE details are being downloaded.
+        # Never call an intraday snapshot reconciled if the source moved during it.
+        if MODE == "live" and d2 == ctx.now.date():
+            latest = ctx.moka.sales_summary(oid, d1, d2)
+            if (signed_money(latest.get("net_sales") or 0), latest.get("number_of_transactions")) != (net, summ.get("number_of_transactions")):
+                res["errors"].append("Data LIVE berubah selama penarikan; belum disimpan. Gunakan FULL s.d. kemarin atau ulangi setelah sumber stabil.")
         if "item_sales" in COMPONENTS and abs(res["item_total"] - net) > max(TOLERANCE, 0.5 * len(res["items"])):
             res["errors"].append(f"Item Sales {res['item_total']:,.0f} != Sales Summary {net:,.0f}")
         if "sales_type" in COMPONENTS and abs(res["sales_type_total"] - net) > TOLERANCE:
@@ -518,7 +525,7 @@ def fetch_store_month(ctx, outlet, sid, period):
     if res["errors"] and res["status"] != "SKIP":
         res["status"] = "ERROR"
         net = float((res.get("summary") or {}).get("net_sales") or 0)
-        details = [v for v in (res.get("item_total"), res.get("sales_type_total")) if v is not None]
+        details = [res[k] for c,k in (("item_sales","item_total"),("sales_type","sales_type_total")) if c in COMPONENTS and k in res]
         res["lag"] = bool(details) and all("!=" in e for e in res["errors"]) and \
             all(abs(net - v) <= LAG_MAX_SHARE * max(abs(net), 1) for v in details)
     return res
@@ -526,7 +533,8 @@ def fetch_store_month(ctx, outlet, sid, period):
 
 def classify_lag(res):
     net = float(res["summary"].get("net_sales") or 0)
-    st, it = res.get("sales_type_total"), res.get("item_total")
+    st = res.get("sales_type_total") if "sales_type" in COMPONENTS else None
+    it = res.get("item_total") if "item_sales" in COMPONENTS else None
     basis = st if st is not None else it
     consistent = st is None or it is None or abs(st - it) <= max(TOLERANCE, 0.5 * len(res.get("items") or []))
     if consistent and basis is not None and abs(net - basis) <= LAG_MAX_SHARE * max(abs(net), 1):
@@ -581,6 +589,8 @@ class WritePlan:
 
 
 def write_store_month(db, res, known_types, stamp):
+    if res.get("status") != "OK":
+        raise ValueError("Hanya hasil terverifikasi OK yang boleh disimpan.")
     target_db, db = db, WritePlan()
     sid, y, m = res["store_id"], res["year"], res["month"]
     key = f"store_id=eq.{sid}&year=eq.{y}&month=eq.{m}"
@@ -845,7 +855,7 @@ def main():
                     f"{res['outlet']:<26} library item: {res.get('rows', 0):>6} SKU"
                     f"  {res['seconds']:>6}s {'; '.join(res['errors'])}")
                 continue
-            if res["status"] in ("OK", "WARN") and writing:
+            if res["status"] == "OK" and writing:
                 try:
                     write_store_month(db, res, known_types, stamp)
                 except HttpError as e:
@@ -903,9 +913,9 @@ def main():
         verb={'saved':'diperbarui','unchanged':'tetap sama','skipped':'dilewati','ERROR':'gagal'}[receipt['status']]
         log('· Price List '+verb+': '+receipt['outlet'])
     rebuild_error = None
-    if writing and (any(r["status"] in ("OK", "WARN", "UNCHANGED") for r in results) or any(r["status"] == "OK" for r in item_results)):
+    if writing and (any(r["status"] in ("OK", "UNCHANGED") for r in results) or any(r["status"] == "OK" for r in item_results)):
         try:
-            if "sales_type" in COMPONENTS and any(r["status"] in ("OK", "WARN", "UNCHANGED") for r in results):
+            if "sales_type" in COMPONENTS and any(r["status"] in ("OK", "UNCHANGED") for r in results):
                 db.rpc("rebuild_sales_actual")
                 log("✓ rebuild_sales_actual selesai")
         except HttpError as e:
@@ -935,8 +945,8 @@ def main():
     data_until = now if MODE == "live" and actual_end == now.date() else datetime(actual_end.year, actual_end.month, actual_end.day, 23, 59, 59, tzinfo=TZ)
     library_ok = [r for r in item_results if r["status"] == "OK"]
     run_update(status="error" if bad or rebuild_error or (member_blocked and not SALES_COMPONENTS) else "warn" if wr or member_blocked or (member_result and member_result["status"]=="WARN") else "done",
-               finished_at=datetime.now(timezone.utc).isoformat(), data_until=data_until.isoformat() if results or member_result else None,
-               data_through=actual_end.isoformat() if (results or member_result) and not sales_bad and not member_error and not (member_result and member_result["status"]!="OK") else None, components=sorted(COMPONENTS) if not PRICE_ONLY else ["price_list"],
+               finished_at=datetime.now(timezone.utc).isoformat(), data_until=data_until.isoformat() if (results or member_result) and not bad and not wr and not rebuild_error and not member_blocked and not (member_result and member_result["status"]!="OK") else None,
+               data_through=actual_end.isoformat() if (results or member_result) and not bad and not wr and not rebuild_error and not member_error and not (member_result and member_result["status"]!="OK") else None, components=sorted(COMPONENTS) if not PRICE_ONLY else ["price_list"],
                stores_ok=len(ok)+len(unchanged)+(len(mapped) if member_result and not results else 0), stores_warn=len(wr), stores_error=len(bad),
                message=(("Member gagal: "+member_error+". " if member_error else (f"Member API OK: {member_result['customers']} customer, {member_result['receipts']} nota/refund, {member_result['unmapped_payments']} pembayaran belum terpetakan. " if member_result else "")) + f"Komponen {','.join(sorted(COMPONENTS))}; Sales: {len(ok)} OK, {len(unchanged)} dilewati (sesuai), {len(wr)} menunggu Moka, {len(sales_bad)} gagal; Price List {price_saved} diperbarui, {price_same} sama, {price_skipped} dilewati, {len(price_errors)} gagal; library: {len(library_ok)} OK, {len(library_bad)} gagal" + ("; hitung ulang sales gagal: " + rebuild_error[:160] if rebuild_error else "") +
                         (f" · library {len([r for r in item_results if r['status'] == 'OK'])} toko" if item_results else "") +
