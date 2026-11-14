@@ -28,22 +28,29 @@ def redact(text, password=''):
     return text
 
 
+def read_json(env, select):
+    """Enforce READ ONLY explicitly, even if a pooler ignores startup PGOPTIONS."""
+    select=select.strip().rstrip(';')
+    statement=("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY;\n"
+               "SET LOCAL statement_timeout='60s';\n"
+               "SELECT json_build_object('read_only',current_setting('transaction_read_only'),"
+               "'result',("+select+"));\nCOMMIT;")
+    output=db.run(['psql','-X','-q','-A','-t','-v','ON_ERROR_STOP=1','-f','-'],env,
+                  data=statement,timeout=120)
+    try:
+        payload=json.loads(output.strip())
+    except (ValueError,TypeError):
+        raise db.MigrationError('Respons audit tidak valid; isi mentah tidak ditampilkan.') from None
+    if not isinstance(payload,dict) or payload.get('read_only')!='on' or 'result' not in payload:
+        raise db.MigrationError('Transaksi audit tidak terkonfirmasi READ ONLY; laporan tidak dibuat.')
+    return payload['result']
+
+
 def collect(env):
-    # All statements below are SELECT/SHOW, inside a read-only repeatable-read
-    # transaction per query. No table contents, email, PIN, session or credential
-    # values are selected. Definitions are metadata required for adapting legacy RPCs.
+    # Each catalog query runs inside an explicitly enforced read-only transaction.
     names = ','.join(db.literal(s) for s in SCHEMAS)
     def rows(select):
-        statement = ("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY;\n"
-                     "SET LOCAL statement_timeout='60s';\n"
-                     "SELECT coalesce(json_agg(a),'[]') FROM (" + select + ") a;\nCOMMIT;")
-        # -q removes BEGIN/COMMIT tags so output remains a single JSON document.
-        output = db.run(['psql','-X','-q','-A','-t','-v','ON_ERROR_STOP=1','-f','-'], env,
-                        data=statement, timeout=120)
-        try:
-            return json.loads(output.strip())
-        except (ValueError, TypeError):
-            raise db.MigrationError('Respons audit tidak valid; isi mentah tidak ditampilkan.') from None
+        return read_json(env,"SELECT coalesce(json_agg(a),'[]') FROM ("+select+") a")
     report = {
         'format': 'commercial-access-audit-v1',
         'target_project': db.TARGET,
@@ -82,8 +89,15 @@ def collect(env):
         pg_get_triggerdef(t.oid,true) AS definition FROM pg_trigger t
         JOIN pg_class c ON c.oid=t.tgrelid JOIN pg_namespace n ON n.oid=c.relnamespace
         WHERE n.nspname IN ("""+names+""") AND NOT t.tgisinternal ORDER BY 1,2,3""")
-    report['object_grants'] = db.object_grants(env,SCHEMAS)
-    report['postgres_defaults'] = db.postgres_defaults(env,SCHEMAS)
+    report['object_grants'] = read_json(env,db.object_grants_sql(SCHEMAS))
+    report['postgres_defaults'] = rows("""SELECT coalesce(n.nspname,'') AS schema,
+        d.defaclobjtype::text AS kind,
+        CASE WHEN a.grantee=0 THEN 'PUBLIC' ELSE pg_get_userbyid(a.grantee) END AS grantee,
+        a.privilege_type AS privilege,a.is_grantable
+        FROM pg_default_acl d LEFT JOIN pg_namespace n ON n.oid=d.defaclnamespace
+        CROSS JOIN LATERAL aclexplode(d.defaclacl) a
+        WHERE pg_get_userbyid(d.defaclrole)='postgres'
+        AND (d.defaclnamespace=0 OR n.nspname IN ("""+names+""")) ORDER BY 1,2,3,4""")
     report['api_hooks'] = rows("""SELECT pg_get_userbyid(s.setrole) AS role,
         coalesce(d.datname,'*') AS database,config FROM pg_db_role_setting s
         LEFT JOIN pg_database d ON d.oid=s.setdatabase
@@ -98,8 +112,8 @@ def collect(env):
 def main():
     env = db.connection(os.environ.get('MIGRATION_TARGET_DB_URL',''), db.TARGET, True)
     print('Audit akses: project '+db.TARGET+'; koneksi hanya baca.', flush=True)
-    if db.sql(env,'SHOW transaction_read_only;') != 'on':
-        raise db.MigrationError('Koneksi audit harus read-only.')
+    if read_json(env,'SELECT true') is not True:
+        raise db.MigrationError('Pemeriksaan transaksi audit gagal.')
     report = collect(env)
     def sanitized(value):
         if isinstance(value,str):return redact(value,env.get('PGPASSWORD',''))
