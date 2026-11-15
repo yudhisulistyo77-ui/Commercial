@@ -779,7 +779,7 @@ html[data-number-mode="full"] .member-ranking-v29 table{min-width:1560px!importa
 <link rel="stylesheet" href="ui-v62.css?v=62">
 <link rel="stylesheet" href="ui-v63.css?v=63">
 <link rel="stylesheet" href="ui-v64.css?v=65">
-<link rel="stylesheet" href="ui-v66.css?v=66">
+<link rel="stylesheet" href="ui-v66.css?v=67">
 </head>
 <body>
 
@@ -4697,8 +4697,8 @@ async function copyNodeRich(node,btn){
 function enhanceGrids(){
   document.querySelectorAll('.page.on .grid:not([data-cenh])').forEach(g=>{
     g.dataset.cenh='1';
-    if(!g.querySelector('.tile')) return;
-    const bar=el('div',{style:'display:flex;justify-content:flex-end;margin:-2px 0 6px'});
+    if(!g.querySelector(':scope > .tile')) return;
+    const bar=el('div',{class:'metric-export-toolbar',style:'display:flex;justify-content:flex-end;margin:-2px 0 6px'});
     bar.append(el('button',{class:'btn sm',type:'button',title:'Salin ringkasan ini sebagai gambar (PNG) — tempel langsung ke slide presentasi, tampilannya sama persis',
       onclick:e=>copyNodeAsImage(g,e.currentTarget,g)},'⧉ Salin PNG'));
     g.before(bar);
@@ -7062,7 +7062,7 @@ setInterval(masterRevisionCheck,45000);window.addEventListener('focus',masterRev
 <script src="traffic-v62.js?v=64"></script>
 <script src="ui-v62.js?v=66"></script>
 <script src="member-items-v63.js?v=63"></script>
-<script src="sheets-dashboard-v64.js?v=66"></script>
+<script src="sheets-dashboard-v64.js?v=67"></script>
 <script src="traffic-analysis-v64.js?v=65"></script>
 <script src="ui-v66.js?v=66"></script>
 </body>
