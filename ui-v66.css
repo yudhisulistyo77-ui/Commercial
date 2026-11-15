@@ -1,0 +1,44 @@
+/* Shared spacing, readable light theme and responsive drill-down. */
+html[data-ui-version="59"] .page{gap:18px}
+html[data-ui-version="59"] .page>.card,html[data-ui-version="59"] .page>.grid,html[data-ui-version="59"] .page>.note{margin-block:0!important}
+html[data-ui-version="59"] .page .grid{gap:18px;align-items:start}
+html[data-ui-version="59"] .card>div>.rank-chart{margin-bottom:16px}
+html[data-ui-version="59"] .card>div>.tbar{margin-top:14px;margin-bottom:10px}
+html[data-ui-version="59"] .card>div>.tw+.tw{margin-top:18px}
+html[data-ui-version="59"] .v64-output .grid,html[data-ui-version="59"] .v64-output .card{margin:0!important}
+html[data-ui-version="59"] .v66-breakdowns{row-gap:22px}
+html[data-ui-version="59"] .v66-link{border:0;background:transparent;box-shadow:none;padding:3px 0;min-height:30px;color:var(--accent);text-align:left;white-space:normal;line-height:1.6;text-decoration:underline;text-underline-offset:3px}
+html[data-ui-version="59"] .v66-drill{width:min(1160px,calc(100vw - 32px));max-width:calc(100vw - 32px);max-height:90dvh;overflow:auto;box-sizing:border-box}
+.v66-drill-body{display:grid;grid-template-columns:minmax(0,1fr);gap:18px}.v66-drill-body>*{min-width:0}.v66-drill-body .card{margin:0!important}.v66-drill .rowline{gap:10px;flex-wrap:wrap}
+html[data-ui-version="59"] .tbar.v66-table-tools{flex-wrap:wrap;gap:8px 12px;margin:12px 0!important}
+html[data-ui-version="59"] .tbar.v66-table-tools .btn{min-height:32px}
+html[data-ui-version="59"] .table-csv-v39 small{display:none}
+/* Text stays opaque during panel/number reveals; animate position only. */
+html[data-ui-version="59"] .page .phead,html[data-ui-version="59"] .page .phead h1,html[data-ui-version="59"] .page .phead p{opacity:1!important;animation:none!important;filter:none!important}
+html[data-ui-version="59"] .page .ui59-enter{animation-name:v66-enter!important;animation-duration:.16s!important}
+@keyframes v66-enter{from{transform:translateY(3px)}to{transform:none}}
+html[data-ui-version="59"][data-ui-tone="light"]{--ink:#202d44;--ink-2:#44546c;--muted:#56657b;--line:#d3dced;--ring:#dce3ef;--grid:#dce3ef;--warn:#8b5800;--crit:#b52545;--good:#087850;--ui59-up:#087850;--ui59-down:#b52545;--accent:#5146c9;--accent-soft:#ecebff;--s1:#6458dc;--s2:#b97709;--s3:#0c8a72;--s4:#286fc4;--s5:#b84d87;--panel:#f2f5fb}
+html[data-ui-version="59"][data-ui-tone="light"] .page .phead h1,html[data-ui-version="59"][data-ui-tone="light"] .card h2,html[data-ui-version="59"][data-ui-tone="light"] .review-store-card h3{color:var(--ink)!important}
+html[data-ui-version="59"][data-ui-tone="light"] .page .phead p,html[data-ui-version="59"][data-ui-tone="light"] .sub,html[data-ui-version="59"][data-ui-tone="light"] .note,html[data-ui-version="59"][data-ui-tone="light"] .fld>label{color:var(--ink-2)}
+html[data-ui-version="59"][data-ui-tone="light"] input::placeholder{color:#64718a;opacity:1}
+html[data-ui-version="59"][data-ui-tone="light"] .card{background:#fff;border-color:#dbe3f0;box-shadow:0 4px 16px #3e537008}
+html[data-ui-version="59"][data-ui-tone="light"] th{background:#edf2fc;color:#334766}
+html[data-ui-version="59"][data-ui-tone="light"] td{color:var(--ink)}
+html[data-ui-version="59"][data-ui-tone="light"] tfoot td{background:#eaf1fc;color:#233b5c;font-weight:800}
+html[data-ui-version="59"][data-ui-tone="light"] .rank-label,html[data-ui-version="59"][data-ui-tone="light"] .rank-detail{color:var(--ink)}
+html[data-ui-version="59"][data-ui-tone="light"] .rank-detail{background:#edf2fc;border-color:#d3dced}
+html[data-ui-version="59"][data-ui-tone="light"] .pill.ok,html[data-ui-version="59"][data-ui-tone="light"] .posval{color:#087047}
+html[data-ui-version="59"][data-ui-tone="light"] .pill.bad,html[data-ui-version="59"][data-ui-tone="light"] .negval{color:#ae2440}
+html[data-ui-version="59"] .page .fld,html[data-ui-version="59"] .card>div{min-width:0}
+html[data-ui-version="59"] .rowline{flex-wrap:wrap;row-gap:10px}
+html[data-ui-version="59"] .chart,html[data-ui-version="59"] .tw{max-width:100%;min-width:0}
+@media(max-width:900px){html[data-ui-version="59"] .page{padding:20px 16px 32px}html[data-ui-version="59"] .page .grid.g2{grid-template-columns:minmax(0,1fr)!important}.v66-drill .grid.g3{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:680px){html[data-ui-version="59"] #filters{position:relative;top:auto}html[data-ui-version="59"] .page{padding:18px 12px 28px;gap:16px}html[data-ui-version="59"] .page .card{padding:16px}html[data-ui-version="59"] .page .phead{flex-wrap:wrap;gap:10px}.phead>*{min-width:0;max-width:100%}html[data-ui-version="59"] .page .grid.g3,html[data-ui-version="59"] .page .grid.g4{grid-template-columns:repeat(2,minmax(0,1fr))!important}html[data-ui-version="59"] .page .grid{gap:12px}html[data-ui-version="59"] .rank-row{grid-template-columns:minmax(100px,1fr) minmax(42px,.65fr) minmax(48px,auto);gap:8px}html[data-ui-version="59"] .rank-label{min-width:0;overflow-wrap:anywhere}html[data-ui-version="59"] .v66-drill{width:calc(100vw - 40px);max-width:calc(100vw - 40px);padding:14px;max-height:94dvh}.v66-drill .grid.g3{grid-template-columns:minmax(0,1fr)}html[data-ui-version="59"] .tbar.v66-table-tools .tsearch{flex-basis:100%;max-width:100%;width:100%}.v66-drill-body{gap:14px}.v64-data-status{gap:8px}.v64-data-status strong{font-size:17px}}
+@media(max-width:380px){html[data-ui-version="59"] .page .grid.g4,html[data-ui-version="59"] .page .grid.g3{grid-template-columns:minmax(0,1fr)!important}}
+@media(prefers-reduced-motion:reduce){html[data-ui-version="59"] .page .ui59-enter{animation:none!important}}
+html[data-ui-version="59"] .page.on{animation-name:v66-enter!important;animation-duration:.16s!important}
+html[data-ui-version="59"][data-ui-motion="off"] .page.on,html[data-ui-version="59"][data-ui-motion="off"] .page .ui59-enter{animation:none!important}
+html[data-ui-version="59"] .v66-table-tools button[hidden]{display:none!important}
+html[data-ui-version="59"][data-ui-tone="light"] th{background:#edf2fc!important;color:#334766!important}
+html[data-ui-version="59"] .rank-row,html[data-ui-version="59"] .v66-link{touch-action:manipulation}
+@media(max-width:680px){html[data-ui-version="59"] .v66-link{min-height:40px}}

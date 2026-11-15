@@ -3,10 +3,10 @@
 'use strict';
 if(window.MOTION60)return;
 const root=document.documentElement,reduce=matchMedia('(prefers-reduced-motion: reduce)');
-const CAP=12,OBSERVE_CAP=28;
+const CAP=8,OBSERVE_CAP=14;
 const running=new Set();let frame=null,current=null,seen=new WeakSet(),observed=0,sequence=0;
 const values=new Set();
-function maxActive(){return window.innerWidth<=680?16:CAP;}
+function maxActive(){return window.innerWidth<=680?4:CAP;}
 function enabled(){return root.dataset.uiMotion==='on'&&!reduce.matches&&!document.hidden;}
 function finishAll(){for(const a of [...running]){try{a.finish();}catch{}try{a.cancel();}catch{}running.delete(a);}}
 function play(node,frames,options={}){
@@ -30,7 +30,7 @@ function reveal(node){
  }else if(node.matches('.meter > i')){
   play(node,[{transform:'scaleX(.05)',opacity:.65},{transform:'scaleX(1)',opacity:1}],{duration:380,delay});
  }else{
-  play(node,[{opacity:.65,transform:'translateY(6px)'},{opacity:1,transform:'translateY(0)'}],{delay});
+  play(node,[{transform:'translateY(3px)'},{transform:'translateY(0)'}],{delay});
  }
 }
 const intersection=typeof IntersectionObserver==='function'?new IntersectionObserver(entries=>{
@@ -47,12 +47,12 @@ function refresh(){
  if(!page)return;
  if(page!==current){intersection?.disconnect();finishAll();seen=new WeakSet();observed=0;sequence=0;current=page;}
  if(page.matches('.ui59-login-shell'))observe(page);
- else for(const n of page.querySelectorAll('.phead,.tile,.card,.tw,.chart,.meter > i')){
+ else for(const n of page.querySelectorAll('.tile,.card,.chart,.meter > i')){
   // Avoid two simultaneous panel translations on nested cards.
   if(n.matches('.card,.tile,.tw')&&n.parentElement.closest('.card,.tile'))continue;
   observe(n);if(observed>=OBSERVE_CAP)break;
  }
- for(const n of [...values].slice(0,8))if(page.contains(n))play(n,[{opacity:.55,transform:'translateY(2px)'},{opacity:1,transform:'translateY(0)'}],{duration:240});
+ for(const n of [...values].slice(0,8))if(page.contains(n))play(n,[{transform:'translateY(2px)'},{transform:'translateY(0)'}],{duration:240});
  values.clear();
 }
 function schedule(){if(frame===null)frame=requestAnimationFrame(refresh);}
