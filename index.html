@@ -778,6 +778,7 @@ html[data-number-mode="full"] .member-ranking-v29 table{min-width:1560px!importa
 <link rel="stylesheet" href="ui-v61.css?v=61">
 <link rel="stylesheet" href="ui-v62.css?v=62">
 <link rel="stylesheet" href="ui-v63.css?v=63">
+<link rel="stylesheet" href="ui-v64.css?v=64">
 </head>
 <body>
 
@@ -853,7 +854,7 @@ html[data-number-mode="full"] .member-ranking-v29 table{min-width:1560px!importa
     <section class="page" id="p-upload"></section>
     <section class="page" id="p-uploadreset"></section>
     <section class="page" id="p-set"></section>
-<section class="page" id="p-review"></section><section class="page" id="p-links"></section><section class="page" id="p-schedule"></section><section class="page" id="p-tasks"></section>
+<section class="page" id="p-loss"></section><section class="page" id="p-complaints"></section><section class="page" id="p-csl"></section><section class="page" id="p-review"></section><section class="page" id="p-links"></section><section class="page" id="p-schedule"></section><section class="page" id="p-tasks"></section>
   </div>
 </div>
 
@@ -1244,6 +1245,9 @@ const PAGES = [
   {id:'h2h',   t:'SSSG',       ic:'h2h'},
   {id:'program', t:'Program Sales',  ic:'program'},
   {id:'review', t:'Google Review', ic:'top'},
+  {id:'loss',t:'Loss Sales',ic:'top'},
+  {id:'complaints',t:'Komplain',ic:'pica'},
+  {id:'csl',t:'CSL',ic:'kpi'},
   {id:'bazar',t:'Bazar',ic:'mkt'},
   {id:'mkt',   t:'Marketplace',     ic:'mkt'},
   {id:'brand', t:'Brand Performance', ic:'brand'},
@@ -2172,6 +2176,7 @@ function renderMappingNotice(){document.querySelectorAll('.sales-mapping-notice'
 function render(){
   activeMultiSelect?.close();
   parkFilters();renderConsistencyNoticeV23();
+  if(['loss','complaints','csl'].includes(S.page)){SHEETS64.show(S.page);return;}
   if(S.page==='pricelist'){renderPriceListV24();return;}
   if(S.page==='members'){renderMembersV27();return;}
   if(S.page==='bazar'){renderBazar();return;}
@@ -7041,7 +7046,7 @@ setInterval(masterRevisionCheck,45000);window.addEventListener('focus',masterRev
 <script src="member-profiling-moka-v40.js?v=63"></script>
 <script src="tables-v40.js?v=51"></script>
 
-<script src="egress-v44.js?v=63"></script>
+<script src="egress-v44.js?v=64"></script>
 <script src="sssg-mtd-v49.js?v=51"></script>
 <script src="member-data-v49.js?v=63"></script>
 <script src="png-export-v49.js?v=52"></script>
@@ -7050,11 +7055,13 @@ setInterval(masterRevisionCheck,45000);window.addEventListener('focus',masterRev
 <script src="ui-v51.js?v=52"></script>
 <script src="sssg-current-v52.js?v=62"></script>
 <script src="sales-type-v52.js?v=54"></script>
-<script src="ui-v59.js?v=62"></script>
+<script src="ui-v59.js?v=64"></script>
 <script src="motion-v60.js?v=62"></script>
 <script src="ui-v61.js?v=61"></script>
-<script src="traffic-v62.js?v=63"></script>
+<script src="traffic-v62.js?v=64"></script>
 <script src="ui-v62.js?v=62"></script>
 <script src="member-items-v63.js?v=63"></script>
+<script src="sheets-dashboard-v64.js?v=64"></script>
+<script src="traffic-analysis-v64.js?v=64"></script>
 </body>
 </html>

@@ -68,7 +68,7 @@ for(const name of ['groupedBars','comboBarsLine','lineChart']){
  window[name]=function(...args){const node=original.apply(this,args),svg=node?.matches?.('svg')?node:node?.querySelector?.('svg');if(!svg)return node;
  const labels=args[0]||[];let index=0;
  const rects=[...svg.querySelectorAll('rect')].filter(n=>n.style.cursor==='pointer');
- if(name==='lineChart'){let j=0;for(let i=0;i<labels.length;i++)if(args[1]?.[i]!=null){const circle=svg.querySelectorAll('circle')[j++];point(circle,labels[i]+' · '+(args[2]?.name||'Nilai')+': '+labelValue(args[1][i]),index++);}}
+ if(name==='lineChart'){let j=0;for(let i=0;i<labels.length;i++)if(args[1]?.[i]!=null){const circle=svg.querySelectorAll('circle')[j++];point(circle,labels[i]+' · '+(args[2]?.name||'Nilai')+': '+(args[2]?.fmt?args[2].fmt(args[1][i]):labelValue(args[1][i])),index++);}}
  else{let j=0;for(let i=0;i<labels.length;i++)for(const series of args[1]||[])if(Number(series.vals[i])>0)point(rects[j++],labels[i]+' · '+series.name+': '+labelValue(series.vals[i]),index++);
   if(name==='comboBarsLine'){let j=0;const opts=args[3]||{};for(let i=0;i<labels.length;i++)if(args[2]?.[i]!=null)point(svg.querySelectorAll('circle')[j++],labels[i]+' · '+(opts.lineName||'Achievement')+': '+(typeof pct==='function'?String(pct(args[2][i],1)):String(args[2][i])),index++);}}
  if(index){svg.setAttribute('role','group');svg.setAttribute('aria-label','Grafik interaktif. Gunakan panah kiri dan kanan untuk berpindah titik data.');}return node;};
