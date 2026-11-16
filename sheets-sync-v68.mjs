@@ -1,4 +1,4 @@
-import {csv,headers,validateHeaders,parseRows,sourceURL} from './sheets-source-v64.mjs?v=68';
+import {csv,headers,validateHeaders,parseRows,sourceURL} from './sheets-source-v64.mjs?v=70';
 // One parser/transaction protocol for browser and scheduled worker. No secrets in this module.
 export async function syncSheet(kind,{rpc,fetcher=fetch,progress=()=>{},digest=async text=>{const h=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(text));return [...new Uint8Array(h)].map(v=>v.toString(16).padStart(2,'0')).join('');}}){
  let run,committed=false;

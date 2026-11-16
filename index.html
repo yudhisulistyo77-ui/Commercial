@@ -2328,20 +2328,8 @@ function dashboardVisualHeader(rows,months){
 }
 function dashboardShortcuts(){const items=[['sales','Sales & target','Realisasi dan pencapaian'],['h2h','H2H Sales','Bandingkan antarperiode'],['review','Google Review','Reputasi setiap toko'],['tasks','Daily Task','Aktivitas dan tindak lanjut']];return el('div',{class:'dashboard-shortcuts','aria-label':'Akses cepat menu'},items.map(([id,title,sub])=>el('button',{class:'dashboard-shortcut',type:'button',onclick:()=>go(id)},el('span',{class:'shortcut-icon','aria-hidden':'true',html:'<svg viewBox="0 0 24 24" fill="currentColor">'+(ICONS[PAGES.find(p=>p.id===id)?.ic]||ICONS.sales||Object.values(ICONS)[0])+'</svg>'}),el('span',{},el('strong',{},title),el('small',{},sub)),el('span',{class:'shortcut-arrow','aria-hidden':'true'},'↗'))));}
 function dashboardStoreSnapshot(rows){const stores=byStore(rows).filter(r=>r.target_total>0||r.total_sales>0),known=stores.filter(r=>r.achiev_total!=null),groups=[['Target tercapai',known.filter(r=>r.achiev_total>=1).length,'#16b84e'],['Mendekati target',known.filter(r=>r.achiev_total>=.9&&r.achiev_total<1).length,'#548e70'],['Perlu perhatian',known.filter(r=>r.achiev_total>=.8&&r.achiev_total<.9).length,'#b67a00'],['Di bawah 80%',known.filter(r=>r.achiev_total<.8).length,'#df4255']];const body=el('div',{class:'store-snapshot'});for(const [label,n,color]of groups)body.append(el('div',{class:'snapshot-row'},el('span',{class:'snapshot-dot',style:'background:'+color}),el('span',{},label),el('div',{class:'snapshot-track'},el('i',{style:'width:'+(known.length?n/known.length*100:0)+'%;background:'+color})),el('strong',{},n+' toko')));body.append(el('p',{class:'sub'},known.length+' toko memiliki target · '+(stores.length-known.length)+' toko tanpa target. Mengikuti filter aktif.'));return chartCard('Kesehatan pencapaian toko','Distribusi achievement berdasarkan target yang tersedia',body);}
-/* V18: one manually declared data-update date for the whole application. */
-const APP_DATA_UPDATE_KEY='kpi_data_update_v18_global'; // Existing PIN business-settings namespace.
-function appDataUpdateDate(){const raw=S.demo?opsDemoSettings()[APP_DATA_UPDATE_KEY]:S.settings[APP_DATA_UPDATE_KEY];try{const record=typeof raw==='string'?JSON.parse(raw):raw,date=record?.date||'';if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||!Number.isFinite(Date.parse(date+'T00:00:00Z'))||new Date(date+'T00:00:00Z').toISOString().slice(0,10)!==date)return '';return date;}catch{return '';}}
-function appValidateUpdateDate(value){if(value==='')return;if(!/^\d{4}-\d{2}-\d{2}$/.test(value)||!Number.isFinite(Date.parse(value+'T00:00:00Z'))||new Date(value+'T00:00:00Z').toISOString().slice(0,10)!==value||value>opsToday())throw Error('Isi tanggal data yang valid, paling lambat hari ini.');}
-async function appSaveUpdateDate(date){appValidateUpdateDate(date);const value=JSON.stringify({date,scope:'application',updated_at:new Date().toISOString()});if(S.demo){const settings=opsDemoSettings();settings[APP_DATA_UPDATE_KEY]=value;localStorage.setItem('sc_ops_demo',JSON.stringify(settings));}else{await masterVerify();await DB.write('app_settings',[{key:APP_DATA_UPDATE_KEY,value}],'key');S.settings[APP_DATA_UPDATE_KEY]=value;}return date;}
-async function appEditUpdateDate(){
- if(!S.demo&&!MASTER.verified){try{await masterResume();}catch{}if(!MASTER.verified){const login=opsModal('Masuk PIN untuk mengubah tanggal data aplikasi');login.box.append(masterLoginForm(()=>{login.modal.remove();appEditUpdateDate();}).node);return;}}
- const {box,modal}=opsModal('Tanggal update seluruh data aplikasi'),form=el('form',{}),date=opsInput(appDataUpdateDate(),'date',{'aria-label':'Tanggal update seluruh data',max:opsToday()}),error=el('p',{class:'note warn',role:'alert'}),save=el('button',{type:'submit',class:'btn pri'},'Simpan tanggal update');form.append(el('p',{class:'note'},'Tanggal ini tampil pada dashboard utama dan berlaku sebagai informasi update seluruh data aplikasi. Diisi manual; tidak mengikuti filter tahun, bulan, toko atau SPV.'),opsField('Data update per tanggal',date),el('p',{class:'sub'},'Kosongkan untuk menghapus keterangan tanggal. Isian ini tidak mengubah angka atau rentang perhitungan data.'),error,save);form.addEventListener('submit',async e=>{e.preventDefault();save.disabled=true;error.textContent='';try{await appSaveUpdateDate(date.value);modal.remove();if(S.page==='dash')renderDash();toast('Tanggal update seluruh data tersimpan.');}catch(err){error.textContent=err.message;save.disabled=false;}});box.append(form);
-}
-function appDataUpdateCard(){
- const date=appDataUpdateDate(),days=date?Math.round((Date.parse(opsToday()+'T00:00:00Z')-Date.parse(date+'T00:00:00Z'))/86400000):null,label=date?new Intl.DateTimeFormat('id-ID',{timeZone:'UTC',day:'2-digit',month:'long',year:'numeric'}).format(new Date(date+'T00:00:00Z')):'Belum ditentukan',state=!date?'empty':days===0?'today':'dated',badge=!date?'Perlu diisi':days===0?'Hari ini':days===1?'1 hari lalu':days>1?days+' hari lalu':'Tanggal terjadwal';
- const icon=el('div',{class:'app-update-icon','aria-hidden':'true',html:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M7 3v4m10-4v4M3 10h18m-14 5 3 3 6-6"/></svg>'});
- return el('section',{class:'app-data-update','data-update-state':state,'aria-label':'Informasi update seluruh data aplikasi'},icon,el('div',{class:'app-update-content'},el('div',{class:'app-update-eyebrow'},'STATUS DATA APLIKASI'),el('div',{class:'app-update-caption'},'Data update per tanggal'),el('div',{class:'app-update-date','data-app-update-date':'',role:'status'},label),el('div',{class:'app-update-note'},'Seluruh data aplikasi · tanggal ditetapkan manual')),el('div',{class:'app-update-actions'},el('span',{class:'app-update-badge'},el('span',{class:'app-update-dot','aria-hidden':'true'}),badge),el('button',{class:'btn sm',type:'button',onclick:appEditUpdateDate,'aria-label':'Edit tanggal update seluruh data'},'Edit tanggal update')));
-}
+/* Dashboard dates are read-only and derived from recorded sync coverage. */
+function appDataUpdateCard(){return el('section',{class:'app-data-update','data-update-state':'empty','aria-label':'Status cakupan data'},el('div',{class:'app-update-content'},el('div',{class:'app-update-eyebrow'},'STATUS DATA'),el('div',{class:'app-update-date',role:'status'},'Cakupan data belum terkonfirmasi'),el('div',{class:'app-update-note'},'Tanggal data mengikuti hasil sinkron yang tercatat.')));}
 
 /* V19: persistent number display preference, shared by every page. */
 let NUMBER_MODE=load('number_mode')==='compact'?'compact':'full';
@@ -7039,7 +7027,7 @@ setInterval(masterRevisionCheck,45000);window.addEventListener('focus',masterRev
 <script src="price-list-ui-v24.js?v=26"></script>
 <script src="member-v27.js?v=34"></script>
 <script src="member-ui-v27.js?v=37"></script>
-<script src="commercial-v28.js?v=69"></script>
+<script src="commercial-v28.js?v=70"></script>
 <script src="member-monthly-v37.js?v=38"></script>
 <script src="auth-v58.js?v=69"></script>
 <script src="commercial-v38.js?v=69"></script>
@@ -7063,7 +7051,7 @@ setInterval(masterRevisionCheck,45000);window.addEventListener('focus',masterRev
 <script src="traffic-v62.js?v=68"></script>
 <script src="ui-v62.js?v=66"></script>
 <script src="member-items-v63.js?v=63"></script>
-<script src="sheets-dashboard-v64.js?v=68"></script>
+<script src="sheets-dashboard-v64.js?v=70"></script>
 <script src="traffic-analysis-v64.js?v=65"></script>
 <script src="ui-v66.js?v=66"></script>
 </body>

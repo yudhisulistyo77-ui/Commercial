@@ -266,7 +266,6 @@ td.sticky1{overflow-wrap:break-word}
       r && r.stores_ok != null ? r.stores_ok + ' toko OK' + (r.stores_warn ? ', ' + r.stores_warn + ' menunggu Moka' : '') + (r.stores_error ? ', ' + r.stores_error + ' gagal' : '') : null,
       S.settings?.commercial_price_last_checked_v45 ? 'Price List terakhir dicek: '+dt(S.settings.commercial_price_last_checked_v45) : 'Price List: waktu pemeriksaan belum tercatat',
       S.settings?.commercial_price_last_updated_v45 ? 'Harga terakhir berubah: '+dt(S.settings.commercial_price_last_updated_v45) : null].filter(Boolean).join(' · ');
-    const manual = appDataUpdateDate();
     const node = el('section', { class: 'app-data-update v28-update', 'data-update-state': r ? 'today' : 'empty', 'data-v28-update': '' }, icon,
       el('div', {},
         el('div', { class: 'app-update-eyebrow' }, 'STATUS DATA · MOKA POS'),
@@ -276,12 +275,10 @@ td.sticky1{overflow-wrap:break-word}
         r?.message?.includes('Member gagal:') ? el('div',{class:'meta',style:'color:#b67a00'},r.message) : null,
         V28.lastError ? el('div', { class: 'meta', style: 'color:#df4255' }, (a?'Percobaan sebelumnya gagal: ':'Sinkron terakhir gagal: ') + String(V28.lastError.message || '').slice(0, 160)) : null,
         V28.lastWarning ? el('div',{class:'meta',style:'color:var(--warn,#a66a04)'},(a?'Percobaan sebelumnya belum lengkap: ':'Sinkron terakhir belum lengkap: ')+String(V28.lastWarning.message||'Periksa log; data belum cocok tidak ditulis.').slice(0,220)) : null,
-        V28.tableMissing ? el('div', { class: 'meta', style: 'color:#b67a00' }, 'Status sinkron tidak terbaca. Periksa akses database dan PANDUAN-MOKA-V35.md.') : null,
-        manual ? el('div', { class: 'meta' }, 'Tanggal manual: ' + fmtD.format(new Date(manual + 'T12:00:00Z'))) : null),
+        V28.tableMissing ? el('div', { class: 'meta', style: 'color:#b67a00' }, 'Status sinkron tidak terbaca. Periksa akses database dan PANDUAN-MOKA-V35.md.') : null),
       el('div', { class: 'acts' },
         el('span', { class: 'app-update-badge' }, el('span', { class: 'app-update-dot', 'aria-hidden': 'true' }), a ? (a.status==='requested'?'Menunggu':'Berjalan') : V28.lastError?'Gagal sebagian/seluruhnya':V28.lastWarning?'Belum lengkap':r ? ago(r.finished_at) : 'Belum ada'),
-        viewOnly() ? null : el('button', { class: 'btn pri sm v28-sync-btn' + (a ? ' v28-spin' : ''), type: 'button', onclick: openSync }, syncIcon(), a ? 'Lihat progres' : 'Sinkron sekarang'),
-        el('button', { class: 'btn sm', type: 'button', onclick: appEditUpdateDate }, 'Edit tanggal manual')));
+        viewOnly() ? null : el('button', { class: 'btn pri sm v28-sync-btn' + (a ? ' v28-spin' : ''), type: 'button', onclick: openSync }, syncIcon(), a ? 'Lihat progres' : 'Sinkron sekarang')));
     return node;
   };
   function repaintUpdateCard() {
