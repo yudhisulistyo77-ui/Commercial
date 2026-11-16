@@ -13,9 +13,10 @@
 <meta name="mobile-web-app-capable" content="yes">
 
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<link rel="stylesheet" media="print" onload="this.media='all'" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<script src="bootstrap-v68.js?v=68"></script>
+<script async src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script async src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
 <style>
 /* Layout: rail navigasi kiri + area kerja berisi bar filter sticky lalu kartu-kartu data. */
@@ -7026,10 +7027,10 @@ setInterval(masterRevisionCheck,45000);window.addEventListener('focus',masterRev
   S.url = load('url') || S.url;
   S.key = load('key') || '';
   removeLegacyPresentLocal();document.documentElement.dataset.numberMode=NUMBER_MODE;$('#filters').append(numberModeControl());
+  // Cold devices wait for Auth; never render demo/settings before login modules are ready.
+  S.ready=false;S.demo=false;window.COMMERCIAL_LOGIN_REQUIRED_V38=true;
   buildNav();
   fillFilters();
-  go('dash');
-  if(S.key) { S.ready=false; window.COMMERCIAL_LOGIN_REQUIRED_V38=true; } else { buildDemo(); render(); }
 })();
 </script>
 
@@ -7059,10 +7060,10 @@ setInterval(masterRevisionCheck,45000);window.addEventListener('focus',masterRev
 <script src="ui-v59.js?v=64"></script>
 <script src="motion-v60.js?v=66"></script>
 <script src="ui-v61.js?v=61"></script>
-<script src="traffic-v62.js?v=64"></script>
+<script src="traffic-v62.js?v=68"></script>
 <script src="ui-v62.js?v=66"></script>
 <script src="member-items-v63.js?v=63"></script>
-<script src="sheets-dashboard-v64.js?v=67"></script>
+<script src="sheets-dashboard-v64.js?v=68"></script>
 <script src="traffic-analysis-v64.js?v=65"></script>
 <script src="ui-v66.js?v=66"></script>
 </body>

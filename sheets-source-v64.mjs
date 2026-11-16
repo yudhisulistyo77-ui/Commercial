@@ -1,4 +1,4 @@
-import{csv,norm,day}from'./traffic-source-v63.mjs?v=63';
+import{csv,norm,day}from'./traffic-source-v63.mjs?v=68';
 export{csv,norm};
 export const defaults={loss:{title:'Loss Sales',id:'1R6fDSHDWsJUugcZWZjhzJdxtkcPtipU34LrDwuVi48g',sheet:'PRODUK TIGALAPAN',gid:0},service:{title:'Komplain pelayanan',id:'10uSmCPFCKwDCg2i2blc7vUqPES3iqkOSvMPdMxHb44M',sheet:'KOMPLAIN PELAYANAN B2B',gid:0},product:{title:'Komplain produk',id:'10uSmCPFCKwDCg2i2blc7vUqPES3iqkOSvMPdMxHb44M',sheet:'KOMPLAIN PRODUK B2B',gid:945633426},csl:{title:'CSL',id:'10E8TGKkW5mHqruAmRQh50fdUpduN0NDWYiwQrBwqLfo',sheet:'Form Responses 2026',gid:1097665307}};
 export function sheetId(value){const v=String(value).trim(),m=/^https:\/\/docs\.google\.com\/spreadsheets\/d\/([\w-]+)/.exec(v);if(m)return m[1];if(/^[\w-]{20,100}$/.test(v))return v;throw Error('Gunakan link Google Spreadsheet yang valid.');}

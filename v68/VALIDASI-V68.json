@@ -1,0 +1,33 @@
+{
+  "version": 68,
+  "cases_passed": 75,
+  "groups": {
+    "database": 13,
+    "sync_client": 7,
+    "startup_workflow": 6,
+    "scheduled_worker": 2,
+    "parser": 12,
+    "rankings": 4,
+    "charts": 4,
+    "conversion": 8,
+    "auth": 7,
+    "interface_regression": 12
+  },
+  "inline_scripts_checked": 2,
+  "production_deployed": false,
+  "production_access_or_device_tested": false,
+  "schedule": "Existing Moka cron 37 20 * * * UTC = 04:37 WITA, independent Sheets job",
+  "files": {
+    "index.html": "dabebd80aef704ee24f3908306d331fcf64225989c6af50339b41a5d56d393a8",
+    "bootstrap-v68.js": "33914b4ad4d2e7b8f7570895cb385a6cb17e358b373a312dbe7aa7264850924e",
+    "sheets-dashboard-v64.js": "150a80f27d390e0019d23e6544ed255e980ac0b7d71210e7e712e8efa018d464",
+    "sheets-sync-v68.mjs": "d29fbf8ab5c7b1df93111b128290f44f6701b2fe077fd344cb0f453e1eb43592",
+    "sheets-source-v64.mjs": "ddce1a7bbac1a515a99b174e5347aaf01e0da5bf23759ea169ba4edd621c9da8",
+    "traffic-source-v63.mjs": "c05b4185b4a431bd575eec33bf903d189e2be6484589ac133ac7276e8d049eab",
+    "traffic-v62.js": "4fc104e0cea9bac22d012bf1fcb4345c6658794badcd7187e6a8f4b0e04cbc49",
+    "scripts/sync_google_sheets.mjs": "7d10f1d6e5ed5c98c39c364f52bb790c379b6ca380c7f5327111299e52bf48e9",
+    ".github/workflows/moka-sync.yml": "35aa86b103d6898889e73664b4a40398be3ae67ba95cb40e3ccbf771dd82695f",
+    ".github/workflows/google-sheets-sync.yml": "589666c1771875ad13ac0d74155712dee366a35003033404215b0c5f90cf9e57",
+    "v68/01-SINKRON-SHEETS-V68.sql": "a7694fb5e0f3e341a491809ce80bc1beecefda0ed3100284f27897710eeae333"
+  }
+}
