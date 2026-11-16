@@ -138,3 +138,23 @@ jobs:
           path: moka-sync-output/
           if-no-files-found: ignore
           retention-days: 7
+
+  google-sheets:
+    name: Update Google Sheet harian
+    concurrency:
+      group: commercial-google-sheets
+      cancel-in-progress: false
+    # Independent job: a long Member run cannot prevent the Sheets update.
+    if: ${{ !cancelled() && (github.event_name == 'schedule' || (!inputs.dry_run && (contains(inputs.mode, 'sales_type') || contains(inputs.mode, 'item_sales') || contains(inputs.mode, 'transactions') || inputs.mode == 'live' || inputs.mode == 'full'))) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Loss, komplain, CSL dan Traffic Store → Supabase
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: node scripts/sync_google_sheets.mjs

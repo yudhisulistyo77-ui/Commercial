@@ -1,0 +1,22 @@
+name: Sinkron Google Sheet
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: commercial-google-sheets
+  cancel-in-progress: false
+jobs:
+  sheets:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Tarik semua sumber Google Sheet
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: node scripts/sync_google_sheets.mjs
