@@ -57,8 +57,40 @@ const z=(a,b)=>a==null&&b==null?[null,null]:[a??0,b??0];
 const gapZ=(a,b)=>memberGapV29(...z(a,b)),growZ=(a,b)=>memberGrowthV30(...z(a,b));
 /* Tahun yang sama sekali belum tersinkron tidak diisi 0 (agar GAP/Growth tidak menyesatkan). */
 const NODATA=new Set();const gapY=(y,a,b)=>NODATA.has(y)?'—':gapZ(a,b),growY=(y,a,b)=>NODATA.has(y)?'—':growZ(a,b);
-function windowArgs(){const st=h2hInit();let w;try{w=comparisonWindow(st)}catch(e){w={mode:'month',m1:st.m1||1,m2:st.m2||12,d1:1,d2:31,alignToCurrent:st.alignToCurrent!==false}}
- return {st,w,y3:h2hCurrentYear()};}
+/* V75: one Member period/cohort for both tabs; independent of Sales SSSG. */
+function windowArgs(){
+ if(!ST.period){ST.period={...h2hInit()};ST.anchor=h2hCurrentYear();}
+ const w=comparisonWindow(ST.period);if(ST.period.mode==='range')ST.anchor=Number(ST.period.cutoffFrom.slice(0,4));return {st:ST.period,w,y3:ST.anchor};
+}
+const dateAt=(y,m,d)=>y+'-'+String(m).padStart(2,'0')+'-'+String(Math.min(d,new Date(Date.UTC(y,m,0)).getUTCDate())).padStart(2,'0');
+ST.prepareMovement=function(state){
+ const {w,y3}=windowArgs(),today=opsToday(),end=bazarDateShift(today,-1);
+ const from=dateAt(y3,w.m1,w.d1||1),requested=dateAt(y3,w.m2,w.d2||31),to=y3===Number(today.slice(0,4))&&requested>end?end:requested;
+ if(from>to)throw Error('Periode Member dimulai setelah cut-off data tahun berjalan.');
+ const keep=state._keepComparison&&state.from===from&&state.to===to,previous=[state.compareFrom,state.compareTo];
+ state.from=from;state.to=to;state.compareFrom=dateAt(y3-1,w.m1,w.d1||1);
+ state.compareTo=w.alignToCurrent!==false&&requested>to?dateAt(y3-1,Number(to.slice(5,7)),Number(to.slice(8))):dateAt(y3-1,w.m2,w.d2||31);if(keep){[state.compareFrom,state.compareTo]=previous;}
+};
+ST.applyMovement=function(state){
+ const {from,to}=state;if(!/^\d{4}-\d{2}-\d{2}$/.test(from||'')||!/^\d{4}-\d{2}-\d{2}$/.test(to||'')||from>to||from.slice(0,4)!==to.slice(0,4))throw Error('Perbandingan Member memakai rentang dalam satu tahun.');
+ ST.anchor=Number(from.slice(0,4));ST.period={...windowArgs().st,mode:'range',cutoffFrom:from,cutoffTo:to,alignToCurrent:false};ST.page=0;MV.page=0;state._keepComparison=true;
+};
+function comparisonArgs(){const {w,y3}=windowArgs();return {p_years:[y3],p_m1:w.m1,p_d1:w.d1||1,p_m2:w.m2,p_d2:w.d2||31,p_stores:stores(),p_kind:ST.kind,p_align:w.alignToCurrent!==false,p_rank_year:[y3-2,y3-1,y3].includes(ST.rankYear)?ST.rankYear:y3,p_compare:ST.compare,p_customers:PICK.keys.size?PICK.list():null,...PICK.sinceArgs(),...PICK.cityArgs(),p_query:ST.query||null};}
+/* Check independent server aggregates; never replace discrepant totals with page sums. */
+function auditTotals(d){
+ const issues=[];for(const y of yearCols(d)){
+  const expected=d.totals?.[y]?.net;if(expected==null)continue;
+  const cents=x=>Math.round(Number(x)*100),want=cents(expected);
+  for(const [label,list] of [['toko',d.store_year],['bulan',d.months]]){
+   if(!Array.isArray(list))continue;
+   const selected=list.filter(r=>Number(r.y)===y),actual=selected.reduce((n,r)=>n+cents(r.net||0),0);
+   if(actual!==want)issues.push(y+' total '+label+' berbeda '+money((actual-want)/100));
+  }
+ }
+ return issues;
+}
+function auditNote(d){const issues=auditTotals(d);return issues.length?el('p',{class:'note warn',role:'alert'},'Audit total belum cocok: '+issues.join('; ')+'. Jangan gunakan laporan ini sebagai angka final; periksa hasil audit database V75.'):null;}
+ST.auditTotals=auditTotals;ST.comparisonArgs=comparisonArgs;
 function storeNames(d){return new Map((d.stores||[]).map(s=>[Number(s.id),s.name]))}
 function perStore(r,y,id){const v=r.per_store?.[id+':'+y];return v==null?null:Number(v)}
 function yearCols(d){return (d.years||[]).map(Number)}
@@ -76,8 +108,8 @@ function memberRows(d,list,withRank,foot=null){
 }
 
 async function show(host,opts={}){
- const epoch=++ST.epoch;host.replaceChildren();
- const {st,w,y3}=windowArgs();const rerender=()=>{ST.page=0;show(host,opts)};
+ const epoch=++ST.epoch;host.replaceChildren();if(window.MEMBER_ANALYTICS_V39?.state)MEMBER_ANALYTICS_V39.state._keepComparison=false;
+ let scope;try{scope=windowArgs()}catch(e){host.append(el('p',{class:'note warn'},e.message));return}const {st,w,y3}=scope;const rerender=()=>{ST.page=0;show(host,opts)};
  const controls=comparisonControls(st,'msssg',rerender);
  controls.querySelector('#msssg-sales-through')?.closest('.fld')?.remove();
  controls.querySelector('.comparison-method')?.replaceWith(el('p',{class:'note'},'Cut-off sama dengan menu SSSG sales: tahun berjalan dihitung sampai kemarin (WITA). Centang "Samakan batas tanggal" agar tahun pembanding dipotong pada tanggal yang sama. Sales member = net sales nota customer terdaftar Moka (refund mengurangi).'));
@@ -88,9 +120,9 @@ async function show(host,opts={}){
  const kind=opsSelect([['all','Semua member'],['b2b','B2B · kode MK'],['retail','Selain kode MK']],ST.kind,{'aria-label':'Kelompok member'});kind.onchange=()=>{ST.kind=kind.value;rerender()};
  host.append(controls,el('div',{class:'member-filters-v27'},opsField('Perbandingan',compare),opsField('Acuan Top / Low',rankYear),opsField('Top / Low',rank),opsField('Kelompok',kind)));
  const status=el('p',{class:'note',role:'status'},'Memuat SSSG Member…'),result=el('div',{class:'v40-profile-result'});host.append(status,result);
- const base={p_years:[y3],p_m1:w.m1,p_d1:w.d1||1,p_m2:w.m2,p_d2:w.d2||31,p_stores:stores(),p_kind:ST.kind,p_rank:ST.rank,p_align:w.alignToCurrent!==false,p_rank_year:ST.rankYear,p_compare:ST.compare,p_customers:PICK.keys.size?PICK.list():null,...PICK.sinceArgs(),...PICK.cityArgs()};
+ const base={...comparisonArgs(),p_rank:ST.rank,p_rank_year:ST.rankYear};
  let d;try{d=await masterRpc('commercial_member_sssg_v51',{...base,p_query:ST.query||null,p_sort:ST.sort,p_limit:ST.limit,p_offset:ST.page*ST.limit})}catch(e){status.classList.add('warn');status.textContent='SSSG Member belum dapat dimuat: '+e.message+'. Jalankan MEMBER-SSSG-V51.sql di Supabase.';return}
- if(epoch!==ST.epoch||(!host.isConnected||S.page!=='members'))return;ST.data=d;
+ if(epoch!==ST.epoch||(!host.isConnected||S.page!=='members'))return;ST.data=d;const audit=auditNote(d);if(audit)result.append(audit);
  NODATA.clear();for(const y of (d.years||[]).map(Number))if(!(Number(d.periods?.[y]?.covered)>0)&&d.totals?.[y]==null)NODATA.add(y);
  const ys=yearCols(d),ry=Number(d.rank_year),[yb,ya]=[ys.at(-1),ys.at(-2)],periods=d.periods||{},tot=y=>d.totals?.[y]||{};
  const label=y=>{const p=periods[y];return p?p.from.slice(5).split('-').reverse().join('/')+' – '+p.to.slice(5).split('-').reverse().join('/')+'/'+y:''};
@@ -115,7 +147,7 @@ async function show(host,opts={}){
    memberTableV27(['Bulan daftar','Member baru','Aktif bertransaksi '+yb,'% aktif','Sales '+yb,'Nota '+yb,''],nb.map(r=>{const [yy,mm]=r.month.split('-');return [MONTHS[+mm-1]+' '+yy,int(r.registered),int(r.active),Number(r.registered)?(100*Number(r.active)/Number(r.registered)).toLocaleString('id-ID',{maximumFractionDigits:1})+'%':'—',money(r.net==null?null:Number(r.net)),int(r.trx),el('button',{class:'btn sm',onclick:()=>{PICK.since={from:r.month,to:r.month};opts.repaint?opts.repaint():show(host,opts)}},'Lihat')]}),['TOTAL',int(nbT('registered')),int(nbT('active')),nbT('registered')?(100*nbT('active')/nbT('registered')).toLocaleString('id-ID',{maximumFractionDigits:1})+'%':'—',money(nbT('net')),int(nbT('trx')),''],{id:'v51-new-members'})));}
  const itemHost=el('div');result.append(itemHost);items(itemHost,base,d,epoch);
  // Seluruh member (server-side pagination + pencarian)
- const q=opsInput(ST.query,'search',{placeholder:'Cari nama, kode MK, key'+(d.pii_allowed?', telepon':'')+'…','aria-label':'Cari seluruh member'});let qt;q.oninput=()=>{clearTimeout(qt);qt=setTimeout(()=>{ST.query=q.value.trim();ST.page=0;show(host,opts).then(()=>host.querySelector('input[aria-label="Cari seluruh member"]')?.focus())},450)};
+ const q=opsInput(ST.query,'search',{placeholder:'Cari nama, kode MK, key'+(d.pii_allowed?', telepon':'')+'…','aria-label':'Cari seluruh member'});let qt;q.oninput=()=>{clearTimeout(qt);qt=setTimeout(()=>{ST.query=q.value.trim();ST.page=0;MV.page=0;show(host,opts).then(()=>host.querySelector('input[aria-label="Cari seluruh member"]')?.focus())},450)};
  const sort=opsSelect([['top','Sales '+ry+' terbesar'],['low','Sales '+ry+' terkecil'],['growth','GAP '+yb+' naik terbesar'],['decline','GAP '+yb+' turun terbesar'],['last','Last visit terbaru'],['name','Nama A–Z']],ST.sort,{'aria-label':'Urutan seluruh member'});sort.onchange=()=>{ST.sort=sort.value;ST.page=0;show(host,opts)};
  const per=opsSelect([[10,'10 / halaman'],[20,'20 / halaman'],[50,'50 / halaman'],[100,'100 / halaman']],ST.limit,{'aria-label':'Baris per halaman'});per.onchange=()=>{ST.limit=+per.value;ST.page=0;show(host,opts)};
  const pages=Math.max(1,Math.ceil(Number(d.total_rows||0)/ST.limit)),list=d.rows||[],allTot=y=>tot(y).net==null?null:Number(tot(y).net),t=memberRows(d,list,false,allTot);
@@ -185,17 +217,18 @@ ST.directory=directory;ST.memberDetail=memberDetail;
 const MV={year:0,page:0,limit:50,query:'',sort:'top',epoch:0};
 async function monthly(host,range=null){
  const epoch=++MV.epoch;host.replaceChildren(el('p',{class:'note'},'Memuat pergerakan bulanan setiap member…'));
- let {w,y3}=windowArgs();if(range?.from&&range?.to&&range.from.slice(0,4)===range.to.slice(0,4)){y3=Number(range.from.slice(0,4));w={...w,m1:Number(range.from.slice(5,7)),d1:Number(range.from.slice(8,10)),m2:Number(range.to.slice(5,7)),d2:Number(range.to.slice(8,10)),alignToCurrent:false};}const again=()=>monthly(host,range);
- let d;try{d=await masterRpc('commercial_member_sssg_v51',{p_years:[y3],p_m1:w.m1,p_d1:w.d1||1,p_m2:w.m2,p_d2:w.d2||31,p_stores:stores(),p_kind:'all',p_rank:1,p_align:w.alignToCurrent!==false,p_rank_year:y3,p_compare:3,p_customers:PICK.keys.size?PICK.list():null,...PICK.sinceArgs(),...PICK.cityArgs(),p_query:MV.query||null,p_sort:MV.sort,p_limit:MV.limit,p_offset:MV.page*MV.limit})}
+ const again=()=>monthly(host,range);
+ let d;try{const base=comparisonArgs();d=await masterRpc('commercial_member_sssg_v51',{...base,p_rank:1,p_sort:MV.sort,p_limit:MV.limit,p_offset:MV.page*MV.limit})}
  catch(e){if(epoch===MV.epoch)host.replaceChildren(el('p',{class:'note warn'},'Pergerakan per member belum dapat dimuat: '+e.message));return}
- if(epoch!==MV.epoch||(!host.isConnected||S.page!=='members'))return;host.replaceChildren();
+ if(epoch!==MV.epoch||(!host.isConnected||S.page!=='members'))return;host.replaceChildren();const audit=auditNote(d);if(audit)host.append(audit);
  const ys=yearCols(d),yc=ys.at(-1),periods=d.periods||{},names=storeNames(d);if(!ys.includes(MV.year))MV.year=yc;
  NODATA.clear();for(const y of ys)if(!(Number(periods[y]?.covered)>0)&&d.totals?.[y]==null)NODATA.add(y);
  const label=y=>{const p=periods[y];return p?p.from.slice(5).split('-').reverse().join('/')+' – '+p.to.slice(5).split('-').reverse().join('/')+'/'+y:''};
  const yearSel=opsSelect(ys.map(y=>[y,'Bulan-bulan '+y]),MV.year,{'aria-label':'Tahun kolom bulanan'});yearSel.onchange=()=>{MV.year=+yearSel.value;again()};
- const q=opsInput(MV.query,'search',{placeholder:'Cari nama, kode MK'+(d.pii_allowed?', nomor HP':'')+'…','aria-label':'Cari pergerakan member'});let qt;q.oninput=()=>{clearTimeout(qt);qt=setTimeout(()=>{MV.query=q.value.trim();MV.page=0;again().then(()=>host.querySelector('input[aria-label="Cari pergerakan member"]')?.focus())},450)};
+ const q=opsInput(ST.query,'search',{placeholder:'Cari nama, kode MK'+(d.pii_allowed?', nomor HP':'')+'…','aria-label':'Cari pergerakan member'});let qt;q.oninput=()=>{clearTimeout(qt);qt=setTimeout(()=>{ST.query=q.value.trim();ST.page=0;MV.page=0;again().then(()=>host.querySelector('input[aria-label="Cari pergerakan member"]')?.focus())},450)};
  const sort=opsSelect([['top','Sales '+yc+' terbesar'],['low','Sales '+yc+' terkecil'],['growth','GAP '+yc+' naik terbesar'],['decline','GAP '+yc+' turun terbesar'],['last','Last visit terbaru'],['name','Nama A–Z']],MV.sort,{'aria-label':'Urutan pergerakan'});sort.onchange=()=>{MV.sort=sort.value;MV.page=0;again()};
  const per=opsSelect([[10,'10 / halaman'],[20,'20 / halaman'],[50,'50 / halaman'],[100,'100 / halaman']],MV.limit,{'aria-label':'Baris pergerakan'});per.onchange=()=>{MV.limit=+per.value;MV.page=0;again()};
+ const kind=opsSelect([['all','Semua member'],['b2b','B2B · kode MK'],['retail','Selain kode MK']],ST.kind,{'aria-label':'Kelompok pergerakan'});kind.onchange=()=>{ST.kind=kind.value;ST.page=0;MV.page=0;again()};
  const my=MV.year,pf=periods[my],months=[];if(pf){for(let m=+pf.from.slice(5,7);m<=+pf.to.slice(5,7);m++)months.push(m)}
  /* Periode satu bulan: kolom bulan sama dengan kolom Sales tahun, jadi disembunyikan agar tidak dobel. */
  // Keep the selected month visible; never add out-of-range months.
@@ -210,7 +243,7 @@ async function monthly(host,range=null){
  const rows=list.map((r,i)=>[who(r,i),el('div',{style:'min-width:150px;white-space:normal'},storesOf(r)),...months.map((m,k)=>trend(r,k)),...ys.map(y=>money(val(r,y))),...cmp.flatMap(y=>[gapY(y,val(r,yc),val(r,y)),growY(y,val(r,yc),val(r,y))]),nw(r.last_visit||'—'),el('button',{class:'btn sm',onclick:()=>memberDetail(r)},'Detail')]);
  const foot=['TOTAL SEMUA MEMBER (sesuai filter)','',...months.map(m=>money(monthTot(m))),...ys.map(y=>money(tot(y))),...cmp.flatMap(y=>[gapY(y,tot(yc),tot(y)),growY(y,tot(yc),tot(y))]),'',''];
  const nav=el('div',{class:'rowline'},el('button',{class:'btn',disabled:MV.page===0?'':null,onclick:()=>{MV.page--;again()}},'‹ Sebelumnya'),el('span',{class:'sub'},'Halaman '+(MV.page+1)+' / '+pages+' · '+String(int(d.total_rows))+' member'),el('button',{class:'btn',disabled:MV.page+1>=pages?'':null,onclick:()=>{MV.page++;again()}},'Berikutnya ›'));
- host.append(el('div',{class:'v40-profile-result'},card('Pergerakan bulanan setiap member · '+String(int(d.total_rows))+' member','Periode sama dengan tab SSSG: '+ys.map(label).join(' · ')+'. Kolom bulan menampilkan tahun yang dipilih; panah = perubahan dari bulan sebelumnya. TOTAL = seluruh member hasil filter.',el('div',{class:'member-filters-v27'},opsField('Cari member',q),...(pf&&+pf.from.slice(5,7)<+pf.to.slice(5,7)?[opsField('Kolom bulan',yearSel)]:[]),opsField('Urutkan',sort),opsField('Baris',per)),list.length?memberTableV27(heads,rows,foot,{id:'v51-monthly-members'}):el('p',{class:'note'},'Tidak ada member yang cocok.'),nav)));
+ host.append(el('div',{class:'v40-profile-result'},card('Pergerakan bulanan setiap member · '+String(int(d.total_rows))+' member','Periode sama dengan tab SSSG: '+ys.map(label).join(' · ')+'. Kolom bulan menampilkan tahun yang dipilih; panah = perubahan dari bulan sebelumnya. TOTAL = seluruh member hasil filter.',el('div',{class:'member-filters-v27'},opsField('Cari member',q),opsField('Kelompok',kind),...(pf&&+pf.from.slice(5,7)<+pf.to.slice(5,7)?[opsField('Kolom bulan',yearSel)]:[]),opsField('Urutkan',sort),opsField('Baris',per)),list.length?memberTableV27(heads,rows,foot,{id:'v51-monthly-members'}):el('p',{class:'note'},'Tidak ada member yang cocok.'),nav)));
 }
 ST.monthly=monthly;
 ST.show=show;
