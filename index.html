@@ -1841,7 +1841,7 @@ function comboBarsLine(labels, barSeries, lineVals, opt={}){
 
 /* Line chart dengan garis acuan 100% */
 function lineChart(labels, vals, opt={}){
-  const W=NUMBER_MODE==='full'&&!opt.fmt?Math.max(opt.w||760,labels.length*105+150):opt.w||760, H=opt.h||220, PL=NUMBER_MODE==='full'&&!opt.fmt?112:48, PR=14, PT=22, PB=28;
+  const W=NUMBER_MODE==='full'?Math.max(opt.w||760,labels.length*105+150):opt.w||760, H=opt.h||220, PL=NUMBER_MODE==='full'?112:48, PR=14, PT=22, PB=28;
   const iw=W-PL-PR, ih=H-PT-PB;
   const nums=vals.filter(v=>v!=null&&!isNaN(v));
   if(!nums.length) return el('div',{class:'empty'},'Belum ada data untuk digambar.');
@@ -1883,7 +1883,7 @@ function lineChart(labels, vals, opt={}){
     const t=sv('text',{x:pts[i][0],y:H-9,'text-anchor':'middle',fill:'var(--muted)','font-size':10,'font-family':'var(--font-ui)'});
     t.textContent=lb; svg.append(t); });
   svg.append(sv('line',{x1:PL,x2:W-PR,y1:sy(lo),y2:sy(lo),stroke:'var(--line)','stroke-width':1}));
-  return opt.fmt?svg:numberChartCanvas(svg,W);
+  return numberChartCanvas(svg,W);
 }
 
 /* Horizontal bars; mode 'ach' = garis 100%, mode 'div' = diverging dari nol */
@@ -7029,10 +7029,10 @@ setInterval(masterRevisionCheck,45000);window.addEventListener('focus',masterRev
 <script src="price-list-ui-v24.js?v=26"></script>
 <script src="member-v27.js?v=34"></script>
 <script src="member-ui-v27.js?v=37"></script>
-<script src="commercial-v28.js?v=70"></script>
+<script src="commercial-v28.js?v=72"></script>
 <script src="member-monthly-v37.js?v=38"></script>
 <script src="auth-v58.js?v=69"></script>
-<script src="commercial-v38.js?v=69"></script>
+<script src="commercial-v38.js?v=72"></script>
 <script src="member-analytics-v39.js?v=63"></script>
 <script src="table-csv-v39.js?v=50"></script>
 <script src="member-profiling-moka-v40.js?v=63"></script>
@@ -7053,7 +7053,7 @@ setInterval(masterRevisionCheck,45000);window.addEventListener('focus',masterRev
 <script src="traffic-v62.js?v=68"></script>
 <script src="ui-v62.js?v=66"></script>
 <script src="member-items-v63.js?v=63"></script>
-<script src="sheets-dashboard-v64.js?v=70"></script>
+<script src="sheets-dashboard-v64.js?v=72"></script>
 <script src="traffic-analysis-v64.js?v=65"></script>
 <script src="ui-v66.js?v=66"></script>
 </body>

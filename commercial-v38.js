@@ -5,12 +5,10 @@
  priceSeedV24=async function(){if(!PL24.seed){const response=await fetch('price-colors-v24.json?v=26');if(response.ok)PRICE_ENGINE.setColors(await response.json());PL24.seed={schema:24,docs:[]}}return PL24.seed};
  const oldHeaders=DB.h;DB.h=function(extra={}){const h=oldHeaders.call(this,extra);if(!window.AUTH58&&MASTER.session?.access_token)h['x-commercial-pin-session']=MASTER.session.access_token;return h};
  const oldBrands=canonicalProductBrand;canonicalProductBrand=function(value){const k=String(value||'').toUpperCase().replace(/[^A-Z0-9]/g,'');return k==='MYNO'?'MYNO':k==='DEFECT'?'DEFECT':oldBrands(value)};
- // Compact axes avoid extremely wide SVGs; source values in tables are unchanged.
+ // Resize geometry only; never override the user's number display mode.
  for(const name of ['groupedBars','comboBarsLine','lineChart']){
   const original=window[name];if(typeof original!=='function')continue;
-  window[name]=function(...args){const mode=NUMBER_MODE;NUMBER_MODE='compact';
-    try{const index=name==='comboBarsLine'?3:2,opts=args[index]||{};args[index]={...opts,w:Math.max(300,Math.min(900,(document.documentElement.clientWidth||1024)-((document.documentElement.clientWidth||1024)>900?320:60)))};return original.apply(this,args)}finally{NUMBER_MODE=mode}
-  };
+  window[name]=function(...args){const index=name==='comboBarsLine'?3:2,opts=args[index]||{},viewport=document.documentElement.clientWidth||1024;args[index]={...opts,w:opts.w??Math.max(300,Math.min(900,viewport-(viewport>900?320:60)))};return original.apply(this,args);};
  }
  let width=window.innerWidth,resizeTimer;window.addEventListener('resize',()=>{if(window.innerWidth===width)return;width=window.innerWidth;clearTimeout(resizeTimer);resizeTimer=setTimeout(()=>{if(S.ready||S.demo)render()},220)});
  // Index the monthly facts once per fetched array, avoiding full scans per row.

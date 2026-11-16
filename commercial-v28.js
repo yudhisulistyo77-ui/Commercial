@@ -601,7 +601,7 @@ td.sticky1{overflow-wrap:break-word}
     if (hmax < hmin) { hmin = 0; hmax = 23; }
     const val = (d, h) => { const v = grid[d + '|' + h] || 0; return M.avg ? (dowCount[d - 1] ? v / dowCount[d - 1] : 0) : v; };
     let peak = 0; for (let d = 1; d <= 7; d++) for (let h = hmin; h <= hmax; h++) peak = Math.max(peak, val(d, h));
-    const fmtV = v => M.metric === 'net' ? (NUMBER_MODE === 'compact' || v >= 1e6 ? (v / 1e6).toLocaleString('id-ID', { maximumFractionDigits: 1 }) + ' jt' : Math.round(v).toLocaleString('id-ID')) : Math.round(v).toLocaleString('id-ID');
+    const fmtV = v => M.metric === 'net' ? formatDisplayNumber(v,NUMBER_MODE,false) : Math.round(v).toLocaleString('id-ID');
     const color = v => { const t = peak ? v / peak : 0; if (!v) return 'background:var(--line);color:var(--muted)'; const a = 0.12 + 0.88 * t; return `background:rgba(189,37,121,${a.toFixed(2)});color:${t > 0.55 ? '#fff' : 'inherit'}`; };
 
     const seg = (opts, key) => el('div', { class: 'v28-seg' }, opts.map(([v, t]) => el('button', { type: 'button', 'aria-pressed': String(M[key] === v), onclick: () => { M[key] = v; renderJam(); } }, t)));
