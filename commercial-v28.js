@@ -464,7 +464,7 @@ td.sticky1{overflow-wrap:break-word}
   function applyAccess(rerender = true) {
     const cfg = accessCfg();
     const gate = $('#v28-gate');
-    const needLogin = S.key && !S.demo && S.ready && cfg.required && !MASTER.verified;
+    const needLogin = !window.COMMERCIAL_LOGIN_REQUIRED_V38 && S.key && !S.demo && S.ready && cfg.required && !MASTER.verified;
     if (needLogin && !gate?.querySelector('form')) { gate?.remove(); showGate(); }
     if (!needLogin && gate) gate.remove();
     buildNav();
@@ -795,7 +795,8 @@ td.sticky1{overflow-wrap:break-word}
     V28.revision = S.settings?.commercial_moka_revision || null;
   }
   // cegah data tampil sekilas sebelum login (diingat dari kunjungan sebelumnya)
-  try { if (S.key && localStorage.getItem('sc_v28_gate') === '1' && !document.querySelector('#v28-gate')) document.body.append(el('div', { id: 'v28-gate', class: 'v28-gate' }, el('div', { class: 'card' }, el('p', {}, 'Memuat…')))); } catch { }
+  try { if (!window.COMMERCIAL_LOGIN_REQUIRED_V38 && S.key && localStorage.getItem('sc_v28_gate') === '1' && !document.querySelector('#v28-gate')) document.body.append(el('div', { id: 'v28-gate', class: 'v28-gate' }, el('div', { class: 'card' }, el('p', {}, 'Memuat…')))); } catch { }
+  if (window.COMMERCIAL_LOGIN_REQUIRED_V38) $('#v28-gate')?.remove();
   if (!S.key) { $('#v28-gate')?.remove(); paintBadge(); }
   else {
     const boot = setInterval(() => { if (S.ready || S.lastError) { clearInterval(boot); if (!S.ready) $('#v28-gate')?.remove(); postLoad(); } }, 400);

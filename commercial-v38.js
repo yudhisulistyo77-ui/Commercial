@@ -52,11 +52,16 @@
   if(!MASTER.verified){host.append(masterLoginForm(async()=>renderMembersV27()).node);return}await V28.renderMemberTransactions(host);
  };
  async function login(){
-  if(!window.COMMERCIAL_LOGIN_REQUIRED_V38||document.querySelector('#login-v38'))return;
-  try{await masterResume()}catch{}
-  async function boot(){document.querySelector('#login-v38')?.remove();await loadAll();googleResume()}
-  if(MASTER.verified){await boot();return}
-  const form=masterLoginForm(boot),gate=el('div',{id:'login-v38',class:'v28-gate'},el('div',{class:'card'},el('h1',{},'Masuk Commercial'),el('p',{},'Gunakan email dan password akun dari Master.'),form.node));document.body.append(gate);
+  if(!window.COMMERCIAL_LOGIN_REQUIRED_V38)return;
+  // The retired PIN curtain has a higher z-index than the Auth form.
+  document.querySelector('#v28-gate')?.remove();
+  if(document.querySelector('#login-v38'))return;
+  async function boot(){document.querySelector('#v28-gate')?.remove();document.querySelector('#login-v38')?.remove();await loadAll();googleResume()}
+  const form=masterLoginForm(boot),status=el('p',{class:'note',role:'status'});form.node.append(status);const gate=el('div',{id:'login-v38',class:'v28-gate'},el('div',{class:'card'},el('h1',{},'Masuk Commercial'),el('p',{},'Gunakan email dan password akun dari Master.'),form.node));
+  document.body.append(gate);
+  const epoch=window.AUTH58?.epoch;
+  try{await masterResume();if(epoch===window.AUTH58?.epoch&&MASTER.verified&&gate.isConnected)await boot()}
+  catch(e){if(gate.isConnected&&!MASTER.verified)status.textContent='Sesi sebelumnya belum dapat digunakan. Anda dapat masuk kembali dengan email dan password.';}
  }
  document.head.append(el('style',{id:'responsive-v38'},`
  .mobile-sort-v38{display:none;gap:10px;align-items:center;margin:8px 0}.mobile-sort-v38 select{min-width:0;max-width:70%}
