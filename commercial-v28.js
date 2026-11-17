@@ -315,13 +315,14 @@ td.sticky1{overflow-wrap:break-word}
     const periodBox=el('div',{class:'v28-tools'},opsField('Periode',selection),opsField('Tahun',year),opsField('Bulan',month),opsField('Dari',from),opsField('Sampai',to));
     const syncFields=()=>{year.closest('.fld').hidden=selection.value==='range';month.closest('.fld').hidden=selection.value!=='month';from.closest('.fld').hidden=to.closest('.fld').hidden=selection.value!=='range';};selection.onchange=syncFields;syncFields();
     const library=el('input',{type:'checkbox'});library.checked=priceOnly;library.disabled=priceOnly;if(priceOnly)periodBox.hidden=true;
-    const componentInputs=[['sales_type','Sales Type'],['item_sales','Item Sales'],['transactions','Transaksi'],['members','Member · Customer List / Purchase History']].map(([key,label])=>{const input=el('input',{type:'checkbox','data-sync-component':key});input.checked=options.memberOnly===true?key==='members':key!=='members';if(key==='members')label+=' · Customer Service';return {key,label,input}});
+    const componentInputs=[['sales_type','Sales Type'],['item_sales','Item Sales'],['transactions','Transaksi'],['stock','Stock · snapshot terbaru toko/DC'],['members','Member · Customer List / Purchase History']].map(([key,label])=>{const input=el('input',{type:'checkbox','data-sync-component':key});input.checked=options.memberOnly===true?key==='members':key!=='members';if(key==='members')label+=' · Customer Service';return {key,label,input}});
     const componentBox=el('div',{class:'v28-tools'},...componentInputs.map(c=>el('label',{class:'rowline'},c.input,c.label)));componentBox.hidden=priceOnly;
+    const stockChoice=componentInputs.find(c=>c.key==='stock');const syncStockChoice=()=>{const sales=componentInputs.some(c=>['sales_type','item_sales','transactions'].includes(c.key)&&c.input.checked);stockChoice.input.disabled=sales||priceOnly;if(sales&&!priceOnly)stockChoice.input.checked=true;periodBox.hidden=priceOnly||!componentInputs.some(c=>c.key!=='stock'&&c.input.checked);};componentInputs.forEach(c=>c.input.onchange=syncStockChoice);syncStockChoice();
     const skip=el('input',{type:'checkbox'});skip.checked=true;const force=el('input',{type:'checkbox'});
     const err = el('p', { class: 'note warn', role: 'alert' });
     const start = el('button', { class: 'btn pri v28-sync-btn', type: 'button' }, syncIcon(), ' Mulai sinkron');
     box.append(
-      periodBox,componentBox,!priceOnly?el('p',{class:'note warn'},'Member memakai Customer List dan Purchase History. Uji Member saja untuk satu bulan terlebih dahulu. Akses token dan kelengkapan pagination diperiksa sebelum penulisan; seluruh histori sumber mungkin perlu dibaca meskipun periode tampilan dipersempit.'):null,el('label',{class:'rowline'},library,'Item Library / Price List · manual saja'),
+      periodBox,componentBox,!priceOnly?el('p',{class:'note'},'Stock otomatis mengikuti Sales Type, Item Sales atau Transaksi. Untuk Stock saja, kosongkan pilihan lain. Stock selalu snapshot terbaru; periode historis hanya berlaku untuk sales/member.'):null,!priceOnly?el('p',{class:'note warn'},'Member memakai Customer List dan Purchase History. Uji Member saja untuk satu bulan terlebih dahulu. Akses token dan kelengkapan pagination diperiksa sebelum penulisan; seluruh histori sumber mungkin perlu dibaca meskipun periode tampilan dipersempit.'):null,el('label',{class:'rowline'},library,'Item Library / Price List · manual saja'),
       el('label',{class:'rowline'},skip,'Lewati periode lama yang sudah lengkap dan cocok'),el('label',{class:'rowline'},force,'Tarik ulang paksa (abaikan checkpoint)'),el('p',{class:'sub'},'Data terbaru tetap diperbarui. Data lama dicek ke ringkasan Moka dan sidik isi database; validasi detail diulang paling lambat 7 hari. Library & Price List tetap diperiksa jika dipilih.'),
       el('p', {}, priceOnly?'Mengambil Item Library Moka langsung menjadi Price List. Katalog mentah tidak disimpan; harga identik tidak ditulis ulang. DC dilewati.':'Bawaan FULL: data stabil sampai kemarin, sama dengan sinkron GitHub. LIVE hari ini tersedia dengan menonaktifkan opsi di bawah; angka sumber dapat berubah selama penarikan. Data belum cocok tidak disimpan.'),
       el('label', { class: 'rowline' }, prev, 'FULL · batasi data s.d. kemarin (disarankan). Nonaktifkan untuk LIVE hari ini.'),
@@ -337,13 +338,14 @@ td.sticky1{overflow-wrap:break-word}
       start.disabled = true; err.textContent = '';
       try {
         const y=Number(year.value),m=Number(month.value);
-        const selected=componentInputs.filter(c=>c.input.checked).map(c=>c.key);
+        const selected=componentInputs.filter(c=>c.input.checked).map(c=>c.key),wantsStock=!priceOnly&&selected.includes('stock'),selectedSales=selected.filter(c=>c!=='stock'),hasSales=selectedSales.some(c=>['sales_type','item_sales','transactions'].includes(c)),effectivePriceOnly=priceOnly||(!selectedSales.length&&library.checked);
+        if(wantsStock&&!selectedSales.length&&!library.checked){if(!window.STOCK78?.requestSync)throw Error('Unggah stock-v78.js V79 terlebih dahulu.');if(STOCK78.requested)throw Error('Stock sudah diminta; lihat progres pada menu Stock.');await STOCK78.requestSync(err,start);return;}
         if(!priceOnly&&!selected.length)throw Error('Pilih minimal satu jenis data. Gunakan menu Price List untuk update harga saja.');
-        const request={mode:priceOnly?'price':(prev.checked?'full':'live')+'|'+selected.join(','),include_library:library.checked,skip_unchanged:skip.checked,force_refresh:force.checked,months:'',date_from:'',date_to:''};
-        if(!priceOnly&&selection.value==='range'){
+        const request={mode:effectivePriceOnly?'price':(prev.checked?'full':'live')+'|'+selectedSales.join(','),include_library:library.checked,skip_unchanged:skip.checked,force_refresh:force.checked,months:'',date_from:'',date_to:''};
+        if(!effectivePriceOnly&&selection.value==='range'){
           if(!/^\d{4}-\d{2}-\d{2}$/.test(from.value)||!/^\d{4}-\d{2}-\d{2}$/.test(to.value)||from.value>to.value||to.value>(prev.checked?stableEnd():todayWita()))throw Error('Rentang tanggal tidak valid atau melewati batas mode yang dipilih.');
           request.date_from=from.value;request.date_to=to.value;
-        }else if(!priceOnly){
+        }else if(!effectivePriceOnly){
           if(!Number.isInteger(y)||y<2000||y>2100)throw Error('Tahun tidak valid.');
           request.months=selection.value==='year'?y+'-01..'+y+'-12':y+'-'+String(m).padStart(2,'0');
         }
@@ -363,6 +365,8 @@ td.sticky1{overflow-wrap:break-word}
         V28.active = { id: data.run_id, status: 'requested', requested_at: new Date().toISOString() };
         paintBadge(); repaintUpdateCard();
         watchRun(data.run_id, box);
+        if(wantsStock&&hasSales)box.append(el('p',{class:'note'},'Stock akan diperbarui otomatis setelah sales/transaksi pada workflow yang sama.'),el('button',{type:'button',class:'btn',onclick:()=>{modal.remove();go('stock');}},'Lihat progres Stock'));
+        else if(wantsStock){const stockNote=el('p',{class:'note',role:'status'});box.append(stockNote);if(window.STOCK78?.requestSync)await STOCK78.requestSync(stockNote,start);else stockNote.textContent='Stock belum diminta: unggah stock-v78.js terbaru.';}
       } catch (e) {
         err.textContent = /Failed to fetch|NetworkError|Load failed/i.test(e.message || '')
           ? 'Browser tidak dapat menghubungi fungsi sinkron. Periksa koneksi dan pasang pembaruan Edge Function moka-sync (termasuk izin CORS/OPTIONS). Data lama tetap tersedia.'

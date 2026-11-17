@@ -54,11 +54,11 @@ def demand(rows,report_sets):
     for r in rows:
         if r['sku']:by_sku.setdefault(r['sku'],[]).append(r)
         by_name.setdefault(norm(r['item_name']),[]).append(r)
-    metrics={r['variant_key']:{'sold14':Decimal(0),'prior14':Decimal(0),'sold90':Decimal(0),'refund90':Decimal(0),'net90':Decimal(0),'demand_known':True,'match_ok':bool(r['sku']) and len(by_sku[r['sku']])==1}for r in rows}
+    metrics={r['variant_key']:{'sold14':Decimal(0),'prior14':Decimal(0),'sold90':Decimal(0),'refund90':Decimal(0),'net90':Decimal(0),'demand_known':True,'history_known':True,'match_ok':bool(r['sku']) and len(by_sku[r['sku']])==1}for r in rows}
     unmatched=0
     for period,reports in report_sets.items():
         if reports is None:
-            for m in metrics.values():m['demand_known']=False
+            for m in metrics.values():m['history_known' if period=='sold90' else 'demand_known']=False
             continue
         for report in reports:
             sku=norm(report.get('sku'));name=norm(report.get('name'));matches=by_sku.get(sku,[]) if sku else by_name.get(name,[])
@@ -66,15 +66,15 @@ def demand(rows,report_sets):
                 unmatched+=1
                 # Do not infer a zero for items that cannot be matched reliably.
                 affected=matches or by_name.get(name,[])
-                for r in affected:metrics[r['variant_key']]['demand_known']=False
+                for r in affected:metrics[r['variant_key']]['history_known' if period=='sold90' else 'demand_known']=False
                 continue
             m=metrics[matches[0]['variant_key']];sold=numeric(report.get('item_sold'));refund=numeric(report.get('item_refunded'))
-            if sold is None or sold<0 or (refund is not None and refund<0):m['demand_known']=False;continue
+            if sold is None or sold<0 or (refund is not None and refund<0):m['history_known' if period=='sold90' else 'demand_known']=False;continue
             m[period]+=sold
             if period=='sold90':m['refund90']+=refund or Decimal(0);m['net90']+=numeric(report.get('net_sales')) or Decimal(0)
     for r in rows:
         m=metrics[r['variant_key']]
         if r['sku'] and len(by_sku[r['sku']])>1:m['demand_known']=False
-        if m['sold90']<m['sold14']+m['prior14']:m['demand_known']=False
+        if m['history_known'] and m['sold90']<m['sold14']+m['prior14']:m['history_known']=False
         r.update({k:str(v) if isinstance(v,Decimal) else v for k,v in m.items()})
     return rows,unmatched
