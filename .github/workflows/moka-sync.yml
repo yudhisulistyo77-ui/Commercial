@@ -158,3 +158,25 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
         run: node scripts/sync_google_sheets.mjs
+
+  stock:
+    name: Stock & Distribusi harian
+    needs: sync
+    if: ${{ always() && !cancelled() && (github.event_name == 'schedule' || (!inputs.dry_run && (contains(inputs.mode, 'sales_type') || contains(inputs.mode, 'item_sales') || contains(inputs.mode, 'transactions') || inputs.mode == 'live' || inputs.mode == 'full'))) }}
+    concurrency:
+      group: commercial-stock
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Snapshot stock toko/DC setelah jadwal sales
+        env:
+          MOKA_ACCESS_TOKEN: ${{ secrets.MOKA_ACCESS_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          BRAND_MAP: ${{ vars.MOKA_BRAND_MAP_JSON }}
+        run: python3 scripts/sync_stock_v78.py
