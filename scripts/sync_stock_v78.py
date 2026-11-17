@@ -83,17 +83,22 @@ def main():
         job=None;phase='begin'
         try:
             j=db.rpc('commercial_stock_sync_v78',{'p_store':sid,'p_action':'begin','p_data':{'cutoff':cut.isoformat()}});job=j['run_id']
-            if j.get('storage_version')!=79:raise ValueError('Pasang v79/01-STOCK-SINKRON-V79.sql sebelum menjalankan worker terbaru')
+            if j.get('storage_version')!=80:raise ValueError('Pasang v80/01-STOCK-ANALISIS-V80.sql sebelum menjalankan worker terbaru')
             phase='catalogue';print('Stock: '+o['name']+' · membaca katalog',flush=True)
             rows=catalogue(read_catalogue(moka,o['id']),BRANDS);reports={};warnings=[]
             for period,start,end in [('sold14',cut-timedelta(days=13),cut),('prior14',cut-timedelta(days=27),cut-timedelta(days=14))]:
                 phase=period
                 try:reports[period]=report(moka,o['id'],start,end)
                 except Exception as e:reports[period]=None;warnings.append(period+': '+str(e)[:180])
+            phase='sold30'
+            try:
+                extra2=report(moka,o['id'],cut-timedelta(days=29),cut-timedelta(days=28))
+                reports['sold30']=None if reports['sold14']is None or reports['prior14']is None else extra2+reports['prior14']+reports['sold14']
+            except Exception as e:reports['sold30']=None;warnings.append('sold30: '+str(e)[:180])
             phase='sold90'
             try:
-                older=report(moka,o['id'],cut-timedelta(days=89),cut-timedelta(days=28))
-                reports['sold90']=None if reports['sold14']is None or reports['prior14']is None else older+reports['prior14']+reports['sold14']
+                older=report(moka,o['id'],cut-timedelta(days=89),cut-timedelta(days=30))
+                reports['sold90']=None if reports['sold30']is None else older+reports['sold30']
             except Exception as e:reports['sold90']=None;warnings.append('sold90: '+str(e)[:180])
             rows,unmatched=demand(rows,reports)
             if unmatched:warnings.append(str(unmatched)+' baris demand tidak cocok SKU/nama')
@@ -102,7 +107,8 @@ def main():
                 db.rpc('commercial_stock_sync_v78',{'p_store':sid,'p_action':'batch','p_run':job,'p_data':{'rows':rows[at:at+250]}})
             phase='publish';result=db.rpc('commercial_stock_sync_v78',{'p_store':sid,'p_action':'commit','p_run':job,'p_data':{'expected':len(rows),'message':'; '.join(warnings)[:1500]}})
             print(f"Stock: {o['name']}: {result['rows']} variant; {result['unknown']} qty belum tersedia; {result['demand_unknown']} demand 28 hari belum terverifikasi; {result.get('history_unknown',0)} histori 90 hari belum terverifikasi",flush=True)
-            if result['unknown'] or result['demand_unknown'] or result.get('history_unknown'):warnings.append('Qty/demand sebagian belum tersedia; lihat status cakupan Stock')
+            if result['unknown'] or result['demand_unknown'] or result.get('history_unknown') or result.get('demand30_unknown'):warnings.append('Qty/demand sebagian belum tersedia; lihat status cakupan Stock')
+            if result.get('demand30_unknown'):print('Stock: '+str(result['demand30_unknown'])+' demand 30 hari belum terverifikasi',flush=True)
             if warnings:failed+=1;print('WARNING: '+'; '.join(warnings),flush=True)
             phase='cleanup'
             try:cleanup(db,sid)
