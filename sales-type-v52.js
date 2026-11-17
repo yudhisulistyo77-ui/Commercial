@@ -31,7 +31,7 @@ function aggregate(rows,w,years){
   const f=comparisonFraction(w,y,m);if(!(f>0))continue;
   const net=comparisonSalesValue(r.amount,w,y,m),trx=Number(r.trx_count||0)*f;
   const name=String(r.sales_type||'(kosong)').trim(),seg=segOf(map,name);
-  if(X.segment!=='all'&&seg!==X.segment)continue;
+  if(!filterHasV76(X.segment==='all'?[]:X.segment,seg))continue;
   if(X.picked.length&&!X.picked.includes(name))continue;
   const t=types.get(name)||{name,seg,info:map.get(name.toUpperCase())||null,y:{}};types.set(name,t);
   const ty=t.y[y]||(t.y[y]={net:0,trx:0,months:{},stores:{}});ty.net+=net;ty.trx+=trx;ty.months[m]=(ty.months[m]||0)+net;ty.stores[sid]=(ty.stores[sid]||0)+net;
@@ -53,7 +53,7 @@ async function renderSalesType(){
  page.append(el('div',{class:'phead'},el('div',{},el('h1',{},'Sales Type'),el('p',{},years.join(' / ')+' · periode & cut-off sama dengan menu SSSG'))));
  const controls=comparisonControls(st,'stype',rerender);page.append(controls);
  const segs=[...new Set((S.map||[]).map(r=>r.segmen).filter(Boolean))].sort();
- const seg=opsSelect([['all','Semua segmen'],...segs.map(s=>[s,s]),[UNMAPPED,UNMAPPED]],X.segment,{'aria-label':'Segmen sales type'});seg.onchange=()=>{X.segment=seg.value;rerender()};
+ const seg=multiFilterV76([...segs,UNMAPPED],X.segment==='all'?[]:X.segment,values=>{X.segment=values;rerender();},'Semua segmen');
  const typeBox=el('div');
  const paintTypes=list=>multiSelectDropdown(typeBox,list.map(n=>({value:n,label:n})),X.picked.filter(n=>list.includes(n)),arr=>{X.picked=arr;rerender()},{allLabel:'Semua sales type'});
  paintTypes(X.picked.slice());
@@ -63,7 +63,7 @@ async function renderSalesType(){
  let rows;try{rows=await load(y1)}catch(e){status.classList.add('warn');status.textContent='Data sales type belum dapat dimuat: '+e.message;return}
  if(epoch!==EPOCH||S.page!=='salestype'||!page.isConnected)return;
  /* Daftar pilihan = semua sales type pada 3 tahun & toko yang diizinkan (sebelum filter segmen/pilihan). */
- {const ok=new Set((S.stores||[]).filter(s=>storeOk(s.id)).map(s=>Number(s.id))),map=mapOf(),names=new Set();for(const r of rows)if(years.includes(Number(r.year))&&ok.has(Number(r.store_id))){const n=String(r.sales_type||'(kosong)').trim();if(X.segment==='all'||segOf(map,n)===X.segment)names.add(n)}paintTypes([...names].sort((a,b)=>a.localeCompare(b,'id')));}
+ {const ok=new Set((S.stores||[]).filter(s=>storeOk(s.id)).map(s=>Number(s.id))),map=mapOf(),names=new Set();for(const r of rows)if(years.includes(Number(r.year))&&ok.has(Number(r.store_id))){const n=String(r.sales_type||'(kosong)').trim();if(filterHasV76(X.segment==='all'?[]:X.segment,segOf(map,n)))names.add(n)}paintTypes([...names].sort((a,b)=>a.localeCompare(b,'id')));}
  const A=aggregate(rows,w,years),tot=y=>A.totals[y]?.net??null,trxT=y=>A.totals[y]?.trx??null;
  const label=y=>{const parts=[];for(let m=w.m1;m<=w.m2;m++){const d=comparisonMonthDays(w,y,m);if(d>0)parts.push(m)}return parts.length?MON3[parts[0]-1]+(parts.length>1?'–'+MON3[parts.at(-1)-1]:'')+' '+y:'—'};
  const [cy,cm]=opsToday().split('-').map(Number);
