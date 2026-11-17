@@ -180,4 +180,15 @@ jobs:
           SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           ONLY_OUTLETS: ${{ inputs.outlets }}
           BRAND_MAP: ${{ vars.MOKA_BRAND_MAP_JSON }}
+          MOKA_STOCK_SUMMARY_PATH: ${{ vars.MOKA_STOCK_SUMMARY_PATH }}
+          MOKA_STOCK_SUMMARY_COLUMNS: ${{ vars.MOKA_STOCK_SUMMARY_COLUMNS }}
         run: python3 scripts/sync_stock_v78.py
+
+      - name: Simpan pemeriksaan kolom Summary (tanpa nilai data/token)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stock-summary-schema
+          path: stock-summary-diagnostics/
+          if-no-files-found: ignore
+          retention-days: 3
