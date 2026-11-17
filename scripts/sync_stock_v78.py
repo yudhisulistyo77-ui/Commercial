@@ -6,6 +6,7 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from datetime import datetime,timedelta,timezone
 from moka_sync import Moka,Supa,find_store,BRANDS,norm
 from stock_v78 import catalogue,demand,numeric
+from stock_summary_v81 import fetch_summary,attach_summary
 
 def read_catalogue(moka,oid):
     path=f'/v1/outlets/{oid}/items';params={'per_page':1000};out=[];seen=set()
@@ -83,9 +84,14 @@ def main():
         job=None;phase='begin'
         try:
             j=db.rpc('commercial_stock_sync_v78',{'p_store':sid,'p_action':'begin','p_data':{'cutoff':cut.isoformat()}});job=j['run_id']
-            if j.get('storage_version')!=80:raise ValueError('Pasang v80/01-STOCK-ANALISIS-V80.sql sebelum menjalankan worker terbaru')
+            if j.get('storage_version')!=81:raise ValueError('Pasang v81/01-STOCK-SUMMARY-V81.sql sebelum menjalankan worker terbaru')
             phase='catalogue';print('Stock: '+o['name']+' · membaca katalog',flush=True)
             rows=catalogue(read_catalogue(moka,o['id']),BRANDS);reports={};warnings=[]
+            phase='inventory_summary';print('Stock: '+o['name']+' · membaca Inventory Summary 30 hari',flush=True)
+            source,endpoint=fetch_summary(moka,o['id'],cut-timedelta(days=29),cut)
+            rows,missing,extra=attach_summary(rows,source)
+            print('Stock Summary: '+endpoint+'; '+str(len(source))+' baris; '+str(missing)+' katalog belum cocok; '+str(extra)+' baris sumber di luar katalog',flush=True)
+            if missing or extra:warnings.append('Cakupan Summary: '+str(missing)+' katalog belum cocok; '+str(extra)+' baris sumber di luar katalog')
             for period,start,end in [('sold14',cut-timedelta(days=13),cut),('prior14',cut-timedelta(days=27),cut-timedelta(days=14))]:
                 phase=period
                 try:reports[period]=report(moka,o['id'],start,end)
@@ -101,6 +107,8 @@ def main():
                 reports['sold90']=None if reports['sold30']is None else older+reports['sold30']
             except Exception as e:reports['sold90']=None;warnings.append('sold90: '+str(e)[:180])
             rows,unmatched=demand(rows,reports)
+            differences=sum(1 for r in rows if r['summary_known'] and r.get('demand30_known') and numeric(r['summary_sold'])!=numeric(r.get('sold30')))
+            if differences:warnings.append(str(differences)+' qty terjual Summary berbeda dari Item Sales; masing-masing sumber dipertahankan')
             if unmatched:warnings.append(str(unmatched)+' baris demand tidak cocok SKU/nama')
             for at in range(0,len(rows),250):
                 phase='batch '+str(at+1)+'-'+str(min(at+250,len(rows)));print('Stock: '+o['name']+' · '+phase,flush=True)

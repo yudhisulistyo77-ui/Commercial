@@ -1,4 +1,4 @@
-(function(){'use strict';const U=window.STOCK78={epoch:0,timer:null,requested:0,state:{stores:[],brands:[],categories:[],flags:[],query:'',target:14,reserve:28,dc:10,page:0,tab:'overview'}};
+(function(){'use strict';const U=window.STOCK78={epoch:0,timer:null,requested:0,state:{stores:[],brands:[],categories:[],flags:[],query:'',target:14,reserve:28,dc:10,page:0,tab:'analysis30'}};
 const labels={untracked:'Inventory tidak dilacak Moka',new_item:'SKU baru ≤30 hari',stockout:'Kosong tetapi laku',low:'Perlu replenishment',nonmoving:'Tidak terjual 90 hari',rising:'Tren naik ≥50%',new_demand:'Permintaan baru',surplus:'Stok berlebih',unknown:'Data belum diketahui',stale:'Snapshot perlu diperbarui',negative:'Stok negatif · audit'};
 const num=v=>v==null?'—':Number(v).toLocaleString('id-ID',{maximumFractionDigits:2}),money=v=>v==null?'—':rp(Number(v));
 const clock=v=>v?new Date(v).toLocaleString('id-ID',{timeZone:'Asia/Makassar'})+' WITA':'Belum ada';
