@@ -840,6 +840,7 @@ html[data-number-mode="full"] .member-ranking-v29 table{min-width:1560px!importa
     <section class="page on" id="p-dash"></section>
     <section class="page" id="p-sales"></section>
     <section class="page" id="p-item"></section>
+    <section class="page" id="p-stock"></section>
     <section class="page" id="p-pricelist"></section>
     <section class="page" id="p-members"></section>
     <section class="page" id="p-top"></section>
@@ -1254,6 +1255,7 @@ const PAGES = [
   {id:'mkt',   t:'Marketplace',     ic:'mkt'},
   {id:'brand', t:'Brand Performance', ic:'brand'},
   {id:'top',   t:'Top Product',     ic:'top'},
+  {id:'stock',t:'Stock & Distribusi',ic:'item'},
   {g:'Data'},
   {id:'sales', t:'Sales & Target',  ic:'sales'},
   {id:'item',  t:'Item Sales',      ic:'item'},
@@ -1308,7 +1310,7 @@ function buildNav(){
    ("tahun berjalan" UNTUK HALAMAN SELAIN H2H), dipakai oleh seluruh fungsi agregasi lama tanpa
    perubahan. Memilih >1 tahun menambah kartu perbandingan tambahan di dash/sales (lihat
    multiYearCompare()) tanpa mengubah logika agregasi satu-tahun yang sudah ada. */
-const FILTER_VISIBILITY={masterinput:[], review:['brand','spv','store'],links:[],schedule:[],tasks:[],
+const FILTER_VISIBILITY={stock:[],masterinput:[], review:['brand','spv','store'],links:[],schedule:[],tasks:[],
   dash:['year','month','range','brand','spv','store'], sales:['year','month','range','brand','spv','store'],
   trx:['year','month','range','brand','spv','store'], mkt:['year','month','range','brand','spv','store'],
   brand:['year','month','range','spv','store'],
@@ -2185,11 +2187,12 @@ function render(){
   if(S.page==='pricelist'){renderPriceListV24();return;}
   if(S.page==='members'){renderMembersV27();return;}
   if(S.page==='bazar'){renderBazar();return;}
+  if(S.page==='stock'){renderStock();return;}
   if(['links','schedule','tasks','review'].includes(S.page)){({review:renderReview,links:renderLinks,schedule:()=>renderOps('schedule'),tasks:()=>renderOps('task')})[S.page]();renderMappingNotice();return;}
   if(!S.ready){ document.querySelectorAll('.page').forEach(p=>{ if(p.id!=='p-set') p.innerHTML=''; });
     const t=$('#p-'+S.page); if(S.page!=='set') t.append(el('div',{class:'empty'},el('b',{},'Data belum termuat'),'Periksa URL dan anon key di Pengaturan, lalu tekan Muat ulang.'));
     renderSet(); return; }
-  ({dash:renderDash, sales:renderSales, item:renderItem, trx:renderTrx, kpi:renderKpi,
+  ({dash:renderDash, sales:renderSales, item:renderItem, stock:renderStock, trx:renderTrx, kpi:renderKpi,
     pdca:renderPdca, upload:renderUpload, uploadreset:renderUploadReset, set:renderSet, h2h:renderH2H, mkt:renderMkt,
     brand:renderBrand, top:renderTop, pica:renderPica, bazar:renderBazar,
     datatrack:renderDataTrack, program:renderProgram}[S.page]||renderDash)();
@@ -2722,6 +2725,7 @@ async function itemDetailRows(args,onProgress){
 function itemPagedTableV22(rows,heads,keys,rowCells,totals,state,pageKey,paint){const size=Math.max(1,rows.length),sort=state[pageKey+'Sort'];let ordered=rows;if(sort){ordered=rows.slice().sort((a,b)=>{const x=a[keys[sort.ci]],y=b[keys[sort.ci]],cmp=typeof x==='number'&&typeof y==='number'?x-y:String(x??'').localeCompare(String(y??''),'id',{numeric:true});return sort.dir==='asc'?cmp:-cmp;});}const pages=Math.max(1,Math.ceil(ordered.length/size)),page=Math.max(0,Math.min(pages-1,Number(state[pageKey])||0));state[pageKey]=page;const first=page*size,wrap=el('div',{}),table=mkTable(heads,ordered.slice(first,first+size).map(rowCells),totals),node=table.querySelector('table');node.dataset.paged='true';node.dataset.totalRows=rows.length;node._csvAllV39=()=>ordered.map(rowCells);node._sortAll=(ci,dir)=>{state[pageKey+'Sort']={ci,dir};state[pageKey]=0;paint();};if(sort)node.tHead.rows[0].cells[sort.ci].dataset.dir=sort.dir;
  wrap.append(el('div',{class:'item-pager'},el('span',{class:'sub'},int(rows.length)+' hasil filter · semua baris · scroll jika >100')),table);return wrap;}
 
+function renderStock(){if(window.STOCK78)return STOCK78.show();$('#p-stock').replaceChildren(el('p',{class:'note warn'},'File stock-v78.js belum dimuat.'));}
 async function renderItem(){
  parkFilters();const p=$('#p-item');p.replaceChildren(el('div',{class:'phead'},el('div',{},el('h1',{},'Item Sales'),el('p',{},'Filter kategori → rincian → beberapa pilihan · nilai net sales (Rp). '+periodLabel()))));const pf=pageFilterBar('item');if(pf)p.append(pf);if(S.demo)p.append(demoBanner());
  const state=S.itemFocus||(S.itemFocus={dimension:'product',members:[]}),[m1,m2]=periodM1M2(S.year),args=productArgs(S.year,m1,m2,S.itemBrand,S.itemCat),body=el('div',{}),brandBox=el('div',{});
@@ -5988,10 +5992,11 @@ async function loadCatBrand(){
   catch(e){ S.catBrand=new Map(); }
   return S.catBrand;
 }
+function brandContributionLinkV78(label,options){return window.BRAND_DETAIL78?BRAND_DETAIL78.link(label,options):el('span',{},label);}
 function renderBrand(){
   parkFilters();
   const p=$('#p-brand'); p.innerHTML='';
-  const [m1,m2]=periodM1M2(S.year);
+  const [m1,m2]=periodM1M2(S.year);const drillScope={year:S.year,m1,m2,stores:scopeStoreIds(),brands:selectedCategories(S.bpBrand).slice(),categories:selectedCategories(S.bpCat).slice(),exclude:excludedCats().slice()};
   const bsel=multiFilterV76(['TIGALAPAN','MAMU','MYNO','DEFECT'],S.bpBrand,values=>{S.bpBrand=values;renderBrand();},'Semua brand produk');
   p.append(el('div',{class:'phead'},el('div',{},el('h1',{},'Brand Performance'),
     el('p',{},'Performa brand dan kategori dari Item Sales yang dicocokkan ke master DATABASE STOCK. '+ymLabel(S.year,m1,m2)+' · '+periodLabel().split(' · ').slice(1).join(' · '))),
@@ -6022,7 +6027,7 @@ function renderBrand(){
       const get=(arr,k)=>arr.find(r=>r.k===k)||{qty:0,sales:0,refunded:0};
       /* tiles */
       const tl=el('div',{class:'grid g4'});
-      ['TIGALAPAN','MAMU','MYNO','DEFECT'].filter(b=>!brandFilter||b===brandFilter).forEach(b=>{ const r=get(b0,b), t=brandTarget(b,S.year,m1,m2);
+      ['TIGALAPAN','MAMU','MYNO','DEFECT'].filter(b=>filterHasV76(brandFilter,b)).forEach(b=>{ const r=get(b0,b), t=brandTarget(b,S.year,m1,m2);
         tl.append(tile(b,compact(r.sales),(t>0?`target ${compact(t)} · `:'')+`${int(r.qty)} item`,t>0?r.sales/t:null)); });
       tl.append(tile('Total item sales',compact(tSales),`${int(tQty)} item terjual bersih`,null));
       host.append(tl);
@@ -6034,7 +6039,7 @@ function renderBrand(){
           py.sales>0?compact(py.sales):'',growthPill(r.sales,py.sales),gapTxt(r.sales,py.sales),r.qty>0?rp(r.sales/r.qty):'—']; });
       host.append(card('Performa per brand',ymLabel(S.year,m1,m2)+' · diurutkan net sales terbesar→terkecil',mkTable(heads,rows)));
       /* chart brand vs target */
-      const achItems=['TIGALAPAN','MAMU','MYNO','DEFECT'].filter(b=>!brandFilter||b===brandFilter).map(b=>{ const r=get(b0,b), t=brandTarget(b,S.year,m1,m2);
+      const achItems=['TIGALAPAN','MAMU','MYNO','DEFECT'].filter(b=>filterHasV76(brandFilter,b)).map(b=>{ const r=get(b0,b), t=brandTarget(b,S.year,m1,m2);
         return t>0?{label:b,v:r.sales/t,tip:`<div class="row"><span>Net sales</span><span>${compact(r.sales)}</span></div><div class="row"><span>Target</span><span>${compact(t)}</span></div>`}:null; }).filter(Boolean);
       if(achItems.length) host.append(chartCard('Achievement brand terhadap TARGET BRAND',`${ymLabel(S.year,m1,m2)} · garis putus-putus = 100%`,hBars(achItems,{mode:'ach',fmt:v=>pct(v,0),name:'Achievement',min:1,lw:100})));
       /* kategori — item 8: diurutkan NET SALES terbesar→terkecil (bukan urutan dari RPC yg berdasar qty) */
@@ -6042,11 +6047,12 @@ function renderBrand(){
 
       const cTot=c0.reduce((s,r)=>s+r.sales,0);
       const maxCatSales=c0sorted.length?c0sorted[0].sales:0;
-      const cRows=c0sorted.map(r=>{ const py=get(c1,r.k); return [r.k,brandChip(brandFilter||cb.get(r.k)||'—'),int(r.qty),int(r.refunded),magCell(r.sales,maxCatSales,compact(r.sales)),pct(cTot?r.sales/cTot:null),
+      const cRows=c0sorted.map(r=>{ const py=get(c1,r.k); return [brandContributionLinkV78(r.k,{scope:drillScope,category:r.k}),brandChip(selectedCategories(brandFilter).join(' / ')||cb.get(r.k)||'—'),int(r.qty),int(r.refunded),magCell(r.sales,maxCatSales,compact(r.sales)),pct(cTot?r.sales/cTot:null),
         py.sales>0?compact(py.sales):'',growthPill(r.sales,py.sales),gapTxt(r.sales,py.sales),r.qty>0?rp(r.sales/r.qty):'—']; });
-      host.append(chartCard('Net sales per kategori',(brandFilter||'semua brand')+' · 12 teratas',
-        hBars(c0sorted.slice(0,12).map(r=>({label:r.k,v:r.sales,tip:`<div class="row"><span>Net sales</span><span>${compact(r.sales)}</span></div><div class="row"><span>Item sold</span><span>${int(r.qty)}</span></div>`})),{lw:170})));
+      host.append(chartCard('Net sales per kategori',(selectedCategories(brandFilter).join(', ')||'semua brand')+' · 12 teratas · klik kategori',
+        hBars(c0sorted.slice(0,12).map(r=>({label:r.k,v:r.sales,tip:`<div class="row"><span>Net sales</span><span>${compact(r.sales)}</span></div><div class="row"><span>Item sold</span><span>${int(r.qty)}</span></div>`})),{lw:170,onSelect:r=>window.BRAND_DETAIL78?.open({scope:drillScope,category:r.label})})));
       host.append(card('Performa per kategori',`${c0.length} kategori · ${filterValuesV76(brandFilter).join(', ')||'semua brand'} · diurutkan net sales terbesar→terkecil`,mkTable(cHeads,cRows)));
+      if(window.BRAND_DETAIL78)BRAND_DETAIL78.mountItems(host,drillScope);
       host.append(el('div',{class:'note'},el('b',{},'Cara baca. '),'Net sales brand dihitung dari Item Sales (kemasan dikecualikan), jadi bisa sedikit berbeda dari angka Sales Type. '+
         'Brand ditentukan dari master produk (DATABASE STOCK) bila item ada di sana, kalau tidak dari kategori. Target mengikuti TARGET BRAND di sheet TARGET. '+
         'Tarik/unggah master di menu Upload Data supaya warna dan brand setiap item tepat.'));
@@ -7059,6 +7065,8 @@ setInterval(masterRevisionCheck,45000);window.addEventListener('focus',masterRev
 <script src="ui-v62.js?v=73"></script>
 <script src="member-items-v63.js?v=63"></script>
 <script src="sheets-dashboard-v64.js?v=77"></script>
+<script src="stock-v78.js?v=78"></script>
+<script src="brand-detail-v78.js?v=78"></script>
 <script src="traffic-analysis-v64.js?v=65"></script>
 <script src="ui-v66.js?v=66"></script>
 </body>
