@@ -2725,7 +2725,7 @@ async function itemDetailRows(args,onProgress){
 function itemPagedTableV22(rows,heads,keys,rowCells,totals,state,pageKey,paint){const size=Math.max(1,rows.length),sort=state[pageKey+'Sort'];let ordered=rows;if(sort){ordered=rows.slice().sort((a,b)=>{const x=a[keys[sort.ci]],y=b[keys[sort.ci]],cmp=typeof x==='number'&&typeof y==='number'?x-y:String(x??'').localeCompare(String(y??''),'id',{numeric:true});return sort.dir==='asc'?cmp:-cmp;});}const pages=Math.max(1,Math.ceil(ordered.length/size)),page=Math.max(0,Math.min(pages-1,Number(state[pageKey])||0));state[pageKey]=page;const first=page*size,wrap=el('div',{}),table=mkTable(heads,ordered.slice(first,first+size).map(rowCells),totals),node=table.querySelector('table');node.dataset.paged='true';node.dataset.totalRows=rows.length;node._csvAllV39=()=>ordered.map(rowCells);node._sortAll=(ci,dir)=>{state[pageKey+'Sort']={ci,dir};state[pageKey]=0;paint();};if(sort)node.tHead.rows[0].cells[sort.ci].dataset.dir=sort.dir;
  wrap.append(el('div',{class:'item-pager'},el('span',{class:'sub'},int(rows.length)+' hasil filter · semua baris · scroll jika >100')),table);return wrap;}
 
-function renderStock(){if(window.STOCK78)return STOCK78.show();$('#p-stock').replaceChildren(el('p',{class:'note warn'},'File stock-v78.js belum dimuat.'));}
+function renderStock(){if(window.STOCK78)return STOCK78.show();$('#p-stock').replaceChildren(el('p',{class:'note warn'},'File stock-v84.js belum dimuat.'));}
 async function renderItem(){
  parkFilters();const p=$('#p-item');p.replaceChildren(el('div',{class:'phead'},el('div',{},el('h1',{},'Item Sales'),el('p',{},'Filter kategori → rincian → beberapa pilihan · nilai net sales (Rp). '+periodLabel()))));const pf=pageFilterBar('item');if(pf)p.append(pf);if(S.demo)p.append(demoBanner());
  const state=S.itemFocus||(S.itemFocus={dimension:'product',members:[]}),[m1,m2]=periodM1M2(S.year),args=productArgs(S.year,m1,m2,S.itemBrand,S.itemCat),body=el('div',{}),brandBox=el('div',{});
@@ -7040,7 +7040,7 @@ setInterval(masterRevisionCheck,45000);window.addEventListener('focus',masterRev
 <script src="price-list-ui-v24.js?v=26"></script>
 <script src="member-v27.js?v=34"></script>
 <script src="member-ui-v27.js?v=37"></script>
-<script src="commercial-v28.js?v=79"></script>
+<script src="commercial-v28.js?v=84"></script>
 <script src="member-monthly-v37.js?v=38"></script>
 <script src="auth-v58.js?v=69"></script>
 <script src="commercial-v38.js?v=72"></script>
@@ -7065,8 +7065,7 @@ setInterval(masterRevisionCheck,45000);window.addEventListener('focus',masterRev
 <script src="ui-v62.js?v=73"></script>
 <script src="member-items-v63.js?v=63"></script>
 <script src="sheets-dashboard-v64.js?v=77"></script>
-<script src="stock-v78.js?v=81"></script>
-<script src="stock-analysis-v80.js?v=81"></script>
+<script src="stock-v84.js?v=84"></script>
 <script src="brand-detail-v78.js?v=78"></script>
 <script src="traffic-analysis-v64.js?v=65"></script>
 <script src="ui-v66.js?v=66"></script>
