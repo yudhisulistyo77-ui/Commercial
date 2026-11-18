@@ -569,6 +569,16 @@ def _process(ctx, outlet, sid, period, t0):
     if res["status"] == "ERROR" and res.get("lag"):
         time.sleep(LAG_RETRY_WAIT)
         res = fetch_store_month(ctx, outlet, sid, period)
+    # V85: Hari ini (LIVE) masih bergerak di Moka — Sales Summary dan detail diambil pada detik yang
+    # berbeda sehingga selisihnya (mis. 1.275.000) hanyalah transaksi hari ini. Hari yang sudah tutup
+    # dicocokkan terpisah; bila tepat, bulan disimpan s.d. kemarin dan hari ini diulang pada sinkron berikutnya.
+    if res["status"] == "ERROR" and MODE == "live" and d2 == ctx.now.date() and d2 > d1 and not env('SYNC_FROM'):
+        closed = fetch_store_month(ctx, outlet, sid, (y, m, d1, d2 - timedelta(days=1)))
+        if closed["status"] == "OK":
+            closed["notes"] = [f"Hari ini ({d2:%d/%m}) masih berjalan di Moka ({res['errors'][0][:140]}); "
+                               f"disimpan terverifikasi s.d. {d2 - timedelta(days=1):%d/%m}, hari ini diperbarui pada sinkron berikutnya."]
+            closed["seconds"] = round(time.time() - t0, 1)
+            return closed
     if res["status"] == "ERROR" and res.get("lag"):
         classify_lag(res)
     res["seconds"] = round(time.time() - t0, 1)
@@ -949,6 +959,9 @@ def main():
     bad = sales_bad + library_bad + price_errors
     for r in wr:
         warn(f"{r['outlet']} {r['year']}-{r['month']:02d}: {r['errors'][0]}")
+    for r in results:
+        for n in r.get("notes") or []:
+            log(f"· {r['outlet']} {r['year']}-{r['month']:02d}: {n}")
     member_blocked = bool(member_error)
     if member_blocked:
         warn('Member belum selesai: '+member_error)
