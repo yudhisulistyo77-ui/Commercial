@@ -1,6 +1,14 @@
 name: Sinkron Stock & Distribusi
+# V84: stok saat ini dari Item Library Moka + penjualan 14/30/90 hari dari Item Sales.
+# Dijalankan tombol "Tarik Stock" (Edge Function stock-sync) atau Run workflow manual.
+# Jadwal harian stock ada di workflow "Sinkron Moka POS" (job stock).
 on:
   workflow_dispatch:
+    inputs:
+      outlets:
+        description: "Batasi outlet Moka (nama, pisahkan koma). Kosong = semua"
+        required: false
+        default: ""
 permissions:
   contents: read
 concurrency:
@@ -15,21 +23,17 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Tarik snapshot stock toko dan DC
+      - name: Pemeriksaan awal (token Moka & izin tulis Supabase)
+        env:
+          MOKA_ACCESS_TOKEN: ${{ secrets.MOKA_ACCESS_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: python3 scripts/health_v84.py
+      - name: Tarik stock toko & DC (Moka API)
         env:
           MOKA_ACCESS_TOKEN: ${{ secrets.MOKA_ACCESS_TOKEN }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           BRAND_MAP: ${{ vars.MOKA_BRAND_MAP_JSON }}
-          MOKA_STOCK_SUMMARY_PATH: ${{ vars.MOKA_STOCK_SUMMARY_PATH }}
-          MOKA_STOCK_SUMMARY_COLUMNS: ${{ vars.MOKA_STOCK_SUMMARY_COLUMNS }}
-        run: python3 scripts/sync_stock_v78.py
-
-      - name: Simpan pemeriksaan kolom Summary (tanpa nilai data/token)
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: stock-summary-schema
-          path: stock-summary-diagnostics/
-          if-no-files-found: ignore
-          retention-days: 3
+          ONLY_OUTLETS: ${{ inputs.outlets }}
+        run: python3 scripts/sync_stock_v84.py
