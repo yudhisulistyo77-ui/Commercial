@@ -781,6 +781,7 @@ html[data-number-mode="full"] .member-ranking-v29 table{min-width:1560px!importa
 <link rel="stylesheet" href="ui-v63.css?v=63">
 <link rel="stylesheet" href="ui-v64.css?v=65">
 <link rel="stylesheet" href="ui-v66.css?v=67">
+<link rel="stylesheet" href="visit-v82.css?v=82">
 </head>
 <body>
 
@@ -2725,7 +2726,7 @@ async function itemDetailRows(args,onProgress){
 function itemPagedTableV22(rows,heads,keys,rowCells,totals,state,pageKey,paint){const size=Math.max(1,rows.length),sort=state[pageKey+'Sort'];let ordered=rows;if(sort){ordered=rows.slice().sort((a,b)=>{const x=a[keys[sort.ci]],y=b[keys[sort.ci]],cmp=typeof x==='number'&&typeof y==='number'?x-y:String(x??'').localeCompare(String(y??''),'id',{numeric:true});return sort.dir==='asc'?cmp:-cmp;});}const pages=Math.max(1,Math.ceil(ordered.length/size)),page=Math.max(0,Math.min(pages-1,Number(state[pageKey])||0));state[pageKey]=page;const first=page*size,wrap=el('div',{}),table=mkTable(heads,ordered.slice(first,first+size).map(rowCells),totals),node=table.querySelector('table');node.dataset.paged='true';node.dataset.totalRows=rows.length;node._csvAllV39=()=>ordered.map(rowCells);node._sortAll=(ci,dir)=>{state[pageKey+'Sort']={ci,dir};state[pageKey]=0;paint();};if(sort)node.tHead.rows[0].cells[sort.ci].dataset.dir=sort.dir;
  wrap.append(el('div',{class:'item-pager'},el('span',{class:'sub'},int(rows.length)+' hasil filter · semua baris · scroll jika >100')),table);return wrap;}
 
-function renderStock(){if(window.STOCK78)return STOCK78.show();$('#p-stock').replaceChildren(el('p',{class:'note warn'},'File stock-v84.js belum dimuat.'));}
+function renderStock(){if(window.STOCK78)return STOCK78.show();$('#p-stock').replaceChildren(el('p',{class:'note warn'},'File stock-v78.js belum dimuat.'));}
 async function renderItem(){
  parkFilters();const p=$('#p-item');p.replaceChildren(el('div',{class:'phead'},el('div',{},el('h1',{},'Item Sales'),el('p',{},'Filter kategori → rincian → beberapa pilihan · nilai net sales (Rp). '+periodLabel()))));const pf=pageFilterBar('item');if(pf)p.append(pf);if(S.demo)p.append(demoBanner());
  const state=S.itemFocus||(S.itemFocus={dimension:'product',members:[]}),[m1,m2]=periodM1M2(S.year),args=productArgs(S.year,m1,m2,S.itemBrand,S.itemCat),body=el('div',{}),brandBox=el('div',{});
@@ -2789,16 +2790,16 @@ function kpiMonthCalc(mt,year,month){
   const wk=kpiMonthFromWeekly(mt,year,month);
   let target=null,realisasi=null,source='none';
   if(wk){ target=wk.target; realisasi=wk.realisasi; source='weekly'; }
-  if(isAutoKpiCode(mt.code)){
-    /* V85: KPI otomatis (Sales & Target, CSL, Loss Sales). Nilai mingguan otomatis dihitung dari data menu
-       terkait; isian manual per minggu (W1–W5) atau Bulanan di tab Weekly SELALU menimpa nilai otomatis. */
-    const auto=kpiAutoWeeks(mt.code,year,month),w=wk&&wk.w;
-    const manual=w?[w.w1,w.w2,w.w3,w.w4,w.w5].map(v=>v==null||v===''?null:Number(v)):[null,null,null,null,null];
-    const metode=mt.code==='CSL_SCORE'?'Rata-rata':((w&&w.metode_mtd)||'Akumulasi'); /* CSL selalu rata-rata */
-    if(w&&w.bulanan_override!=null&&w.bulanan_override!==''){realisasi=Number(w.bulanan_override);source='manual';}
-    else if(manual.some(v=>v!=null)){const eff=manual.map((v,i)=>v!=null?v:auto.weeks[i]).filter(v=>v!=null);realisasi=eff.length?(metode==='Rata-rata'?eff.reduce((a,b)=>a+b,0)/eff.length:eff.reduce((a,b)=>a+b,0)):null;source='weekly+auto';}
-    else {realisasi=auto.month;source='auto';}
-    if(target==null&&isAutoRevenueCode(mt.code))target=autoTargetForMonth(mt.code,year,month);
+  if(isAutoRevenueCode(mt.code)){
+    /* Round 21b: Realisasi DAN Target KPI bertipe Revenue sekarang SAMA-SAMA ditarik live dari Sales
+       & Target (target_total/target_komersial/target_user yang sudah ada di menu Sales & Target),
+       tidak perlu diketik ulang manual di Weekly. Kalau user memang mengisi Target secara manual di
+       Weekly utk bulan tertentu (mis. mau pakai angka target yang beda dari Sales & Target), itu
+       dipakai sbg OVERRIDE utk bulan itu saja — supaya tombol "Muat Template" / isian lama tidak hilang
+       begitu saja, tapi defaultnya sekarang otomatis mengikuti Sales & Target. */
+    const autoTarget=autoTargetForMonth(mt.code,year,month);
+    if(target==null) target=autoTarget;
+    realisasi=autoRevenueForMonth(mt.code,year,month); source='auto_revenue';
   } else {
     const reportMonth = S.month || lastMonthWithData(year);
     if(target==null && realisasi==null && month===reportMonth){
@@ -2832,7 +2833,7 @@ function kpiMonthCalc(mt,year,month){
 function kpiYtdCalc(mt,year,uptoMonth){
   const months=[]; for(let m=1;m<=uptoMonth;m++) months.push(kpiMonthCalc(mt,year,m));
   const withData=months.filter(m=>m.realisasi!=null);
-  const metode=mt.code==='CSL_SCORE'?'Rata-rata':(mt.metode_ytd||'Akumulasi');
+  const metode=mt.metode_ytd||'Akumulasi';
   let targetYtd=null,realisasiYtd=null;
   if(withData.length){
     if(metode==='Rata-rata'){
@@ -2867,7 +2868,7 @@ function kpiTotal(rows){ // rows: hasil kpiMonthCalc/kpiYtdCalc untuk semua metr
 function kpiRowCalc(mt){ // dipakai tab Input KPI, memakai bulan filter aktif (atau bulan terakhir berdata)
   const month = S.month || lastMonthWithData(S.year);
   const ytd = kpiYtdCalc(mt,S.year,month);
-  const autoRevenue=isAutoKpiCode(mt.code);
+  const autoRevenue=isAutoRevenueCode(mt.code);
   return {mt,target:ytd.targetYtd,actual:ytd.realisasiYtd,capaian:ytd.capaian,adj:ytd.adj,skor:ytd.skor,
     indikator:ytd.indikator,running:ytd.running,grade:ytd.grade,autoRevenue,
     auto:autoRevenue||(ytd.months.some(m=>m.source==='weekly')===false)};
@@ -2887,7 +2888,6 @@ function renderKpi(){
   const pf_kpi=pageFilterBar(S.kpiTab==='spv'?'kpi_spv':'kpi'); if(pf_kpi) p.append(pf_kpi);
   if(S.demo) p.append(demoBanner());
   p.append(kpiTabs(S.kpiTab));
-  if(S.metrics.some(m=>isAutoKpiCode(m.code))){kpiAutoLoad(S.year);const st=(S.kpiAutoState||{})[S.year];if(st&&st.startsWith('error'))p.append(el('p',{class:'note warn'},'Data KPI otomatis mingguan belum terbaca ('+st.slice(7)+'). Isian manual tetap dipakai.'));}
   if(S.kpiTab==='spv'){renderKpiSpv(p);return;}
   if(!S.metrics.length && S.kpiTab!=='settings'){
     p.append(el('div',{class:'empty'},el('b',{},'Belum ada metrik KPI'),
@@ -2950,10 +2950,7 @@ function renderKpiInput(p){
       const codeOpts=[['','Manual (isi target & realisasi sendiri di tab Weekly)'],
         ['REVENUE_RP','Otomatis — Total Sales (Target+Realisasi dari Sales & Target)'],
         ['REVENUE_KOM_RP','Otomatis — Sales Komersial (Target+Realisasi dari Sales & Target)'],
-        ['REVENUE_USER_RP','Otomatis — Sales User (Target+Realisasi dari Sales & Target)'],
-        ['CSL_SCORE','Otomatis — CSL (rata-rata skala 1–5 dari menu CSL; target diisi di Weekly)'],
-        ['LOSS_RP','Otomatis — Loss Sales Rp (dari menu Loss Sales; polaritas lower)'],
-        ['LOSS_QTY','Otomatis — Loss Sales pcs (dari menu Loss Sales; polaritas lower)']];
+        ['REVENUE_USER_RP','Otomatis — Sales User (Target+Realisasi dari Sales & Target)']];
       const selCode=el('select',{style:'width:220px'},codeOpts.map(([v,l])=>el('option',{value:v,selected:d.code===v?'':null},l)));
       selCode.onchange=()=>d.code=selCode.value;
       cells=[String(i+1),
@@ -2974,7 +2971,7 @@ function renderKpiInput(p){
           }},'Simpan'),
           el('button',{class:'btn sm',onclick:()=>{ window.S_kpiEditing.delete(mt.id); renderKpi(); }},'Batal'))];
     } else {
-      const codeLabel={REVENUE_RP:'Otomatis · Total Sales',REVENUE_KOM_RP:'Otomatis · Sales Komersial',REVENUE_USER_RP:'Otomatis · Sales User',CSL_SCORE:'Otomatis · CSL',LOSS_RP:'Otomatis · Loss Sales Rp',LOSS_QTY:'Otomatis · Loss Sales pcs'}[mt.code]||'Manual';
+      const codeLabel={REVENUE_RP:'Otomatis · Total Sales',REVENUE_KOM_RP:'Otomatis · Sales Komersial',REVENUE_USER_RP:'Otomatis · Sales User'}[mt.code]||'Manual';
       cells=[String(i+1), mt.name||'', mt.perspektif||'', mt.unit||'', mt.periode||'Monthly', int(mt.weight), mt.direction||'higher', mt.status||'Running',
         mt.metode_ytd||'Akumulasi', mt.catatan||'', codeLabel,
         el('span',{style:'display:flex;gap:5px'},
@@ -2987,7 +2984,7 @@ function renderKpiInput(p){
     }
     tb.append(el('tr',{},
       el('td',{class:'r'},cells[0]),
-      el('td',{class:'sticky1'},cells[1], r.autoRevenue?el('span',{class:'pill ok',style:'margin-left:5px'},'otomatis · '+(KPI_AUTO_SOURCE[mt.code]||'Sales')):(r.auto?el('span',{class:'pill neu',style:'margin-left:5px'},'auto'):null)),
+      el('td',{class:'sticky1'},cells[1], r.autoRevenue?el('span',{class:'pill ok',style:'margin-left:5px'},'otomatis · Sales'):(r.auto?el('span',{class:'pill neu',style:'margin-left:5px'},'auto'):null)),
       el('td',{},cells[2]), el('td',{},cells[3]), el('td',{},cells[4]),
       el('td',{class:'r'},cells[5]), el('td',{},cells[6]), el('td',{},cells[7]), el('td',{},cells[8]),
       el('td',{class:'r'},r.target==null?'—':fmtKpi(r.target,mt.unit,mt)),
@@ -3030,15 +3027,14 @@ function renderKpiWeekly(p){
     el('span',{class:'note',style:'flex:1;margin:0;padding:8px 12px;font-size:12px'},
       'Isi Target dan realisasi mingguan (W1=tgl 1–7, W2=8–14, W3=15–21, W4=22–28, W5=29–akhir bulan). '+
       '"Bulanan" bila diisi akan menggantikan hasil rollup W1–W5. MTD dihitung otomatis sesuai Metode MTD. '+
-      'KPI dengan Sumber "Otomatis" (Sales, CSL, Loss Sales — lihat tab Input KPI) terisi sendiri per minggu dari menu terkait '+
-      '(angka abu-abu). Untuk akurasi, isi manual minggu mana pun: isian manual selalu menimpa nilai otomatis; kosongkan untuk kembali otomatis. '+
-      'Target Sales otomatis dari Sales & Target; target CSL/Loss diisi di kolom Target.')));
+      'KPI dengan Sumber Realisasi "Otomatis" (lihat tab Input KPI) — Target DAN Realisasi-nya sama-sama '+
+      'sudah ditarik otomatis dari Sales & Target; baris itu tidak perlu diisi di sini kecuali mau menimpa target bulan tertentu.')));
   const tb=el('tbody');
   S.metrics.slice().sort((a,b)=>(a.sort_order||0)-(b.sort_order||0)).forEach((mt,i)=>{
     const w=kpiWeeklyRow(mt.id,S.year,month)||{};
     const key=mt.id, editing=window.S_kpiWeekEditing.has(key);
     const calc=kpiMonthCalc(mt,S.year,month);
-    const autoRev=isAutoKpiCode(mt.code);
+    const autoRev=isAutoRevenueCode(mt.code);
     let cells;
     if(editing){
       const d={target:w.target,w1:w.w1,w2:w.w2,w3:w.w3,w4:w.w4,w5:w.w5,bulanan_override:w.bulanan_override,metode_mtd:w.metode_mtd||'Akumulasi'};
@@ -3052,23 +3048,17 @@ function renderKpiWeekly(p){
          dikosongkan (Simpan tanpa isi) = ikut otomatis lagi. Placeholder menampilkan angka otomatis yang
          sedang berlaku supaya kelihatan apa yang akan dipakai kalau tidak diisi. */
       const autoTgtHint=autoTargetForMonth(mt.code,S.year,month);
-      const targetInp=num_('target'); if(isAutoRevenueCode(mt.code)) targetInp.placeholder=autoTgtHint!=null?fmtKpi(autoTgtHint,mt.unit,mt)+' (otomatis)':'(otomatis)';
+      const targetInp=num_('target'); if(autoRev) targetInp.placeholder=autoTgtHint!=null?fmtKpi(autoTgtHint,mt.unit,mt)+' (otomatis)':'(otomatis)';
       cells=autoRev
-        ? (()=>{ /* V85: KPI otomatis — semua kolom tetap bisa diisi manual; kosong = ikut nilai otomatis (placeholder). */
-            const aw=kpiAutoWeeks(mt.code,S.year,month),fmtA=v=>v==null?'':fmtKpi(v,mt.unit,mt)+' (otomatis)';
-            const ins=['w1','w2','w3','w4','w5'].map((f,i)=>{const x=num_(f);x.placeholder=fmtA(aw.weeks[i]);return x;});
-            const bul=num_('bulanan_override');bul.placeholder=fmtA(aw.month);
-            if(!d.metode_mtd||!w.metode_mtd)d.metode_mtd=mt.code==='CSL_SCORE'?'Rata-rata':'Akumulasi';selm.value=d.metode_mtd;
-            return [targetInp,...ins,bul,selm,
-              el('span',{style:'display:flex;gap:5px'},
-                el('button',{class:'btn sm pri',onclick:async()=>{
-                  try{
-                    await DB.write('kpi_weekly',[{kpi_id:mt.id,year:S.year,month,target:d.target,w1:d.w1,w2:d.w2,w3:d.w3,w4:d.w4,w5:d.w5,bulanan_override:d.bulanan_override,metode_mtd:d.metode_mtd}],'kpi_id,year,month');
-                    toast('Weekly disimpan · kolom kosong mengikuti nilai otomatis.'); window.S_kpiWeekEditing.delete(key); await loadAll(); renderKpi();
-                  }catch(e){ toast('Gagal menyimpan: '+e.message); }
-                }},'Simpan'),
-                el('button',{class:'btn sm',onclick:()=>{ window.S_kpiWeekEditing.delete(key); renderKpi(); }},'Batal'))];
-          })()
+        ? [targetInp,el('span',{class:'sub'},'otomatis'),el('span',{class:'sub'},'otomatis'),el('span',{class:'sub'},'otomatis'),el('span',{class:'sub'},'otomatis'),el('span',{class:'sub'},'otomatis'),el('span',{class:'sub'},'otomatis'),el('span',{class:'sub'},'—'),
+            el('span',{style:'display:flex;gap:5px'},
+              el('button',{class:'btn sm pri',onclick:async()=>{
+                try{
+                  await DB.write('kpi_weekly',[{kpi_id:mt.id,year:S.year,month,target:d.target,w1:null,w2:null,w3:null,w4:null,w5:null,bulanan_override:null,metode_mtd:d.metode_mtd}],'kpi_id,year,month');
+                  toast('Target disimpan.'); window.S_kpiWeekEditing.delete(key); await loadAll(); renderKpi();
+                }catch(e){ toast('Gagal menyimpan: '+e.message); }
+              }},'Simpan'),
+              el('button',{class:'btn sm',onclick:()=>{ window.S_kpiWeekEditing.delete(key); renderKpi(); }},'Batal'))]
         : [num_('target'),num_('w1'),num_('w2'),num_('w3'),num_('w4'),num_('w5'),num_('bulanan_override'),selm,
         el('span',{style:'display:flex;gap:5px'},
           el('button',{class:'btn sm pri',onclick:async()=>{
@@ -3086,19 +3076,14 @@ function renderKpiWeekly(p){
          otomatis dari Sales & Target bila tidak ada override manual) — bukan w.target mentah, supaya
          kolom ini tidak tampil "—" padahal sebenarnya sudah otomatis terisi. */
       cells=autoRev
-        ? (()=>{ const aw=kpiAutoWeeks(mt.code,S.year,month),src=KPI_AUTO_SOURCE[mt.code];
-            const cell=(m,a)=>m!=null?el('span',{title:'diisi manual'},f(m),' ',el('span',{class:'pill neu'},'manual')):a!=null?el('span',{class:'sub',title:'otomatis dari '+src},f(a)):'—';
-            return [calc.target==null?(isAutoRevenueCode(mt.code)?'—':el('span',{class:'pill bad'},'isi target')):fmtKpi(calc.target,mt.unit,mt),
-              ...['w1','w2','w3','w4','w5'].map((k,i)=>cell(w[k],aw.weeks[i])),cell(w.bulanan_override,aw.month),
-              (mt.code==='CSL_SCORE'?'Rata-rata':(w.metode_mtd||'Akumulasi'))+' · otomatis '+src,
-              el('span',{style:'display:flex;gap:5px'},
-                el('button',{class:'btn sm',onclick:()=>{ window.S_kpiWeekEditing.add(key); renderKpi(); }},'Edit'),
-                hasEntry?el('button',{class:'btn sm',onclick:async()=>{
-                  if(guard()) return; if(!confirm('Hapus isian manual '+mt.name+' bulan '+MONTHS[month-1]+'? Nilai kembali otomatis.')) return;
-                  try{ await DB.del('kpi_weekly',`kpi_id=eq.${mt.id}&year=eq.${S.year}&month=eq.${month}`);
-                    toast('Kembali ke nilai otomatis.'); await loadAll(); renderKpi(); }
-                  catch(e){ toast('Gagal: '+e.message); } }},'Kembali ke otomatis'):null)];
-          })()
+        ? [calc.target==null?'—':fmtKpi(calc.target,mt.unit,mt), w.target!=null?el('span',{class:'pill neu'},'override manual') : autoTag,'','','','','','',
+            el('span',{style:'display:flex;gap:5px'},
+              el('button',{class:'btn sm',onclick:()=>{ window.S_kpiWeekEditing.add(key); renderKpi(); }},'Edit'),
+              w.target!=null?el('button',{class:'btn sm',onclick:async()=>{
+                if(guard()) return;
+                try{ await DB.del('kpi_weekly',`kpi_id=eq.${mt.id}&year=eq.${S.year}&month=eq.${month}`);
+                  toast('Kembali ke target otomatis.'); await loadAll(); renderKpi(); }
+                catch(e){ toast('Gagal: '+e.message); } }},'Kembali ke otomatis'):null)]
         : [f(w.target),f(w.w1),f(w.w2),f(w.w3),f(w.w4),f(w.w5),f(w.bulanan_override),w.metode_mtd||'Akumulasi',
         el('span',{style:'display:flex;gap:5px'},
           el('button',{class:'btn sm',onclick:()=>{ window.S_kpiWeekEditing.add(key); renderKpi(); }},'Edit'),
@@ -3426,43 +3411,6 @@ function autoTargetForMonth(code,year,month){
   if(!rows.length) return null; // belum ada baris Sales & Target bulan itu sama sekali -> biarkan null, bukan 0
   const t=rows.reduce((s,r)=>s+f.target(r),0);
   return t>0?t:null;
-}
-/* V85: KPI otomatis dari menu yang sudah ada — Sales (Sales & Target + porsi mingguan dari data harian Moka),
-   CSL dan Loss Sales (Google Sheet). Isian manual mingguan tetap menimpa nilai otomatis (lihat kpiMonthCalc). */
-const KPI_AUTO_SOURCE={REVENUE_RP:'Sales',REVENUE_KOM_RP:'Sales',REVENUE_USER_RP:'Sales',CSL_SCORE:'CSL',LOSS_RP:'Loss Sales',LOSS_QTY:'Loss Sales'};
-function isAutoKpiCode(code){ return !!KPI_AUTO_SOURCE[code]; }
-function kpiAutoData(year){ return (S.kpiAuto||{})[year]||null; }
-function kpiAutoLoad(year,force){
-  if(S.demo||!S.ready) return;
-  S.kpiAuto=S.kpiAuto||{}; S.kpiAutoState=S.kpiAutoState||{};
-  if(!force&&(S.kpiAuto[year]||S.kpiAutoState[year])) return; /* sekali per tahun; gagal tidak diulang terus-menerus */
-  S.kpiAutoState[year]='loading';
-  masterRpc('commercial_kpi_auto_v85',{p_year:Number(year)}).then(d=>{S.kpiAuto[year]=d;S.kpiAutoState[year]='ok';})
-    .catch(e=>{S.kpiAutoState[year]='error: '+(/commercial_kpi_auto_v85|PGRST202/i.test(e.message||'')?'jalankan V85.sql di Supabase':e.message);})
-    .finally(()=>{if(S.page==='kpi')renderKpi();});
-}
-function kpiAutoWeeks(code,year,month){
-  const out={weeks:[null,null,null,null,null],month:null,info:''};
-  if(!isAutoKpiCode(code)) return out;
-  const d=kpiAutoData(year),now=new Date(),cy=now.getFullYear(),cm=now.getMonth()+1;
-  const future=year>cy||(year===cy&&month>cm);
-  if(isAutoRevenueCode(code)){
-    out.month=autoRevenueForMonth(code,year,month);
-    const rows=(d?.sales||[]).filter(r=>r.month===month),tot=rows.reduce((a,r)=>a+Number(r.amount||0),0);
-    if(tot>0&&out.month!=null) rows.forEach(r=>{out.weeks[r.week-1]=out.month*Number(r.amount||0)/tot;});
-    out.info=d?'porsi mingguan dari sales harian Moka':'memuat data mingguan…';
-    return out;
-  }
-  if(!d){out.info='memuat data otomatis…';return out;}
-  if(code==='CSL_SCORE'){
-    (d.csl||[]).filter(r=>r.month===month).forEach(r=>{const v=r.value==null?null:Number(r.value);if(r.week==null)out.month=v;else out.weeks[r.week-1]=v;});
-    return out;
-  }
-  const key=code==='LOSS_QTY'?'qty':'amount';
-  const rows=(d.loss||[]).filter(r=>r.month===month);
-  rows.forEach(r=>{const v=Number(r[key]||0);if(r.week==null)out.month=v;else out.weeks[r.week-1]=v;});
-  if(d.sheets&&!future){ if(out.month==null) out.month=0; const last=year===cy&&month===cm?Math.min(5,Math.floor((now.getDate()-1)/7)+1):5; for(let i=0;i<last;i++) if(out.weeks[i]==null) out.weeks[i]=0; }
-  return out;
 }
 
 /* ---------- PDCA ---------- */
@@ -6117,17 +6065,6 @@ function renderBrand(){
    PICA / MOM
    ===================================================================== */
 const PICA_KINDS={TASK:'Tugas',ISSUE:'Issue',SPECIAL:'Penugasan khusus',MOM:'MOM'};
-/* V85: sub menu PICA per papan — SPV Ilham, SPV Zultan, Manager. Papan disimpan bersama progress (app_settings ops_v1_pica_<id>).
-   Butir lama tanpa papan: ditebak dari PIC / SPV toko, selain itu masuk Manager. */
-const PICA_BOARDS={ILHAM:'SPV Ilham',ZULTAN:'SPV Zultan',MANAGER:'Manager'};
-function picaBoard(x){
-  const b=opsGet('pica',String(x.id))?.board; if(PICA_BOARDS[b]) return b;
-  const pic=String(x.pic||'').toUpperCase(); if(/ILHAM/.test(pic)) return 'ILHAM'; if(/ZULTAN/.test(pic)) return 'ZULTAN';
-  const spv=String((S.stores||[]).find(s=>s.id===x.store_id)?.spv||'').toUpperCase(); if(/ILHAM/.test(spv)) return 'ILHAM'; if(/ZULTAN/.test(spv)) return 'ZULTAN';
-  return 'MANAGER';
-}
-function picaDefaultBoard(){const n=String(MASTER?.session?.user?.name||MASTER?.session?.user?.label||'').toUpperCase();return /ILHAM/.test(n)?'ILHAM':/ZULTAN/.test(n)?'ZULTAN':'';}
-async function picaPutMeta(id,patch){await opsPut('pica',String(id),{...(opsGet('pica',String(id))||{}),...patch});}
 const PICA_STATUS={OPEN:'Belum jalan',ON_PROGRESS:'Berjalan',DONE:'Selesai',DROPPED:'Dibatalkan'};
 const PICA_PRIO={HIGH:'Tinggi',MEDIUM:'Sedang',LOW:'Rendah'};
 function todayStr(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
@@ -6251,16 +6188,11 @@ function renderPica(){
   parkFilters();
   const p=$('#p-pica'); p.innerHTML='';
   const f=S.pf||(S.pf={kind:'',pic:'',status:'',active:true});
-  if(S.picaBoard===undefined) S.picaBoard=picaDefaultBoard();
-  const board=S.picaBoard||'';
-  p.append(el('div',{class:'phead'},el('div',{},el('h1',{},'PICA / MOM'+(board?' — '+PICA_BOARDS[board]:'')),
+  p.append(el('div',{class:'phead'},el('div',{},el('h1',{},'PICA / MOM'),
     el('p',{},'Tugas, issue, penugasan khusus dan hasil rapat (MOM) lengkap dengan PIC, status dan tenggat — sambungan Google Calendar diatur di Pengaturan → Integrasi.')),
-    el('span',{class:'spacer'}),el('button',{class:'btn pri',onclick:()=>picaForm({board:board||undefined})},'+ Tambah butir'+(board?' · '+PICA_BOARDS[board]:''))));
+    el('span',{class:'spacer'}),el('button',{class:'btn pri',onclick:()=>picaForm()},'+ Tambah butir')));
   if(S.demo) p.append(demoBanner());
-  p.append(el('div',{class:'tbar v85-pica-tabs',role:'tablist','aria-label':'Sub menu PICA'},[['','Semua'],...Object.entries(PICA_BOARDS)].map(([k,t])=>{
-    const n=S.pica.filter(x=>(!k||picaBoard(x)===k)&&x.status!=='DONE'&&x.status!=='DROPPED').length;
-    return el('button',{class:'btn sm'+(board===k?' pri':''),role:'tab','aria-selected':String(board===k),onclick:()=>{S.picaBoard=k;renderPica();}},t+' ('+n+' aktif)');})));
-  const source=S.pica.filter(x=>!board||picaBoard(x)===board),all=source.filter(x=>filterHasV76(f.kind,x.kind)&&filterHasV76(f.pic,x.pic)&&filterHasV76(f.status,x.status)), today=todayStr();
+  const source=S.pica,all=source.filter(x=>filterHasV76(f.kind,x.kind)&&filterHasV76(f.pic,x.pic)&&filterHasV76(f.status,x.status)), today=todayStr();
   const act=all.filter(x=>x.status==='OPEN'||x.status==='ON_PROGRESS');
   const od=act.filter(picaOverdue);
   const in7=act.filter(x=>x.due_date&&x.due_date>=today&&x.due_date<=(()=>{const d=new Date();d.setDate(d.getDate()+7);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');})());
@@ -6273,10 +6205,6 @@ function renderPica(){
   p.append(tl);
   if(filled.length)p.append(el('div',{class:'rowline note'},'Progress rata-rata:',pillCell(filled.reduce((a,b)=>a+b,0)/filled.length/100),filled.length+' butir memiliki progress'));
 
-  if(!board){
-    const rows=Object.entries(PICA_BOARDS).map(([k,t])=>{const m=all.filter(x=>picaBoard(x)===k);return [el('a',{href:'#',onclick:e=>{e.preventDefault();S.picaBoard=k;renderPica();}},t),int(m.filter(x=>x.status==='OPEN').length),int(m.filter(x=>x.status==='ON_PROGRESS').length),int(m.filter(x=>x.status==='DONE').length),int(m.filter(picaOverdue).length),int(m.length)];});
-    p.append(card('Ringkasan per sub menu','klik nama untuk membuka PICA masing-masing',mkTable([H('PAPAN',{s:1}),H('BELUM JALAN',{r:1}),H('BERJALAN',{r:1}),H('SELESAI',{r:1}),H('TERLAMBAT',{r:1}),H('TOTAL',{r:1})],rows)));
-  }
   /* ringkasan per PIC */
   {
     const pics=[...new Set([...S.people.filter(x=>x.is_active!==false).map(x=>x.name),...source.map(x=>x.pic).filter(Boolean)])];
@@ -6294,7 +6222,7 @@ function renderPica(){
     mkSel('pf-status','Status',[['','Semua status'],...Object.entries(PICA_STATUS)],f.status,'status')));
   p.append(completionTabs('pica',source.filter(x=>filterHasV76(f.kind,x.kind)&&filterHasV76(f.pic,x.pic)),()=>{f.status='';renderPica();}));
   let rows=all.filter(x=>(COMPLETION_VIEW.pica==='all'||((COMPLETION_VIEW.pica||'active')==='done'?x.status==='DONE':x.status!=='DONE'))&&filterHasV76(f.kind,x.kind)&&filterHasV76(f.pic,x.pic)&&filterHasV76(f.status,x.status));
-  const heads=[H('#',{r:1}),H('JENIS'),H('JUDUL',{s:1}),H('PAPAN'),H('PIC'),H('STATUS'),H('PRIORITAS'),H('TENGGAT'),H('WEEK UPDATE'),H('PROGRESS'),H('TOKO'),H('')];
+  const heads=[H('#',{r:1}),H('JENIS'),H('JUDUL',{s:1}),H('PIC'),H('STATUS'),H('PRIORITAS'),H('TENGGAT'),H('WEEK UPDATE'),H('PROGRESS'),H('TOKO'),H('')];
   const tb=el('tbody');
   rows.forEach((x,i)=>{ const st=S.stores.find(s=>s.id===x.store_id); const g=gcalLink(x);
     tb.append(el('tr',{},
@@ -6302,7 +6230,6 @@ function renderPica(){
       el('td',{},el('span',{class:'pill neu'},PICA_KINDS[x.kind]||x.kind)),
       el('td',{class:'sticky1',style:'white-space:normal;min-width:240px;max-width:380px',title:x.detail||''},el('div',{style:'font-weight:600'},x.title),
         x.detail?el('div',{style:'font-size:11.5px;color:var(--muted);font-weight:400'},x.detail):null),
-      el('td',{},PICA_BOARDS[picaBoard(x)]),
       el('td',{},picLabel(x.pic)),
       el('td',{},el('span',{class:'pill '+(x.status==='DONE'?'ok':x.status==='ON_PROGRESS'?'mid':x.status==='DROPPED'?'neu':'neu')},PICA_STATUS[x.status]||x.status)),
       el('td',{},el('span',{class:'pill '+(x.priority==='HIGH'?'bad':x.priority==='LOW'?'neu':'mid')},PICA_PRIO[x.priority]||'—')),
@@ -6312,7 +6239,7 @@ function renderPica(){
       el('td',{},st?st.name:'Semua'),
       el('td',{},el('div',{class:'rowline',style:'flex-wrap:nowrap'},
         el('button',{class:'btn sm',onclick:()=>picaForm(x)},'Ubah'),
-        x.status!=='DONE'?el('button',{class:'btn sm',onclick:async()=>{ if(guard())return; try{ await DB.patch('pica','id=eq.'+x.id,{status:'DONE',updated_at:new Date().toISOString()}); await picaPutMeta(x.id,{progress:100,board:picaBoard(x)}); toast('Ditandai selesai.'); await loadAll(); }catch(e){ toast('Gagal: '+e.message); } }},'Selesai'):null,
+        x.status!=='DONE'?el('button',{class:'btn sm',onclick:async()=>{ if(guard())return; try{ await DB.patch('pica','id=eq.'+x.id,{status:'DONE',updated_at:new Date().toISOString()}); await opsPut('pica',String(x.id),{progress:100}); toast('Ditandai selesai.'); await loadAll(); }catch(e){ toast('Gagal: '+e.message); } }},'Selesai'):null,
         g?el('a',{class:'btn sm',href:g,target:'_blank',rel:'noopener',style:'text-decoration:none'},'+ Kalender'):null,
         el('button',{class:'btn sm',onclick:async()=>{ if(guard())return; if(!confirm('Hapus butir ini?'))return; try{ await DB.del('pica','id=eq.'+x.id); await opsRemove('pica',String(x.id)); toast('Dihapus.'); await loadAll(); }catch(e){ toast('Gagal: '+e.message); } }},'Hapus')))));
   });
@@ -6349,10 +6276,7 @@ function picaForm(x={}){
   const mtg=el('input',{type:'date',id:'pc-mtg',value:x.meeting_date||'',style:'width:100%',oninput:e=>week.textContent=isoWeek(e.target.value)});
   const progress=el('input',{type:'number',id:'pc-progress',min:'0',max:'100',step:'0.01',value:picaProgress(x)??'',placeholder:'0–100',style:'width:100%'});
   const store=el('select',{id:'pc-store'},el('option',{value:''},'Semua toko'),S.stores.map(s=>el('option',{value:String(s.id),selected:String(x.store_id)===String(s.id)?'':null},s.name)));
-  const curBoard=x.id?picaBoard(x):(x.board||S.picaBoard||picaDefaultBoard()||'MANAGER');
-  const boardSel=el('select',{id:'pc-board'},Object.entries(PICA_BOARDS).map(([v,t])=>el('option',{value:v,selected:curBoard===v?'':null},t)));
   bx.append(el('h2',{style:'font-size:16px'},x.id?'Ubah butir':'Tambah butir'),
-    el('div',{class:'fld'},el('label',{for:'pc-board'},'Sub menu PICA (pemilik)'),boardSel),
     el('div',{class:'grid g2'},el('div',{class:'fld'},el('label',{for:'pc-kind'},'Jenis'),kind),el('div',{class:'fld'},el('label',{for:'pc-prio'},'Prioritas'),prio)),
     el('div',{class:'fld'},el('label',{for:'pc-title'},'Judul'),title),
     el('div',{class:'fld'},el('label',{for:'pc-detail'},'Uraian'),detail),
@@ -6374,7 +6298,7 @@ function picaForm(x={}){
         const body={kind:kind.value,title:title.value.trim(),detail:detail.value.trim()||null,pic:picName,status:status.value,priority:prio.value,
           due_date:due.value||null,meeting_date:mtg.value||null,store_id:store.value?Number(store.value):null,updated_at:new Date().toISOString()};
         if(x.id) await DB.patch('pica','id=eq.'+x.id,body); else {const r=await dbInsertOne('pica',body);x.id=r.id;}
-        await picaPutMeta(x.id,{progress:progress.value===''?null:Number(progress.value),board:boardSel.value});
+        await opsPut('pica',String(x.id),{progress:progress.value===''?null:Number(progress.value)});
         modal.remove(); toast('Tersimpan.'); await loadAll();
       }catch(err){ toast('Gagal: '+err.message);e.target.disabled=false; }
     }},'Simpan')));
@@ -7117,7 +7041,8 @@ setInterval(masterRevisionCheck,45000);window.addEventListener('focus',masterRev
 <script src="price-list-ui-v24.js?v=26"></script>
 <script src="member-v27.js?v=34"></script>
 <script src="member-ui-v27.js?v=37"></script>
-<script src="commercial-v28.js?v=84"></script>
+<script src="sync-status-v82.js?v=82"></script>
+<script src="commercial-v28.js?v=82"></script>
 <script src="member-monthly-v37.js?v=38"></script>
 <script src="auth-v58.js?v=69"></script>
 <script src="commercial-v38.js?v=72"></script>
@@ -7142,9 +7067,12 @@ setInterval(masterRevisionCheck,45000);window.addEventListener('focus',masterRev
 <script src="ui-v62.js?v=73"></script>
 <script src="member-items-v63.js?v=63"></script>
 <script src="sheets-dashboard-v64.js?v=77"></script>
-<script src="stock-v84.js?v=85"></script>
+<script src="stock-v78.js?v=81"></script>
+<script src="stock-analysis-v80.js?v=81"></script>
 <script src="brand-detail-v78.js?v=78"></script>
 <script src="traffic-analysis-v64.js?v=65"></script>
 <script src="ui-v66.js?v=66"></script>
+<script src="visit-plan-v82.js?v=82"></script>
+<script src="visit-schedule-v82.js?v=82"></script>
 </body>
 </html>

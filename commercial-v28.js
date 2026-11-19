@@ -106,6 +106,7 @@ td.sticky1{overflow-wrap:break-word}
     const r = userRule();
     return r && Array.isArray(r.stores) && r.stores.length ? new Set(r.stores.map(String)) : null;
   }
+  V28.canEditVisit = () => !!currentUser() && !viewOnly() && pageAllowed('schedule');
   V28.pageAllowed = pageAllowed;
   V28.memberTabAllowed = function (tab) {
     const rule = userRule();
@@ -222,6 +223,8 @@ td.sticky1{overflow-wrap:break-word}
       V28.tableMissing = false;
       V28.run = rows.find(r => r.status==='done' && throughDate(r) && (!r.components?.length||r.components.some(c=>['sales_type','item_sales','transactions'].includes(c)))) || null;
       V28.libraryRun = rows.find(r => ['done', 'warn'].includes(r.status) && /library: [1-9]\d* OK/i.test(r.message || '')) || null;
+      V28.latestSales = rows.find(r => ['done','warn','error'].includes(r.status) && r.components?.some(c=>['sales_type','item_sales','transactions'].includes(c))) || null;
+      V28.latestSavedSales = rows.find(r => ['done','warn','error'].includes(r.status) && r.components?.some(c=>['sales_type','item_sales','transactions'].includes(c)) && Array.isArray(r.progress?.per_store) && r.progress.per_store.some(x=>['OK','UNCHANGED'].includes(x.status)&&x.saved_through)) || null;
       const latestFinished = rows.find(r => ['done','warn','error'].includes(r.status));
       const act = rows.find(r => ['requested', 'running'].includes(r.status) && (!latestFinished || Date.parse(r.requested_at)>Date.parse(latestFinished.requested_at)) && Date.now() - Date.parse(r.requested_at) < 245 * 60000);
       V28.active = act || null;
@@ -229,7 +232,7 @@ td.sticky1{overflow-wrap:break-word}
       V28.lastError=issue?.status==='error'?issue:null;
       V28.lastWarning=issue?.status==='warn'?issue:null;
     } catch (e) {
-      V28.tableMissing = true;
+      V28.tableMissing = true; V28.latestSales = null; V28.latestSavedSales = null;
       try {
         const l = await DB.sel("ingest_log?select=created_at,file_name&file_name=like.MOKA%20API*&order=created_at.desc&limit=1");
         V28.run = l[0] ? { finished_at: l[0].created_at, data_until: null, mode: 'full', status: 'done', message: l[0].file_name } : null;
@@ -246,9 +249,9 @@ td.sticky1{overflow-wrap:break-word}
     if (!bar) { bar = el('span', { id: 'v28-bar', style: 'display:inline-flex;gap:8px;align-items:center;flex-wrap:wrap' }); conn.after(bar); }
     bar.replaceChildren();
     if (!S.key || S.demo) return;
-    const r = V28.run, a = V28.active;
-    const txt = a ? 'Sinkron Moka berjalan…' : r?.data_until ? 'Moka: data s.d. '+throughLabel(r) : 'Moka: cakupan belum tercatat';
-    bar.append(el('span', { class: 'pill v28-badge ' + (a ? 'neu' : r ? 'ok' : 'neu'), title: r ? 'Terakhir diperbarui ' + dt(r.finished_at) + (r.data_until ? ' · data s.d. ' + dt(r.data_until) : '') : 'Belum ada sinkron Moka', onclick: openSync }, txt));
+    const r = V28.run, a = V28.active, state = syncStatusV82(r,V28.latestSales,V28.latestSavedSales||V28.latestSales);
+    const txt = a ? 'Sinkron Moka berjalan…' : state.partial ? 'Moka: parsial s.d. '+fmtD.format(new Date(state.date+'T12:00:00Z')) : r?.data_until ? 'Moka: data s.d. '+throughLabel(r) : 'Moka: cakupan belum tercatat';
+    bar.append(el('span', { class: 'pill v28-badge ' + (a ? 'neu' : r ? 'ok' : 'neu'), title: state.partial ? 'Pembaruan parsial '+dt((V28.latestSavedSales||V28.latestSales).finished_at)+'; buka rincian toko' : r ? 'Terakhir diperbarui ' + dt(r.finished_at) + (r.data_until ? ' · data s.d. ' + dt(r.data_until) : '') : 'Belum ada sinkron Moka', onclick: openSync }, txt));
     if (!viewOnly()) bar.append(el('button', { class: 'btn sm v28-sync-btn' + (a ? ' v28-spin' : ''), type: 'button', onclick: openSync, title: 'Pilih periode dan jenis data Moka yang diperbarui' }, syncIcon(), a ? 'Sinkron…' : 'Sinkron Moka'));
     const u = currentUser();
     if (u) bar.append(el('span', { class: 'v28-user' }, el('span', { class: 'pill neu' }, u.name + (u.role === 'master' ? ' · master' : viewOnly() ? ' · lihat' : '')),
@@ -259,19 +262,22 @@ td.sticky1{overflow-wrap:break-word}
   const origUpdateCard = appDataUpdateCard;
   appDataUpdateCard = function () {
     if (!S.key || S.demo) return origUpdateCard();
-    const r = V28.run, a = V28.active;
+    const r = V28.run, a = V28.active, state = syncStatusV82(r,V28.latestSales,V28.latestSavedSales||V28.latestSales);
     const icon = el('div', { class: 'app-update-icon', 'aria-hidden': 'true', html: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/><path d="M12 7v5l3 2"/></svg>' });
-    const until = r?.data_until ? 'Data pilihan s.d. ' + throughLabel(r) : r ? 'Waktu data belum tercatat' : 'Belum ada sinkron penjualan';
-    const meta = [until, r?.components ? 'Jenis: '+r.components.join(', ') : null,
-      r && r.stores_ok != null ? r.stores_ok + ' toko OK' + (r.stores_warn ? ', ' + r.stores_warn + ' menunggu Moka' : '') + (r.stores_error ? ', ' + r.stores_error + ' gagal' : '') : null,
+    const displayRun = state.partial ? (V28.latestSavedSales||V28.latestSales) : r;
+    const until = state.partial ? 'Pembaruan parsial: '+dt(displayRun.finished_at) : r?.data_until ? 'Data pilihan s.d. ' + throughLabel(r) : r ? 'Waktu data belum tercatat' : 'Belum ada sinkron penjualan';
+    const meta = [until, displayRun?.components ? 'Jenis: '+displayRun.components.join(', ') : null,
+      displayRun && displayRun.stores_ok != null ? displayRun.stores_ok + ' toko-periode OK' + (displayRun.stores_warn ? ', ' + displayRun.stores_warn + ' menunggu Moka' : '') + (displayRun.stores_error ? ', ' + displayRun.stores_error + ' gagal' : '') : null,
       S.settings?.commercial_price_last_checked_v45 ? 'Price List terakhir dicek: '+dt(S.settings.commercial_price_last_checked_v45) : 'Price List: waktu pemeriksaan belum tercatat',
       S.settings?.commercial_price_last_updated_v45 ? 'Harga terakhir berubah: '+dt(S.settings.commercial_price_last_updated_v45) : null].filter(Boolean).join(' · ');
     const node = el('section', { class: 'app-data-update v28-update', 'data-update-state': r ? 'today' : 'empty', 'data-v28-update': '' }, icon,
       el('div', {},
         el('div', { class: 'app-update-eyebrow' }, 'STATUS DATA · MOKA POS'),
-        el('div', { class: 'app-update-caption' }, a ? (a.status==='requested'?'Menunggu GitHub Actions…':'Sinkron sedang berjalan…') : 'Cakupan data tersimpan'),
-        el('div', { class: 'big', role: 'status' }, r?.data_until ? 'Data s.d. '+throughLabel(r) : 'Cakupan data belum terkonfirmasi'),
+        el('div', { class: 'app-update-caption' }, a ? (a.status==='requested'?'Menunggu GitHub Actions…':'Sinkron sedang berjalan…') : state.partial ? state.updated+' toko-periode tersimpan pada pembaruan parsial' : 'Cakupan data tersimpan'),
+        el('div', { class: 'big', role: 'status' }, state.partial ? 'Data parsial s.d. '+fmtD.format(new Date(state.date+'T12:00:00Z')) : r?.data_until ? 'Data s.d. '+throughLabel(r) : 'Cakupan data belum terkonfirmasi'),
         el('div', { class: 'meta' }, meta),
+        state.partial ? el('div',{class:'meta'},'Run lengkap tervalidasi s.d. '+(state.completeDate?throughLabel(r):'belum terkonfirmasi')+'. Toko belum cocok mempertahankan data lama.') : null,
+        state.rows.length ? el('details',{},el('summary',{},'Rincian sinkron per toko · '+state.rows.length+' periode'),el('div',{style:'max-height:240px;overflow:auto'},...state.rows.map(x=>el('p',{class:'meta'},x.outlet+' · '+x.year+'-'+String(x.month).padStart(2,'0')+' · '+x.status+(x.saved_through?' · tersimpan s.d. '+x.saved_through:' · belum diperbarui')+(x.difference!=null&&x.difference!==0?' · selisih sumber Rp'+Number(x.difference).toLocaleString('id-ID'):''))))) : null,
         r?.message?.includes('Member gagal:') ? el('div',{class:'meta',style:'color:#b67a00'},r.message) : null,
         V28.lastError ? el('div', { class: 'meta', style: 'color:#df4255' }, (a?'Percobaan sebelumnya gagal: ':'Sinkron terakhir gagal: ') + String(V28.lastError.message || '').slice(0, 160)) : null,
         V28.lastWarning ? el('div',{class:'meta',style:'color:var(--warn,#a66a04)'},(a?'Percobaan sebelumnya belum lengkap: ':'Sinkron terakhir belum lengkap: ')+String(V28.lastWarning.message||'Periksa log; data belum cocok tidak ditulis.').slice(0,220)) : null,
@@ -315,14 +321,14 @@ td.sticky1{overflow-wrap:break-word}
     const periodBox=el('div',{class:'v28-tools'},opsField('Periode',selection),opsField('Tahun',year),opsField('Bulan',month),opsField('Dari',from),opsField('Sampai',to));
     const syncFields=()=>{year.closest('.fld').hidden=selection.value==='range';month.closest('.fld').hidden=selection.value!=='month';from.closest('.fld').hidden=to.closest('.fld').hidden=selection.value!=='range';};selection.onchange=syncFields;syncFields();
     const library=el('input',{type:'checkbox'});library.checked=priceOnly;library.disabled=priceOnly;if(priceOnly)periodBox.hidden=true;
-    const componentInputs=[['sales_type','Sales Type'],['item_sales','Item Sales'],['transactions','Transaksi'],['stock','Stock · snapshot terbaru toko/DC'],['members','Member · Customer List / Purchase History']].map(([key,label])=>{const input=el('input',{type:'checkbox','data-sync-component':key});input.checked=options.memberOnly===true?key==='members':options.stockOnly===true?key==='stock':!['members','stock'].includes(key);if(key==='members')label+=' · Customer Service';return {key,label,input}});
+    const componentInputs=[['sales_type','Sales Type'],['item_sales','Item Sales'],['transactions','Transaksi'],['stock','Stock · snapshot terbaru toko/DC'],['members','Member · Customer List / Purchase History']].map(([key,label])=>{const input=el('input',{type:'checkbox','data-sync-component':key});input.checked=options.memberOnly===true?key==='members':key!=='members';if(key==='members')label+=' · Customer Service';return {key,label,input}});
     const componentBox=el('div',{class:'v28-tools'},...componentInputs.map(c=>el('label',{class:'rowline'},c.input,c.label)));componentBox.hidden=priceOnly;
-    /* V84: setiap komponen berdiri sendiri — Stock tidak lagi dipaksa ikut Sales. Periode hanya relevan untuk Sales/Member. */const syncStockChoice=()=>{periodBox.hidden=priceOnly||!componentInputs.some(c=>c.key!=='stock'&&c.input.checked);};componentInputs.forEach(c=>c.input.onchange=syncStockChoice);syncStockChoice();
+    const stockChoice=componentInputs.find(c=>c.key==='stock');const syncStockChoice=()=>{const sales=componentInputs.some(c=>['sales_type','item_sales','transactions'].includes(c.key)&&c.input.checked);stockChoice.input.disabled=sales||priceOnly;if(sales&&!priceOnly)stockChoice.input.checked=true;periodBox.hidden=priceOnly||!componentInputs.some(c=>c.key!=='stock'&&c.input.checked);};componentInputs.forEach(c=>c.input.onchange=syncStockChoice);syncStockChoice();
     const skip=el('input',{type:'checkbox'});skip.checked=true;const force=el('input',{type:'checkbox'});
     const err = el('p', { class: 'note warn', role: 'alert' });
     const start = el('button', { class: 'btn pri v28-sync-btn', type: 'button' }, syncIcon(), ' Mulai sinkron');
     box.append(
-      periodBox,componentBox,!priceOnly?el('p',{class:'note'},'Pilih satu atau beberapa komponen; yang tidak dicentang tidak diperbarui. Stock = stok saat ini + penjualan 14/30/90 hari (tidak memakai periode di atas). Price List cukup centang Item Library / Price List saja.'):null,!priceOnly?el('p',{class:'note warn'},'Member memakai Customer List dan Purchase History. Uji Member saja untuk satu bulan terlebih dahulu. Akses token dan kelengkapan pagination diperiksa sebelum penulisan; seluruh histori sumber mungkin perlu dibaca meskipun periode tampilan dipersempit.'):null,el('label',{class:'rowline'},library,'Item Library / Price List · manual saja'),
+      periodBox,componentBox,!priceOnly?el('p',{class:'note'},'Stock otomatis mengikuti Sales Type, Item Sales atau Transaksi. Untuk Stock saja, kosongkan pilihan lain. Stock selalu snapshot terbaru; periode historis hanya berlaku untuk sales/member.'):null,!priceOnly?el('p',{class:'note warn'},'Member memakai Customer List dan Purchase History. Uji Member saja untuk satu bulan terlebih dahulu. Akses token dan kelengkapan pagination diperiksa sebelum penulisan; seluruh histori sumber mungkin perlu dibaca meskipun periode tampilan dipersempit.'):null,el('label',{class:'rowline'},library,'Item Library / Price List · manual saja'),
       el('label',{class:'rowline'},skip,'Lewati periode lama yang sudah lengkap dan cocok'),el('label',{class:'rowline'},force,'Tarik ulang paksa (abaikan checkpoint)'),el('p',{class:'sub'},'Data terbaru tetap diperbarui. Data lama dicek ke ringkasan Moka dan sidik isi database; validasi detail diulang paling lambat 7 hari. Library & Price List tetap diperiksa jika dipilih.'),
       el('p', {}, priceOnly?'Mengambil Item Library Moka langsung menjadi Price List. Katalog mentah tidak disimpan; harga identik tidak ditulis ulang. DC dilewati.':'Bawaan FULL: data stabil sampai kemarin, sama dengan sinkron GitHub. LIVE hari ini tersedia dengan menonaktifkan opsi di bawah; angka sumber dapat berubah selama penarikan. Data belum cocok tidak disimpan.'),
       el('label', { class: 'rowline' }, prev, 'FULL · batasi data s.d. kemarin (disarankan). Nonaktifkan untuk LIVE hari ini.'),
@@ -339,8 +345,8 @@ td.sticky1{overflow-wrap:break-word}
       try {
         const y=Number(year.value),m=Number(month.value);
         const selected=componentInputs.filter(c=>c.input.checked).map(c=>c.key),wantsStock=!priceOnly&&selected.includes('stock'),selectedSales=selected.filter(c=>c!=='stock'),hasSales=selectedSales.some(c=>['sales_type','item_sales','transactions'].includes(c)),effectivePriceOnly=priceOnly||(!selectedSales.length&&library.checked);
-        if(wantsStock&&!selectedSales.length&&!library.checked){if(!window.STOCK78?.requestSync)throw Error('Unggah stock-v84.js terlebih dahulu.');if(STOCK78.requested)throw Error('Stock sudah diminta; lihat progres pada menu Stock.');await STOCK78.requestSync(err,start);return;}
-        if(!priceOnly&&!selected.length&&!library.checked)throw Error('Pilih minimal satu jenis data.');
+        if(wantsStock&&!selectedSales.length&&!library.checked){if(!window.STOCK78?.requestSync)throw Error('Unggah stock-v78.js V79 terlebih dahulu.');if(STOCK78.requested)throw Error('Stock sudah diminta; lihat progres pada menu Stock.');await STOCK78.requestSync(err,start);return;}
+        if(!priceOnly&&!selected.length)throw Error('Pilih minimal satu jenis data. Gunakan menu Price List untuk update harga saja.');
         const request={mode:effectivePriceOnly?'price':(prev.checked?'full':'live')+'|'+selectedSales.join(','),include_library:library.checked,skip_unchanged:skip.checked,force_refresh:force.checked,months:'',date_from:'',date_to:''};
         if(!effectivePriceOnly&&selection.value==='range'){
           if(!/^\d{4}-\d{2}-\d{2}$/.test(from.value)||!/^\d{4}-\d{2}-\d{2}$/.test(to.value)||from.value>to.value||to.value>(prev.checked?stableEnd():todayWita()))throw Error('Rentang tanggal tidak valid atau melewati batas mode yang dipilih.');
@@ -365,7 +371,8 @@ td.sticky1{overflow-wrap:break-word}
         V28.active = { id: data.run_id, status: 'requested', requested_at: new Date().toISOString() };
         paintBadge(); repaintUpdateCard();
         watchRun(data.run_id, box);
-        if(wantsStock){const stockNote=el('p',{class:'note',role:'status'});box.append(stockNote);if(window.STOCK78?.requestSync)await STOCK78.requestSync(stockNote,null);else stockNote.textContent='Stock belum diminta: unggah stock-v84.js terbaru.';box.append(el('button',{type:'button',class:'btn',onclick:()=>{modal.remove();go('stock');}},'Lihat progres Stock'));}
+        if(wantsStock&&hasSales)box.append(el('p',{class:'note'},'Stock akan diperbarui otomatis setelah sales/transaksi pada workflow yang sama.'),el('button',{type:'button',class:'btn',onclick:()=>{modal.remove();go('stock');}},'Lihat progres Stock'));
+        else if(wantsStock){const stockNote=el('p',{class:'note',role:'status'});box.append(stockNote);if(window.STOCK78?.requestSync)await STOCK78.requestSync(stockNote,start);else stockNote.textContent='Stock belum diminta: unggah stock-v78.js terbaru.';}
       } catch (e) {
         err.textContent = /Failed to fetch|NetworkError|Load failed/i.test(e.message || '')
           ? 'Browser tidak dapat menghubungi fungsi sinkron. Periksa koneksi dan pasang pembaruan Edge Function moka-sync (termasuk izin CORS/OPTIONS). Data lama tetap tersedia.'

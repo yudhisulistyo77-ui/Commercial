@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from signed_amount_v45 import signed_money
+from moka_reconcile_v82 import item_pages, sales_progress, daily_diagnostic
 """
 Sinkronisasi Moka POS -> Supabase (Dashboard Commercial / Store Operation) — V2.
 
@@ -154,8 +155,7 @@ class Moka:
                         {"start": d1.strftime("%d/%m/%Y"), "end": d2.strftime("%d/%m/%Y")})
 
     def item_sales(self, oid, d1, d2):
-        return self.get(f"/v3/outlets/{oid}/reports/item_sales",
-                        {"start": d1.strftime("%d/%m/%Y"), "end": d2.strftime("%d/%m/%Y"), "per_page": 1000})
+        return item_pages(self, oid, d1, d2)
 
     def transactions(self, oid, since_dt, until_dt, per_page=100):
         """Bound requests to one reporting day; fail rather than return partial pages."""
@@ -569,18 +569,16 @@ def _process(ctx, outlet, sid, period, t0):
     if res["status"] == "ERROR" and res.get("lag"):
         time.sleep(LAG_RETRY_WAIT)
         res = fetch_store_month(ctx, outlet, sid, period)
-    # V85: Hari ini (LIVE) masih bergerak di Moka — Sales Summary dan detail diambil pada detik yang
-    # berbeda sehingga selisihnya (mis. 1.275.000) hanyalah transaksi hari ini. Hari yang sudah tutup
-    # dicocokkan terpisah; bila tepat, bulan disimpan s.d. kemarin dan hari ini diulang pada sinkron berikutnya.
-    if res["status"] == "ERROR" and MODE == "live" and d2 == ctx.now.date() and d2 > d1 and not env('SYNC_FROM'):
-        closed = fetch_store_month(ctx, outlet, sid, (y, m, d1, d2 - timedelta(days=1)))
-        if closed["status"] == "OK":
-            closed["notes"] = [f"Hari ini ({d2:%d/%m}) masih berjalan di Moka ({res['errors'][0][:140]}); "
-                               f"disimpan terverifikasi s.d. {d2 - timedelta(days=1):%d/%m}, hari ini diperbarui pada sinkron berikutnya."]
-            closed["seconds"] = round(time.time() - t0, 1)
-            return closed
     if res["status"] == "ERROR" and res.get("lag"):
         classify_lag(res)
+    if res['status'] in ('WARN','ERROR') and res.get('summary') and env('MOKA_RECONCILE_DAILY','1').lower() in ('1','true','yes'):
+        try:
+            res['daily_diagnostic'] = daily_diagnostic(ctx.moka,res)
+            gaps=[d for d in res['daily_diagnostic']['days'] if d['difference'] is not None and abs(d['difference'])>TOLERANCE]
+            log('  Audit harian '+res['outlet']+': '+('; '.join(d['date']+' selisih '+rp(d['difference']) for d in gaps) or 'tidak ada selisih pada detail tanggal yang ditarik')+'; rincian di artifact reconciliation-v82.json')
+        except Exception as exc:
+            res['daily_diagnostic']={'incomplete':True,'error':type(exc).__name__}
+            log('  Audit harian belum lengkap '+res['outlet']+': '+type(exc).__name__)
     res["seconds"] = round(time.time() - t0, 1)
     return res
 
@@ -805,7 +803,7 @@ def main():
             warn("Status sinkron tidak tersimpan (periksa SQL V35/V36): " + str(e)[:200])
 
     run_update(status="running", started_at=datetime.now(timezone.utc).isoformat(), github_run_url=run_url,
-               message="Sedang menarik data Moka…",progress={"phase":"starting"})
+               message="Sedang menarik data Moka…",components=sorted(COMPONENTS) if not PRICE_ONLY else ["price_list"],progress={"phase":"starting"})
 
     moka = Moka(token)
     try:
@@ -869,6 +867,7 @@ def main():
             if res["status"] == "OK" and writing:
                 try:
                     write_store_month(db, res, known_types, stamp)
+                    res["persisted"] = True
                 except HttpError as e:
                     res["status"] = "ERROR"; res["errors"].append("tulis Supabase: " + str(e))
             if res["status"] == "ERROR" and writing:
@@ -887,7 +886,7 @@ def main():
                 f"  {res['seconds']:>6}s {'; '.join(res['errors'])}" + (" · dilewati: "+res['skip_reason'] if res.get('skip_reason') else ''))
             results.append(res)
             run_update(message=f"Sales: {len(results)}/{len(futs)} toko-periode selesai · {res['outlet']} · {res['status']}",
-                progress={"phase":"sales","done":len(results),"total":len(futs),"outlet":res['outlet'],"result":res['status']})
+                progress=sales_progress(results,total=len(futs)))
 
     member_result=None;member_error=None
     member_tick = [0.0]
@@ -959,9 +958,6 @@ def main():
     bad = sales_bad + library_bad + price_errors
     for r in wr:
         warn(f"{r['outlet']} {r['year']}-{r['month']:02d}: {r['errors'][0]}")
-    for r in results:
-        for n in r.get("notes") or []:
-            log(f"· {r['outlet']} {r['year']}-{r['month']:02d}: {n}")
     member_blocked = bool(member_error)
     if member_blocked:
         warn('Member belum selesai: '+member_error)
@@ -969,13 +965,18 @@ def main():
     data_until = now if MODE == "live" and actual_end == now.date() else datetime(actual_end.year, actual_end.month, actual_end.day, 23, 59, 59, tzinfo=TZ)
     library_ok = [r for r in item_results if r["status"] == "OK"]
     run_update(status="error" if bad or rebuild_error or (member_blocked and not SALES_COMPONENTS) else "warn" if wr or member_blocked or (member_result and member_result["status"]=="WARN") else "done",
-               progress={"phase":"finished","done":len(results),"total":len(results)},
+               progress=sales_progress(results,phase="finished"),
                finished_at=datetime.now(timezone.utc).isoformat(), data_until=data_until.isoformat() if (results or member_result) and not bad and not wr and not rebuild_error and not member_blocked and not (member_result and member_result["status"]!="OK") else None,
                data_through=actual_end.isoformat() if (results or member_result) and not bad and not wr and not rebuild_error and not member_error and not (member_result and member_result["status"]!="OK") else None, components=sorted(COMPONENTS) if not PRICE_ONLY else ["price_list"],
                stores_ok=len(ok)+len(unchanged)+(len(mapped) if member_result and not results else 0), stores_warn=len(wr), stores_error=len(bad),
                message=(("Member gagal: "+member_error+". " if member_error else (f"Member API OK: {member_result['customers']} customer, {member_result['receipts']} nota/refund, {member_result['unmapped_payments']} pembayaran belum terpetakan. " if member_result else "")) + f"Komponen {','.join(sorted(COMPONENTS))}; Sales: {len(ok)} OK, {len(unchanged)} dilewati (sesuai), {len(wr)} menunggu Moka, {len(sales_bad)} gagal; Price List {price_saved} diperbarui, {price_same} sama, {price_skipped} dilewati, {len(price_errors)} gagal; library: {len(library_ok)} OK, {len(library_bad)} gagal" + ("; hitung ulang sales gagal: " + rebuild_error[:160] if rebuild_error else "") +
                         (f" · library {len([r for r in item_results if r['status'] == 'OK'])} toko" if item_results else "") +
                         ("; " + "; ".join(f"{r['outlet']}: {r['errors'][0][:120]}" for r in bad[:3]) if bad else ""))[:900])
+
+    if results:
+        os.makedirs(OUT_DIR, exist_ok=True)
+        with open(os.path.join(OUT_DIR, "reconciliation-v82.json"), "w", encoding="utf-8") as fh:
+            json.dump({**sales_progress(results,phase="finished"),"daily_diagnostics":[{"outlet":r['outlet'],"year":r['year'],"month":r['month'],"audit":r['daily_diagnostic']}for r in results if r.get('daily_diagnostic')]},fh,ensure_ascii=False,indent=2)
 
     if DRY_RUN:
         os.makedirs(OUT_DIR, exist_ok=True)
