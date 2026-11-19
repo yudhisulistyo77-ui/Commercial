@@ -88,6 +88,13 @@ jobs:
               raise SystemExit('SUPABASE_SERVICE_KEY harus secret/service_role, bukan publishable key.')
           PYCONFIG
 
+      - name: Pemeriksaan awal (token Moka & izin tulis Supabase)
+        env:
+          MOKA_ACCESS_TOKEN: ${{ secrets.MOKA_ACCESS_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: python3 scripts/health_v84.py
+
       - name: Tarik data Moka → Supabase
         env:
           MOKA_ACCESS_TOKEN: ${{ secrets.MOKA_ACCESS_TOKEN }}
@@ -130,8 +137,8 @@ jobs:
           urllib.request.urlopen(urllib.request.Request(url,headers=headers,data=body,method='PATCH'),timeout=30).close()
           PYFAIL
 
-      - name: Simpan audit rekonsiliasi dan hasil uji coba
-        if: always()
+      - name: Simpan hasil uji coba
+        if: always() && inputs.dry_run
         uses: actions/upload-artifact@v4
         with:
           name: moka-sync-output
@@ -161,8 +168,9 @@ jobs:
 
   stock:
     name: Stock & Distribusi harian
-    needs: sync
-    if: ${{ always() && !cancelled() && (github.event_name == 'schedule' || (!inputs.dry_run && (contains(inputs.mode, 'sales_type') || contains(inputs.mode, 'item_sales') || contains(inputs.mode, 'transactions') || inputs.mode == 'live' || inputs.mode == 'full'))) }}
+    # V84: hanya jadwal harian. Sinkron manual Stock dipilih terpisah di aplikasi (workflow stock-sync.yml),
+    # sehingga sinkron Sales/Member tidak lagi memaksa penarikan Stock.
+    if: ${{ github.event_name == 'schedule' }}
     concurrency:
       group: commercial-stock
       cancel-in-progress: false
@@ -173,22 +181,16 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Snapshot stock toko/DC setelah jadwal sales
+      - name: Pemeriksaan awal (token Moka & izin tulis Supabase)
         env:
           MOKA_ACCESS_TOKEN: ${{ secrets.MOKA_ACCESS_TOKEN }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
-          ONLY_OUTLETS: ${{ inputs.outlets }}
+        run: python3 scripts/health_v84.py
+      - name: Snapshot stock toko/DC (Moka API)
+        env:
+          MOKA_ACCESS_TOKEN: ${{ secrets.MOKA_ACCESS_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           BRAND_MAP: ${{ vars.MOKA_BRAND_MAP_JSON }}
-          MOKA_STOCK_SUMMARY_PATH: ${{ vars.MOKA_STOCK_SUMMARY_PATH }}
-          MOKA_STOCK_SUMMARY_COLUMNS: ${{ vars.MOKA_STOCK_SUMMARY_COLUMNS }}
-        run: python3 scripts/sync_stock_v78.py
-
-      - name: Simpan pemeriksaan kolom Summary (tanpa nilai data/token)
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: stock-summary-schema
-          path: stock-summary-diagnostics/
-          if-no-files-found: ignore
-          retention-days: 3
+        run: python3 scripts/sync_stock_v84.py
