@@ -10,7 +10,7 @@ Per outlet:
 Inventory Summary tidak tersedia di API publik Moka, sehingga tidak dipakai.
 Token/kunci hanya dibaca dari environment (GitHub Secrets).
 """
-import os, sys, json, time
+import os, re, sys, json, time
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -114,8 +114,43 @@ def read_item_sales(moka, oid, start, end):
 
 
 # ------------------------------------------------------------------ olah
-def build_rows(items, reports):
-    """Gabung variant per SKU (SKU sama dalam satu toko dijumlah). Variant tanpa SKU memakai ID:<variant>."""
+def name_key(name):
+    """V86: kunci nama item lintas toko (huruf/angka saja, kapital)."""
+    return re.sub(r'[^A-Z0-9]', '', str(name or '').upper())
+
+
+def variant_name(item, v):
+    return ' '.join(x for x in (str(item.get('name') or '').strip(), str(v.get('name') or '').strip()) if x)
+
+
+def global_name_index(catalogues):
+    """V86: indeks lintas SELURUH lokasi agar varian tanpa SKU tetap tercocok dengan item yang sama di DC/toko lain.
+    * nama → SKU (hanya bila nama itu punya tepat 1 SKU di semua lokasi)
+    * id varian Moka → nama kanonik (nama terbanyak untuk id itu; menangani item yang diganti nama di satu toko)"""
+    seen, vid_names = {}, {}
+    for items in catalogues:
+        for item in items or []:
+            if item.get('is_deleted'):
+                continue
+            for v in item.get('item_variants') or []:
+                if v.get('is_deleted'):
+                    continue
+                nk, sku = name_key(variant_name(item, v)), norm(v.get('sku'))
+                if sku:
+                    seen.setdefault(nk, set()).add(sku)
+                elif v.get('id') is not None and nk:
+                    c = vid_names.setdefault(str(v['id']), {})
+                    c[nk] = c.get(nk, 0) + 1
+    out = {k: next(iter(v)) for k, v in seen.items() if k and len(v) == 1}
+    out['__vid__'] = {vid: max(c.items(), key=lambda kv: (kv[1], kv[0]))[0] for vid, c in vid_names.items()}
+    return out
+
+
+def build_rows(items, reports, gindex=None):
+    """Gabung variant per SKU (SKU sama dalam satu toko dijumlah).
+    V86: varian tanpa SKU memakai SKU item bernama sama di lokasi lain; bila tidak ada, kunci NM:<nama>
+    (sama di semua toko) — sebelumnya ID:<variant> yang unik per toko sehingga stok DC/toko lain tidak tercocok."""
+    gindex = gindex or {}
     by_key, name_index = {}, {}
     untracked = 0
     for item in items:
@@ -129,8 +164,10 @@ def build_rows(items, reports):
             if v.get('is_deleted'):
                 continue
             sku = norm(v.get('sku'))
-            key = sku or f"ID:{v.get('id')}"
-            name = ' '.join(x for x in (str(item.get('name') or '').strip(), str(v.get('name') or '').strip()) if x)
+            name = variant_name(item, v)
+            nk = name_key(name)
+            canon = (gindex.get('__vid__') or {}).get(str(v.get('id'))) or nk
+            key = sku or gindex.get(nk) or gindex.get(canon) or (f"NM:{canon}" if canon else f"ID:{v.get('id')}")
             tracked = not (v.get('track_stock') is False or item.get('track_stock') is False)
             qty = num(v.get('in_stock'))
             r = by_key.get(key)
@@ -149,7 +186,7 @@ def build_rows(items, reports):
             c = num(v.get('cogs'))
             if c is not None and c > 0:
                 r['cogs'] = c
-            name_index.setdefault(norm(name), set()).add(key)
+            name_index.setdefault(name_key(name), set()).add(key)
             if not tracked:
                 untracked += 1
     unmatched = 0
@@ -158,7 +195,7 @@ def build_rows(items, reports):
             sku = norm(rep.get('sku'))
             key = sku if sku in by_key else None
             if key is None:
-                cand = name_index.get(norm(rep.get('name')), set())
+                cand = name_index.get(name_key(rep.get('name')), set())
                 key = next(iter(cand)) if len(cand) == 1 else None
             if key is None:
                 unmatched += 1
@@ -195,12 +232,13 @@ def keep(r):
 
 
 # ------------------------------------------------------------------ main
-def process(moka, db, run, outlet, sid, cut):
+def process(moka, db, run, outlet, sid, cut, items=None, gindex=None):
     t0 = time.time()
     oid, name = outlet['id'], outlet['name']
     notes = []
-    log(f'Stock {name}: membaca Item Library…')
-    items = read_catalogue(moka, oid)
+    if items is None:
+        log(f'Stock {name}: membaca Item Library…')
+        items = read_catalogue(moka, oid)
     windows = {
         'sold14': (cut - timedelta(days=13), cut),
         'prior14': (cut - timedelta(days=27), cut - timedelta(days=14)),
@@ -220,7 +258,7 @@ def process(moka, db, run, outlet, sid, cut):
         'sold30': raw['sold14'] + raw['prior14'] + raw['d28_29'],
         'sold90': raw['sold14'] + raw['prior14'] + raw['d28_29'] + raw['d30_89'],
     }
-    by_key, unmatched, _ = build_rows(items, reports)
+    by_key, unmatched, _ = build_rows(items, reports, gindex)
     if not by_key:
         raise ValueError('Item Library kosong; snapshot lama dipertahankan')
     if unmatched:
@@ -308,9 +346,29 @@ def main():
         except Exception as e:
             log('::warning::Status Stock tidak tersimpan: ' + explain_db_error(e))
 
+    # V86: baca Item Library semua lokasi dulu → indeks nama↔SKU lintas toko, baru hitung per lokasi.
+    catalogues = {}
+    def read_one(o):
+        log(f"Stock {o['name']}: membaca Item Library…")
+        return read_catalogue(moka, o['id'])
+    with ThreadPoolExecutor(max_workers=WORKERS) as pool:
+        futs = {pool.submit(read_one, o): o for o, _ in mapped}
+        for fut in as_completed(futs):
+            try:
+                catalogues[futs[fut]['id']] = fut.result()
+            except Exception as e:  # dicatat sebagai gagal pada tahap berikut
+                catalogues[futs[fut]['id']] = e
+    gindex = global_name_index([c for c in catalogues.values() if not isinstance(c, Exception)])
+    log(f'Stock: indeks nama↔SKU lintas lokasi {len(gindex):,} item')
+    def run_one(o, sid):
+        items = catalogues.get(o['id'])
+        if isinstance(items, Exception):
+            raise items
+        return process(moka, db, run, o, sid, cut, items, gindex)
+
     results = []
     with ThreadPoolExecutor(max_workers=WORKERS) as pool:
-        futs = {pool.submit(process, moka, db, run, o, sid, cut): (o, sid) for o, sid in mapped}
+        futs = {pool.submit(run_one, o, sid): (o, sid) for o, sid in mapped}
         for fut in as_completed(futs):
             o, sid = futs[fut]
             try:
