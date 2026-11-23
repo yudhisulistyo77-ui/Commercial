@@ -185,10 +185,10 @@ async function lossTab(d,body,epoch){
   if(!Array.isArray(s.lossReasons))s.lossReasons=s.lossReason?[s.lossReason]:[];
   const reasonLabel=()=>s.lossReasons.length?(s.lossReasons.length===1?s.lossReasons[0]:s.lossReasons.length+' alasan dipilih'):'Semua alasan';
   const reasonSum=el('summary',{class:'btn',style:'list-style:none;cursor:pointer;min-width:200px;text-align:left'},reasonLabel()+' ▾');
-  const reasonList=el('div',{style:'position:absolute;z-index:30;background:var(--card,#fff);border:1px solid var(--line,#ddd);border-radius:10px;padding:8px;max-height:300px;overflow:auto;min-width:280px;box-shadow:0 8px 24px rgba(0,0,0,.12)'});
+  const reasonList=el('div',{style:'position:absolute;z-index:30;background:var(--surface,#fff);color:var(--ink,#111);border:1px solid var(--ring,var(--line,#ddd));border-radius:12px;padding:10px;max-height:320px;overflow:auto;min-width:300px;box-shadow:var(--shadow,0 8px 24px rgba(0,0,0,.18))'});
   const reason=el('details',{class:'v88-reasons',style:'position:relative'},reasonSum,reasonList);
   const paintReasons=()=>{const opts=U.lossReasons||[],all=[...opts.map(x=>x.reason),...s.lossReasons.filter(v=>!opts.some(x=>x.reason===v))];
-    const boxes=all.map(v=>{const o=opts.find(x=>x.reason===v),cb=el('input',{type:'checkbox',value:v});cb.checked=s.lossReasons.includes(v);return el('label',{class:'rowline',style:'gap:6px;padding:3px 2px;white-space:nowrap'},cb,v+(o?' · '+Number(o.qty||0).toLocaleString('id-ID')+' pcs':''));});
+    const boxes=all.map(v=>{const o=opts.find(x=>x.reason===v),cb=el('input',{type:'checkbox',value:v,style:'accent-color:var(--accent,#5b5bd6);width:16px;height:16px;flex:none'});cb.checked=s.lossReasons.includes(v);return el('label',{class:'rowline',style:'gap:8px;padding:5px 4px;white-space:nowrap;color:var(--ink,#111);cursor:pointer;font-weight:500'},cb,v+(o?' · '+Number(o.qty||0).toLocaleString('id-ID')+' pcs':''));});
     const applyR=el('button',{class:'btn pri sm',type:'button',onclick:()=>{s.lossReasons=[...reasonList.querySelectorAll('input:checked')].map(c=>c.value);s.lossPage=0;reason.open=false;U.show();}},'Terapkan');
     const clear=el('button',{class:'btn sm',type:'button',onclick:()=>{s.lossReasons=[];s.lossPage=0;reason.open=false;U.show();}},'Semua alasan');
     const allOn=el('button',{class:'btn sm',type:'button',onclick:()=>reasonList.querySelectorAll('input').forEach(c=>c.checked=true)},'Centang semua');
