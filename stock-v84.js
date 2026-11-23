@@ -180,16 +180,29 @@ async function lossTab(d,body,epoch){
   const month=opsInput(s.lossFrom.slice(0,7),'month',{'aria-label':'Bulan Loss Sales'});month.onchange=()=>{if(!/^\d{4}-\d{2}$/.test(month.value))return;s.lossFrom=month.value+'-01';s.lossTo=monthEnd(month.value);s.lossPage=0;U.show();};
   const from=opsInput(s.lossFrom,'date',{'aria-label':'Dari tanggal'}),to=opsInput(s.lossTo,'date',{'aria-label':'Sampai tanggal'});
   const action=opsSelect([['','Semua tindakan'],...Object.entries(ACTION)],s.lossAction,{'aria-label':'Tindakan'});
-  const q=opsInput(s.lossQuery,'search',{placeholder:'Cari produk / warna / alasan','aria-label':'Cari loss'}),apply=el('button',{class:'btn pri',type:'button'},'Terapkan'),csv=el('button',{class:'btn sm',type:'button'},'⇩ CSV analisa loss');
+  /* V87: filter alasan; pilihan diisi dari data periode (lihat reason_options) */
+  const reason=opsSelect([['','Semua alasan'],...(U.lossReasons||[]).map(x=>[x.reason,x.reason+' · '+Number(x.qty||0).toLocaleString('id-ID')+' pcs']),...(s.lossReason&&!(U.lossReasons||[]).some(x=>x.reason===s.lossReason)?[[s.lossReason,s.lossReason]]:[])],s.lossReason||'',{'aria-label':'Alasan loss'});
+  reason.onchange=()=>{s.lossReason=reason.value;s.lossPage=0;U.show();};
+  const q=opsInput(s.lossQuery,'search',{placeholder:'Cari produk / warna / alasan','aria-label':'Cari loss'}),apply=el('button',{class:'btn pri',type:'button'},'Terapkan'),csv=el('button',{class:'btn sm',type:'button'},'⇩ CSV analisa loss'),csvColor=el('button',{class:'btn sm',type:'button'},'⇩ CSV akumulasi warna');
   const out=el('div',{},el('p',{class:'sub'},'Menghitung Loss Sales × Stock…'));
   body.append(card('Loss Sales × Stock','Loss Sales (Google Sheet) dicocokkan ke SKU Moka lalu dibandingkan dengan stok saat ini di toko, DC dan toko lain',
-    el('div',{class:'v84-filters'},opsField('Bulan',month),opsField('Dari',from),opsField('Sampai',to),opsField('Tindakan',action),opsField('Cari',q),el('div',{class:'fld'},apply)),
-    el('p',{class:'sub'},'Cocok bila ≥ 75% kata produk + warna + ukuran ada di nama SKU (PENDEK=PDK, PANJANG=PJG, ANAK=KID, XXL=2XL). Stok yang dibandingkan adalah stok saat ini, bukan stok pada tanggal loss.'),csv,out));
-  apply.onclick=()=>{s.lossFrom=from.value||s.lossFrom;s.lossTo=to.value||s.lossTo;s.lossAction=action.value;s.lossQuery=q.value.trim();s.lossPage=0;U.show();};
-  const args=(offset,limit)=>({p_stores:storesArg(),p_from:s.lossFrom,p_to:s.lossTo,p_filters:{action:s.lossAction,query:s.lossQuery},p_limit:limit,p_offset:offset});
+    el('div',{class:'v84-filters'},opsField('Bulan',month),opsField('Dari',from),opsField('Sampai',to),opsField('Alasan',reason),opsField('Tindakan',action),opsField('Cari',q),el('div',{class:'fld'},apply)),
+    el('p',{class:'sub'},'Cocok bila ≥ 75% kata produk + warna + ukuran ada di nama SKU (PENDEK=PDK, PANJANG=PJG, ANAK=KID, XXL=2XL). Stok yang dibandingkan adalah stok saat ini, bukan stok pada tanggal loss.'),el('div',{class:'rowline',style:'gap:6px'},csv,csvColor),out));
+  apply.onclick=()=>{s.lossFrom=from.value||s.lossFrom;s.lossTo=to.value||s.lossTo;s.lossAction=action.value;s.lossReason=reason.value;s.lossQuery=q.value.trim();s.lossPage=0;U.show();};
+  const args=(offset,limit)=>({p_stores:storesArg(),p_from:s.lossFrom,p_to:s.lossTo,p_filters:{action:s.lossAction,query:s.lossQuery,reason:s.lossReason||''},p_limit:limit,p_offset:offset});
   try{
     const r=await masterRpc('commercial_stock_v85_loss',args(s.lossPage*PAGE,PAGE));if(epoch!==U.epoch)return;
     const a=r.actions||{},g=k=>a[k]||{qty:0,amount:0,groups:0},t=r.totals||{};
+    const opts=r.reason_options||[];if(JSON.stringify(opts)!==JSON.stringify(U.lossReasons||[])){U.lossReasons=opts;const cur=reason.value;reason.replaceChildren(...[['','Semua alasan'],...opts.map(x=>[x.reason,x.reason+' · '+Number(x.qty||0).toLocaleString('id-ID')+' pcs'])].map(([v,l])=>{const o=el('option',{value:v},l);o.selected=v===cur;return o;}));}
+    const tq=Number(t.qty)||0,share=v=>tq>0?(Number(v||0)/tq*100).toLocaleString('id-ID',{maximumFractionDigits:1})+'%':'—';
+    const actCells=x=>[int(x.display||0),int(x.tf||0),int(x.produksi||0),int(x.cek||0)];
+    const byCombed=r.by_combed?card('Akumulasi per Combed × Lengan × Warna','jenis bahan & lengan dibaca dari nama produk Loss Sales (24S/30S, PENDEK/PDK, PANJANG/PJG)'+(s.lossReason?' · alasan '+s.lossReason:''),
+      table([H('COMBED',{s:1}),'LENGAN','WARNA',H('PCS',{r:1}),H('% PCS',{r:1}),H('NILAI (Rp)',{r:1}),H('TOKO',{r:1}),H('CEK DISPLAY',{r:1}),H('TF',{r:1}),H('PRODUKSI',{r:1}),H('CEK NAMA',{r:1})],
+        r.by_combed.map(x=>[x.combed,x.lengan,x.warna,int(x.qty),share(x.qty),money(x.amount),int(x.stores),...actCells(x)]))):null;
+    const byColor=r.by_color?card('Akumulasi per Warna','semua produk digabung per warna'+(s.lossReason?' · alasan '+s.lossReason:''),
+      table([H('WARNA',{s:1}),H('PCS',{r:1}),H('% PCS',{r:1}),H('NILAI (Rp)',{r:1}),H('PRODUK',{r:1}),H('TOKO',{r:1}),H('CEK DISPLAY',{r:1}),H('TF',{r:1}),H('PRODUKSI',{r:1}),H('CEK NAMA',{r:1})],
+        r.by_color.map(x=>[x.warna,int(x.qty),share(x.qty),money(x.amount),int(x.products),int(x.stores),...actCells(x)]))):
+      el('p',{class:'note warn'},'Tabel akumulasi warna & filter alasan butuh V87.sql. Jalankan V87.sql di Supabase SQL Editor.');
     const tiles=el('div',{class:'grid g4'},
       tile('Loss Sales',money(t.amount),int(t.qty)+' pcs · '+int(t.rows)+' catatan · '+dateLabel(r.from)+' – '+dateLabel(r.to),null),
       tile('Bisa ditutup dengan TF',money(g('TF').amount),int(g('TF').qty)+' pcs · stok ada di DC/toko lain',null),
@@ -205,9 +218,11 @@ async function lossTab(d,body,epoch){
     out.replaceChildren(tiles,
       r.unmapped_store_rows?el('p',{class:'note warn'},int(r.unmapped_store_rows)+' catatan Loss Sales belum terpetakan ke toko (nama toko di sheet tidak cocok dengan master toko/alias).'):'',
       el('div',{class:'grid g2'},card('Loss per toko','tindakan dalam pcs',stores),card('Alasan loss teratas','sesuai kolom ALASAN LOSE SALE',reasons)),
+      byColor,byCombed,
       card('Rincian Loss × Stock',int(r.total)+' kelompok produk · urut nilai loss terbesar',
         table([H('TOKO',{s:1}),'PRODUK LOSS · ALASAN',H('PCS',{r:1}),H('NILAI',{r:1}),'SKU MOKA COCOK',H('STOK TOKO',{r:1}),H('STOK DC',{r:1}),H('STOK TOKO LAIN',{r:1}),'SUMBER TF TERBAIK','TINDAKAN'],r.rows.map(fmt)),
         pager(s.lossPage,r.total,p=>{s.lossPage=p;U.show();})));
+    csvColor.onclick=()=>{download('loss-per-warna-'+today()+'.csv',['Warna','Pcs','Nilai','Produk','Toko','Cek display','TF','Produksi','Cek nama'],(r.by_color||[]).map(x=>[x.warna,x.qty,x.amount,x.products,x.stores,x.display||0,x.tf||0,x.produksi||0,x.cek||0]));setTimeout(()=>download('loss-per-combed-lengan-warna-'+today()+'.csv',['Combed','Lengan','Warna','Pcs','Nilai','Toko','Cek display','TF','Produksi','Cek nama'],(r.by_combed||[]).map(x=>[x.combed,x.lengan,x.warna,x.qty,x.amount,x.stores,x.display||0,x.tf||0,x.produksi||0,x.cek||0])),400);};
     csv.onclick=async()=>{csv.disabled=true;try{const all=await masterRpc('commercial_stock_v85_loss',args(0,5000));download('loss-x-stock-'+today()+'.csv',['Toko','Produk','Warna','Ukuran','Alasan','Pcs','Nilai','SKU cocok','Jumlah SKU','Stok toko','Stok DC','Stok toko lain','Sumber TF','Tindakan'],all.rows.map(x=>[x.store_name,x.item,x.color,x.size,x.reasons,x.qty,x.amount,x.sample,x.skus,x.here,x.at_dc,x.at_other,(x.donors||[]).map(o=>o.name+' '+o.qty).join('; '),ACTION[x.action]||x.action]));}catch(e){toast(e.message);}finally{csv.disabled=false;}};
   }catch(e){if(epoch!==U.epoch)return;out.replaceChildren(/commercial_stock_v85_loss|PGRST202/i.test(e.message||'')?el('p',{class:'note warn'},'Fungsi Loss × Stock belum terpasang. Jalankan V85.sql di Supabase SQL Editor.'):/Sheets|belum tersedia/i.test(e.message||'')?el('p',{class:'note warn'},'Data Loss Sales belum tersedia. Tarik data di menu Loss Sales terlebih dahulu.'):errBox(e));}
 }

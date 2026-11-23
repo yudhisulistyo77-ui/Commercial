@@ -73,8 +73,10 @@ function tripList(cfg={}){
   return (cfg.trips||TRIPS).map((t,i)=>{const [spv,stores,start,end]=Array.isArray(t)?t:[t.spv,t.stores,t.start,t.end];
     const days=Math.round((D(end)-D(start))/86400000)+1,w=isoWeek(start),st=stores.map(k=>S[k]).filter(Boolean);
     const cost=st.length>1?Math.max(...st.map(x=>x.cost))+st.slice(1).reduce((a,x)=>a+Math.round(x.cost*0.3),0):(st[0]?.cost||0);
-    return {id:'T'+String(i+1).padStart(2,'0')+'-'+stores.join('-'),spv,stores,start,end,days,week:w.week,year:w.year,
-      label:st.map(x=>x.label).join(' + '),names:st.map(x=>x.name).join(' + '),mode:st.some(x=>x.mode==='pesawat')?'Pesawat':'Darat',cost};});
+    const o=Array.isArray(t)?{}:t; /* V87: trip bisa diubah (kode, moda, biaya, status, catatan) */
+    return {id:(o.code||'T'+String(i+1).padStart(2,'0'))+'-'+stores.join('-'),code:o.code||'T'+String(i+1).padStart(2,'0'),spv,stores,start,end,days,week:w.week,year:w.year,
+      label:st.map(x=>x.label).join(' + '),names:st.map(x=>x.name).join(' + '),mode:o.mode||(st.some(x=>x.mode==='pesawat')?'Pesawat':'Darat'),
+      cost:o.cost!=null&&o.cost!==''?Number(o.cost):cost,status:o.status||'Planned',notes:o.notes||''};});
 }
 
 /* ---------------- Itinerary per trip ----------------

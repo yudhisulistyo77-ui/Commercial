@@ -2792,12 +2792,12 @@ function kpiMonthCalc(mt,year,month){
   const wk=kpiMonthFromWeekly(mt,year,month);
   let target=null,realisasi=null,source='none';
   if(wk){ target=wk.target; realisasi=wk.realisasi; source='weekly'; }
-  if(isAutoKpiCode(mt.code)){
+  if(isAutoKpiCode(kpiAutoCode(mt))){
     /* V85: KPI otomatis (Sales & Target, CSL, Loss Sales). Nilai mingguan otomatis dihitung dari data menu
        terkait; isian manual per minggu (W1–W5) atau Bulanan di tab Weekly SELALU menimpa nilai otomatis. */
-    const auto=kpiAutoWeeks(mt.code,year,month),w=wk&&wk.w;
+    const auto=kpiAutoWeeks(kpiAutoCode(mt),year,month,mt),w=wk&&wk.w;
     const manual=w?[w.w1,w.w2,w.w3,w.w4,w.w5].map(v=>v==null||v===''?null:Number(v)):[null,null,null,null,null];
-    const metode=mt.code==='CSL_SCORE'?'Rata-rata':((w&&w.metode_mtd)||'Akumulasi'); /* CSL selalu rata-rata */
+    const metode=kpiAutoCode(mt)==='CSL_SCORE'?'Rata-rata':((w&&w.metode_mtd)||'Akumulasi'); /* CSL selalu rata-rata */
     if(w&&w.bulanan_override!=null&&w.bulanan_override!==''){realisasi=Number(w.bulanan_override);source='manual';}
     else if(manual.some(v=>v!=null)){const eff=manual.map((v,i)=>v!=null?v:auto.weeks[i]).filter(v=>v!=null);realisasi=eff.length?(metode==='Rata-rata'?eff.reduce((a,b)=>a+b,0)/eff.length:eff.reduce((a,b)=>a+b,0)):null;source='weekly+auto';}
     else {realisasi=auto.month;source='auto';}
@@ -2835,7 +2835,7 @@ function kpiMonthCalc(mt,year,month){
 function kpiYtdCalc(mt,year,uptoMonth){
   const months=[]; for(let m=1;m<=uptoMonth;m++) months.push(kpiMonthCalc(mt,year,m));
   const withData=months.filter(m=>m.realisasi!=null);
-  const metode=mt.code==='CSL_SCORE'?'Rata-rata':(mt.metode_ytd||'Akumulasi');
+  const metode=kpiAutoCode(mt)==='CSL_SCORE'?'Rata-rata':(mt.metode_ytd||'Akumulasi');
   let targetYtd=null,realisasiYtd=null;
   if(withData.length){
     if(metode==='Rata-rata'){
@@ -2870,7 +2870,7 @@ function kpiTotal(rows){ // rows: hasil kpiMonthCalc/kpiYtdCalc untuk semua metr
 function kpiRowCalc(mt){ // dipakai tab Input KPI, memakai bulan filter aktif (atau bulan terakhir berdata)
   const month = S.month || lastMonthWithData(S.year);
   const ytd = kpiYtdCalc(mt,S.year,month);
-  const autoRevenue=isAutoKpiCode(mt.code);
+  const autoRevenue=isAutoKpiCode(kpiAutoCode(mt));
   return {mt,target:ytd.targetYtd,actual:ytd.realisasiYtd,capaian:ytd.capaian,adj:ytd.adj,skor:ytd.skor,
     indikator:ytd.indikator,running:ytd.running,grade:ytd.grade,autoRevenue,
     auto:autoRevenue||(ytd.months.some(m=>m.source==='weekly')===false)};
@@ -2890,7 +2890,7 @@ function renderKpi(){
   const pf_kpi=pageFilterBar(S.kpiTab==='spv'?'kpi_spv':'kpi'); if(pf_kpi) p.append(pf_kpi);
   if(S.demo) p.append(demoBanner());
   p.append(kpiTabs(S.kpiTab));
-  if(S.metrics.some(m=>isAutoKpiCode(m.code))){kpiAutoLoad(S.year);const st=(S.kpiAutoState||{})[S.year];if(st&&st.startsWith('error'))p.append(el('p',{class:'note warn'},'Data KPI otomatis mingguan belum terbaca ('+st.slice(7)+'). Isian manual tetap dipakai.'));}
+  if(S.metrics.some(m=>isAutoKpiCode(kpiAutoCode(m)))){kpiAutoLoad(S.year);const st=(S.kpiAutoState||{})[S.year];if(st&&st.startsWith('error'))p.append(el('p',{class:'note warn'},'Data KPI otomatis mingguan belum terbaca ('+st.slice(7)+'). Isian manual tetap dipakai.'));}
   if(S.kpiTab==='spv'){renderKpiSpv(p);return;}
   if(!S.metrics.length && S.kpiTab!=='settings'){
     p.append(el('div',{class:'empty'},el('b',{},'Belum ada metrik KPI'),
@@ -2990,7 +2990,7 @@ function renderKpiInput(p){
     }
     tb.append(el('tr',{},
       el('td',{class:'r'},cells[0]),
-      el('td',{class:'sticky1'},cells[1], r.autoRevenue?el('span',{class:'pill ok',style:'margin-left:5px'},'otomatis · '+(KPI_AUTO_SOURCE[mt.code]||'Sales')):(r.auto?el('span',{class:'pill neu',style:'margin-left:5px'},'auto'):null)),
+      el('td',{class:'sticky1'},cells[1], r.autoRevenue?el('span',{class:'pill ok',style:'margin-left:5px'},'otomatis · '+(KPI_AUTO_SOURCE[kpiAutoCode(mt)]||'Sales')):(r.auto?el('span',{class:'pill neu',style:'margin-left:5px'},'auto'):null)),
       el('td',{},cells[2]), el('td',{},cells[3]), el('td',{},cells[4]),
       el('td',{class:'r'},cells[5]), el('td',{},cells[6]), el('td',{},cells[7]), el('td',{},cells[8]),
       el('td',{class:'r'},r.target==null?'—':fmtKpi(r.target,mt.unit,mt)),
@@ -3041,7 +3041,7 @@ function renderKpiWeekly(p){
     const w=kpiWeeklyRow(mt.id,S.year,month)||{};
     const key=mt.id, editing=window.S_kpiWeekEditing.has(key);
     const calc=kpiMonthCalc(mt,S.year,month);
-    const autoRev=isAutoKpiCode(mt.code);
+    const autoRev=isAutoKpiCode(kpiAutoCode(mt));
     let cells;
     if(editing){
       const d={target:w.target,w1:w.w1,w2:w.w2,w3:w.w3,w4:w.w4,w5:w.w5,bulanan_override:w.bulanan_override,metode_mtd:w.metode_mtd||'Akumulasi'};
@@ -3058,10 +3058,10 @@ function renderKpiWeekly(p){
       const targetInp=num_('target'); if(isAutoRevenueCode(mt.code)) targetInp.placeholder=autoTgtHint!=null?fmtKpi(autoTgtHint,mt.unit,mt)+' (otomatis)':'(otomatis)';
       cells=autoRev
         ? (()=>{ /* V85: KPI otomatis — semua kolom tetap bisa diisi manual; kosong = ikut nilai otomatis (placeholder). */
-            const aw=kpiAutoWeeks(mt.code,S.year,month),fmtA=v=>v==null?'':fmtKpi(v,mt.unit,mt)+' (otomatis)';
+            const aw=kpiAutoWeeks(kpiAutoCode(mt),S.year,month,mt),fmtA=v=>v==null?'':fmtKpi(v,mt.unit,mt)+' (otomatis)';
             const ins=['w1','w2','w3','w4','w5'].map((f,i)=>{const x=num_(f);x.placeholder=fmtA(aw.weeks[i]);return x;});
             const bul=num_('bulanan_override');bul.placeholder=fmtA(aw.month);
-            if(!d.metode_mtd||!w.metode_mtd)d.metode_mtd=mt.code==='CSL_SCORE'?'Rata-rata':'Akumulasi';selm.value=d.metode_mtd;
+            if(!d.metode_mtd||!w.metode_mtd)d.metode_mtd=kpiAutoCode(mt)==='CSL_SCORE'?'Rata-rata':'Akumulasi';selm.value=d.metode_mtd;
             return [targetInp,...ins,bul,selm,
               el('span',{style:'display:flex;gap:5px'},
                 el('button',{class:'btn sm pri',onclick:async()=>{
@@ -3089,11 +3089,11 @@ function renderKpiWeekly(p){
          otomatis dari Sales & Target bila tidak ada override manual) — bukan w.target mentah, supaya
          kolom ini tidak tampil "—" padahal sebenarnya sudah otomatis terisi. */
       cells=autoRev
-        ? (()=>{ const aw=kpiAutoWeeks(mt.code,S.year,month),src=KPI_AUTO_SOURCE[mt.code];
+        ? (()=>{ const aw=kpiAutoWeeks(kpiAutoCode(mt),S.year,month,mt),src=KPI_AUTO_SOURCE[kpiAutoCode(mt)];
             const cell=(m,a)=>m!=null?el('span',{title:'diisi manual'},f(m),' ',el('span',{class:'pill neu'},'manual')):a!=null?el('span',{class:'sub',title:'otomatis dari '+src},f(a)):'—';
             return [calc.target==null?(isAutoRevenueCode(mt.code)?'—':el('span',{class:'pill bad'},'isi target')):fmtKpi(calc.target,mt.unit,mt),
               ...['w1','w2','w3','w4','w5'].map((k,i)=>cell(w[k],aw.weeks[i])),cell(w.bulanan_override,aw.month),
-              (mt.code==='CSL_SCORE'?'Rata-rata':(w.metode_mtd||'Akumulasi'))+' · otomatis '+src,
+              (kpiAutoCode(mt)==='CSL_SCORE'?'Rata-rata':(w.metode_mtd||'Akumulasi'))+' · otomatis '+src,
               el('span',{style:'display:flex;gap:5px'},
                 el('button',{class:'btn sm',onclick:()=>{ window.S_kpiWeekEditing.add(key); renderKpi(); }},'Edit'),
                 hasEntry?el('button',{class:'btn sm',onclick:async()=>{
@@ -3434,6 +3434,10 @@ function autoTargetForMonth(code,year,month){
    CSL dan Loss Sales (Google Sheet). Isian manual mingguan tetap menimpa nilai otomatis (lihat kpiMonthCalc). */
 const KPI_AUTO_SOURCE={REVENUE_RP:'Sales',REVENUE_KOM_RP:'Sales',REVENUE_USER_RP:'Sales',CSL_SCORE:'CSL',LOSS_RP:'Loss Sales',LOSS_QTY:'Loss Sales'};
 function isAutoKpiCode(code){ return !!KPI_AUTO_SOURCE[code]; }
+/* V87: KPI kepuasan pelanggan (CSL/CSAT/Customer Satisfaction) otomatis mengambil data menu CSL walau
+   sumbernya belum dipilih "Otomatis · CSL". Isian manual per minggu tetap menimpa. */
+function kpiAutoCode(mt){ const c=mt&&mt.code; if(isAutoKpiCode(c)) return c; return mt&&kpiIsSatisfaction(mt)&&!/manual/i.test(String(mt.sumber||mt.source||''))?'CSL_SCORE':c; }
+function kpiCslPercent(mt){ const u=String(mt&&mt.unit||'').toLowerCase(); return u==='%'||u.includes('persen'); }
 function kpiAutoData(year){ return (S.kpiAuto||{})[year]||null; }
 function kpiAutoLoad(year,force){
   if(S.demo||!S.ready) return;
@@ -3444,7 +3448,7 @@ function kpiAutoLoad(year,force){
     .catch(e=>{S.kpiAutoState[year]='error: '+(/commercial_kpi_auto_v85|PGRST202/i.test(e.message||'')?'jalankan V85.sql di Supabase':e.message);})
     .finally(()=>{if(S.page==='kpi')renderKpi();});
 }
-function kpiAutoWeeks(code,year,month){
+function kpiAutoWeeks(code,year,month,mt){
   const out={weeks:[null,null,null,null,null],month:null,info:''};
   if(!isAutoKpiCode(code)) return out;
   const d=kpiAutoData(year),now=new Date(),cy=now.getFullYear(),cm=now.getMonth()+1;
@@ -3458,7 +3462,10 @@ function kpiAutoWeeks(code,year,month){
   }
   if(!d){out.info='memuat data otomatis…';return out;}
   if(code==='CSL_SCORE'){
-    (d.csl||[]).filter(r=>r.month===month).forEach(r=>{const v=r.value==null?null:Number(r.value);if(r.week==null)out.month=v;else out.weeks[r.week-1]=v;});
+    /* skala menu CSL 1–5; KPI bersatuan % memakai CSL % = skor ÷ 5 × 100 (sama dengan tile "CSL %" di menu CSL) */
+    const k=kpiCslPercent(mt)?20:1;
+    (d.csl||[]).filter(r=>r.month===month).forEach(r=>{const v=r.value==null?null:Number(r.value)*k;if(r.week==null)out.month=v;else out.weeks[r.week-1]=v;});
+    out.info='rata-rata menu CSL'+(k===20?' (CSL % = skor ÷ 5)':' (skala 1–5)');
     return out;
   }
   const key=code==='LOSS_QTY'?'qty':'amount';
@@ -6820,7 +6827,7 @@ function renderOps(type){
   controls.append(opsField('Dari tanggal',opsInput(f.from,'date',{onchange:e=>{f.from=e.target.value;if(type==='task'&&f.from)f.view='list';renderOps(type);}})),opsField('Sampai tanggal',opsInput(f.to,'date',{onchange:e=>{f.to=e.target.value;if(type==='task'&&f.to)f.view='list';renderOps(type);}})),el('button',{class:'btn',onclick:()=>{for(const k of ['query','pic','status','priority','category','store','from','to','activity_kind'])f[k]='';renderOps(type);}},'Reset filter'));const filterPanel=el('details',{class:'ops-filter-panel',open:(f.filtersOpen??innerWidth>800)?'':null,ontoggle:e=>{f.filtersOpen=e.target.open;}},el('summary',{},'Filter kegiatan · PIC, status, prioritas, kategori, toko & tanggal'),controls);p.append(filterPanel);
   const nav=el('div',{class:'rowline ops-calendar-nav'},el('button',{class:'btn',onclick:()=>move(-1),'aria-label':'Periode sebelumnya'},'‹'),el('button',{class:'btn',onclick:()=>{f.anchor=opsToday();renderOps(type);}},'Hari ini'),el('button',{class:'btn',onclick:()=>move(1),'aria-label':'Periode berikutnya'},'›'),opsInput(f.anchor,'date',{onchange:e=>{if(e.target.value){f.anchor=e.target.value;renderOps(type);}}}),el('span',{class:'spacer'}),opsSelect([['month','Bulan'],['week','Minggu'],['day','Harian'],['list','Daftar'],...(type==='task'?[['board','Board task']]:[])],f.view,{onchange:e=>{f.view=e.target.value;renderOps(type);}}));function move(n){if(f.view==='month'){const d=new Date(f.anchor.slice(0,7)+'-01T12:00Z');d.setUTCMonth(d.getUTCMonth()+n);f.anchor=d.toISOString().slice(0,10);}else f.anchor=addDate(f.anchor,n*(f.view==='week'?7:1));renderOps(type);}
   const gcheck=el('input',{type:'checkbox',onchange:e=>{f.google=e.target.checked;renderOps(type);}});gcheck.checked=f.google;nav.append(el('label',{class:'rowline'},gcheck,'Agenda Google'));p.append(nav);
-  if(type==='task'){const tabs=el('div',{class:'rowline ops-task-tabs',role:'group','aria-label':'Daftar Daily Task'});for(const [value,label]of [['active','Belum selesai'],['done','Selesai'],['all','Semua status']])tabs.append(el('button',{class:'btn '+((f.taskList||'active')===value?'pri':''),'aria-pressed':String((f.taskList||'active')===value),onclick:()=>{f.taskList=value;if(value==='all'||value==='active'&&filterValuesV76(f.status).includes('DONE')||value==='done'&&!filterValuesV76(f.status).every(v=>v==='DONE'))f.status='';renderOps(type);}},label+' ('+scoped.filter(r=>value==='all'||(value==='done'?r.status==='DONE':r.status!=='DONE')).length+')'));p.append(tabs);}const visible=type==='task'?scoped.filter(r=>f.taskList==='all'||((f.taskList||'active')==='done'?r.status==='DONE':r.status!=='DONE')):scoped;const overlay=opsFilter(GC.events,f).filter(r=>r.date<=range.end&&r.end_date>=range.start);const events=f.google&&!(type==='task'&&(f.taskList||'active')==='done')?[...visible,...overlay.filter(r=>type!=='task'||!all.some(t=>t.google_event_id&&t.google_event_id===r.id))]:visible;
+  if(type==='task'){const tabs=el('div',{class:'rowline ops-task-tabs',role:'group','aria-label':'Daftar Daily Task'});for(const [value,label]of [['active','Belum selesai'],['done','Selesai'],['all','Semua status']])tabs.append(el('button',{class:'btn '+((f.taskList||'active')===value?'pri':''),'aria-pressed':String((f.taskList||'active')===value),onclick:()=>{f.taskList=value;if(value==='all'||value==='active'&&filterValuesV76(f.status).includes('DONE')||value==='done'&&!filterValuesV76(f.status).every(v=>v==='DONE'))f.status='';renderOps(type);}},label+' ('+scoped.filter(r=>value==='all'||(value==='done'?r.status==='DONE':r.status!=='DONE')).length+')'));p.append(tabs);}const visible=type==='task'?scoped.filter(r=>f.taskList==='all'||((f.taskList||'active')==='done'?r.status==='DONE':r.status!=='DONE')):scoped;const overlay=opsFilter(GC.events,f).filter(r=>r.date<=range.end&&r.end_date>=range.start);const events=f.google&&!(type==='task'&&(f.taskList||'active')==='done')?[...visible,...overlay.filter(r=>!all.some(t=>t.google_event_id&&t.google_event_id===r.id))]:visible;
   p.append(el('div',{class:'note'},`${range.start} – ${range.end} · ${visible.length} kegiatan aplikasi${f.google?' · agenda Google dalam WITA':''}`));
   if(type==='task'&&filterValuesV76(f.pic).length){const matches=opsFilter(all,{...f,from:'',to:''}),outside=matches.filter(r=>r.date>range.end||(r.end_date||r.date)<range.start||(f.from&&(r.end_date||r.date)<f.from)||(f.to&&r.date>f.to));if(outside.length)p.append(el('div',{class:'note'},outside.length+' tugas PIC ini berada di luar periode. Tugas selesai tersedia pada daftar Selesai. ',el('button',{class:'btn sm',onclick:()=>{f.from=matches.map(r=>r.date).sort()[0];f.to=matches.map(r=>r.end_date||r.date).sort().at(-1);f.view='list';renderOps(type);}},'Tampilkan semua tanggal')));}
   const content=el('div',{class:'ops-calendar-content'});p.append(content);
@@ -6830,7 +6837,7 @@ function renderOps(type){
   const pending=scoped.filter(r=>r.sync_enabled&&r.sync_status!=='synced');if(pending.length)p.append(el('div',{class:'note'},`${pending.length} kegiatan dalam periode ini menunggu sinkronisasi.`,el('button',{class:'btn sm',disabled:googleConnected()&&!S.demo&&!OPS_JOB.running?null:'',onclick:()=>opsRunSync(pending)},'Sinkronkan kegiatan ini')));
   if(f.google){if(!googleConnected())content.prepend(el('div',{class:'note warn'},'Hubungkan Google untuk menampilkan agenda dari kalender Anda.'));else if(GC.loadedRange!==GC.calendar+'_'+range.start+'_'+range.end&&!GC.busy){GC.busy=true;googleOverlay(range.start,range.end).then(()=>{GC.busy=false;GC.error='';if(S.page===id)renderOps(type);}).catch(e=>{GC.busy=false;GC.error=e.message;toast(e.message);});}if(GC.error)content.prepend(el('div',{class:'note warn'},GC.error,el('button',{class:'btn sm',onclick:()=>{GC.error='';GC.loadedRange='';renderOps(type);}},'Coba ulang')));}
 }
-function opsDetails(record){let r=opsTaskState(record);const {box,modal}=opsModal(r.title),statusBadge=el('span',{class:'pill neu'},r.external?'Google Calendar':OPS_STATUS[r.status]);if(r.type==='task')box.classList.add('ops-task-detail');let progressBadge=!r.external?pillCell(r.progress/100):null;box.append(...[el('div',{class:'ops-detail-meta'},statusBadge,el('span',{},r.date+(r.end_date&&r.end_date!==r.date?' – '+r.end_date:'')),el('span',{},r.all_day?'Seharian':r.start_time+' – '+r.end_time),progressBadge),r.type!=='task'?el('p',{style:'white-space:pre-wrap;overflow-wrap:anywhere'},r.description||'Tidak ada uraian tambahan.'):null,el('p',{},'PIC: '+(r.pic||'—')+' · Lokasi: '+(r.location||'—'))].filter(Boolean));if(r.external){if(validUrl(r.google_url))box.append(el('a',{class:'btn pri',href:r.google_url,target:'_blank',rel:'noopener noreferrer'},'Buka di Google Calendar'));return;}
+function opsDetails(record){let r=opsTaskState(record);const {box,modal}=opsModal(r.title),statusBadge=el('span',{class:'pill neu'},r.external?'Google Calendar':OPS_STATUS[r.status]);if(r.type==='task')box.classList.add('ops-task-detail');let progressBadge=!r.external?pillCell(r.progress/100):null;box.append(...[el('div',{class:'ops-detail-meta'},statusBadge,el('span',{},r.date+(r.end_date&&r.end_date!==r.date?' – '+r.end_date:'')),el('span',{},r.all_day?'Seharian':r.start_time+' – '+r.end_time),progressBadge),r.type!=='task'?el('p',{style:'white-space:pre-wrap;overflow-wrap:anywhere'},r.description||'Tidak ada uraian tambahan.'):null,el('p',{},'PIC: '+(r.pic||'—')+' · Lokasi: '+(r.location||'—'))].filter(Boolean));if(r.external){/* V87: acara Google Calendar juga bisa diubah dari aplikasi — disimpan sebagai kegiatan aplikasi yang tertaut ke acara Google yang sama (bukan duplikat). */const linked=opsRecords('schedule').concat(opsRecords('task')).find(x=>x.google_event_id===r.id);box.append(el('div',{class:'rowline'},el('button',{class:'btn pri',onclick:()=>{modal.remove();if(linked){opsForm(linked.type||'schedule',linked);return;}opsForm('schedule',{title:r.title,description:r.description||'',location:r.location||'',date:r.date,end_date:r.end_date||r.date,start_time:r.start_time||'',end_time:r.end_time||'',all_day:!!r.all_day,status:'OPEN',priority:'MEDIUM',progress:0,category:'Umum',google_event_id:r.id,google_calendar_id:GC.calendar||null,google_url:r.google_url||'',sync_enabled:true});}},linked?'Ubah':'Ubah di aplikasi'),validUrl(r.google_url)?el('a',{class:'btn',href:r.google_url,target:'_blank',rel:'noopener noreferrer'},'Buka di Google Calendar'):null),el('p',{class:'sub'},'Perubahan disimpan di aplikasi dan diperbarui ke acara Google yang sama saat sinkron.'));return;}
 box.append(el('p',{},'Kategori: '+(r.category||'Umum')+' · Prioritas: '+OPS_PRIORITY[r.priority]+' · Zona waktu: '+(r.timezone||'Asia/Makassar')));if(r.assignees?.length)box.append(el('p',{},'Penerima Google: '+r.assignees.map(a=>(a.name?a.name+' · ':'')+a.email).join('; ')));if(r.type==='task')box.append(el('p',{},OPS_TASK_KINDS[r.activity_kind]+' · Rencana '+(r.planned_minutes||0)+' menit · Aktual '+(r.actual_minutes||0)+' menit'+(r.series_id?' · Bagian rangkaian; perubahan checklist hanya untuk tanggal ini.':'')));
 if(r.type==='task')box.append(el('section',{class:'ops-note-block'},el('h3',{},'Catatan & temuan'),el('p',{style:'white-space:pre-wrap;overflow-wrap:anywhere'},opsTaskFindings(r)||'Belum ada catatan. Tekan Ubah untuk mengisi.')),opsLegacyDailyNote(r));const feedback=el('p',{class:'sub',role:'status','aria-live':'polite'});if(r.type!=='task'&&r.checklist?.length){const list=el('div',{class:'ops-checklist'});r.checklist.forEach((c,i)=>{const cb=el('input',{type:'checkbox'});cb.checked=!!c.done;cb.onchange=async()=>{const old=c.done;c.done=cb.checked;cb.disabled=true;try{feedback.textContent=await saveOpsRecord(r);renderOps(r.type);}catch(e){c.done=old;cb.checked=!!old;feedback.textContent=e.message;}finally{cb.disabled=false;}};list.append(el('label',{class:'ops-check-row'},cb,el('span',{class:'ops-check-text'},c.text)));});box.append(list);}if(r.type==='task'&&r.checklist.length){const host=el('div');let busy=false;function paint(){host.replaceChildren(opsTaskChecklistView(r,async(id,done)=>{if(busy)return;busy=true;const next=opsTaskState({...r,checklist:r.checklist.map(c=>c.id===id?{...c,done}:c)});host.querySelectorAll('input').forEach(c=>c.disabled=true);try{const msg=await saveOpsRecord(next);r=opsTaskState(opsGet(r.type,r.id)||next);feedback.textContent=msg;statusBadge.textContent=OPS_STATUS[r.status];const badge=pillCell(r.progress/100);progressBadge.replaceWith(badge);progressBadge=badge;syncNote.textContent='Google: '+({pending:'Menunggu sinkronisasi',synced:'Tersinkron',error:'Belum berhasil',off:'Tidak disinkronkan'})[r.sync_status]+(r.sync_error?' · '+r.sync_error:'');renderOps(r.type);const focusIndex=r.checklist.findIndex(c=>c.id===id);paint();host.querySelectorAll('input')[focusIndex]?.focus({preventScroll:true});}catch(err){feedback.textContent='Belum tersimpan: '+err.message;paint();}finally{busy=false;}}));}paint();box.append(host);}else if(r.type==='task')box.append(el('div',{class:'empty'},'Belum ada aktivitas. Tekan Ubah untuk menambahkan checklist.'));box.append(feedback);
 const syncNote=el('p',{class:'note'},'Google: '+({pending:'Menunggu sinkronisasi',synced:'Tersinkron',error:'Belum berhasil',off:'Tidak disinkronkan'})[r.sync_status]+(r.sync_error?' · '+r.sync_error:''));const diagnosticCard=googleSyncDiagnosticCard(r);if(diagnosticCard)box.append(diagnosticCard);box.append(syncNote,el('div',{class:'rowline'},el('button',{class:'btn pri',onclick:()=>{modal.remove();opsForm(r.type,r);}},'Ubah'),r.type==='task'?el('button',{class:'btn',onclick:()=>{modal.remove();opsForm('task',opsTaskTemplate(r));}},'Gunakan sebagai template'):null,r.status!=='DONE'&&(r.type!=='task'||r.checklist.length)?el('button',{class:'btn',onclick:async e=>{e.target.disabled=true;try{const msg=await saveOpsRecord({...r,status:'DONE',progress:100,...(r.type==='task'?{checklist:r.checklist.map(c=>({...c,done:true}))}:{})});modal.remove();renderOps(r.type);toast(msg);}catch(err){toast(err.message);e.target.disabled=false;}}},r.type==='task'?'Selesaikan semua aktivitas':'Tandai selesai'):null,r.sync_enabled?el('button',{class:'btn',onclick:async e=>{e.target.disabled=true;try{await syncRecord(r);modal.remove();renderOps(r.type);toast('Disinkronkan ke Google.');}catch(err){toast(err.message);e.target.disabled=false;}}},'Sinkronkan sekarang'):null,validUrl(r.google_url)?el('a',{class:'btn',href:r.google_url,target:'_blank',rel:'noopener noreferrer'},'Buka kalender'):null,el('button',{class:'btn',onclick:async e=>{if(!confirm('Hapus kegiatan tanggal ini beserta kegiatan Google yang tersinkron? Tanggal lain dalam rangkaian tetap ada.'))return;e.target.disabled=true;try{await removeOpsRecord(r);modal.remove();renderOps(r.type);toast('Kegiatan dihapus.');}catch(err){toast(err.message);e.target.disabled=false;}}},'Hapus')));
@@ -7150,12 +7157,12 @@ setInterval(masterRevisionCheck,45000);window.addEventListener('focus',masterRev
 <script src="ui-v62.js?v=73"></script>
 <script src="member-items-v63.js?v=63"></script>
 <script src="sheets-dashboard-v64.js?v=77"></script>
-<script src="stock-v84.js?v=86"></script>
+<script src="stock-v84.js?v=87"></script>
 <script src="brand-detail-v78.js?v=78"></script>
 <script src="traffic-analysis-v64.js?v=65"></script>
 <script src="ui-v66.js?v=66"></script>
 <script src="sssg-v86.js?v=86"></script>
-<script src="visit-plan-v86.js?v=86"></script>
-<script src="visit-v86.js?v=86"></script>
+<script src="visit-plan-v86.js?v=87"></script>
+<script src="visit-v87.js?v=87"></script>
 </body>
 </html>
