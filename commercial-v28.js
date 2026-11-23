@@ -585,11 +585,12 @@ td.sticky1{overflow-wrap:break-word}
     const ids = scopeStoreIds();
     const body = el('div'); p.append(body);
     body.append(el('p', { class: 'note' }, 'Memuat heatmap…'));
-    let rows, cov;
+    let rows, cov, audit = null;
     try {
-      [rows, cov] = await Promise.all([
+      [rows, cov, audit] = await Promise.all([
         DB.rpc('commercial_heatmap_v1', { p_from: from, p_to: to, p_stores: ids }),
-        DB.rpc('commercial_coverage_v1', { p_from: from, p_to: to, p_stores: ids })]);
+        DB.rpc('commercial_coverage_v1', { p_from: from, p_to: to, p_stores: ids }),
+        DB.rpc('commercial_jam_audit_v86', { p_from: from, p_to: to, p_stores: ids }).catch(() => null)]);
     } catch (e) { body.replaceChildren(); sqlMissing(body, e); return; }
     if (S.page !== 'jam'||epoch!==V28.jamEpoch||!body.isConnected) return;
     body.replaceChildren();
@@ -648,8 +649,33 @@ td.sticky1{overflow-wrap:break-word}
         slots.slice(0, 8).map((s, i) => [String(i + 1), DAYS[s.d - 1], String(s.h).padStart(2, '0') + ':00–' + String(s.h + 1).padStart(2, '0') + ':00', fmtV(s.v)]))),
       card('Hari tersibuk', M.avg ? 'jumlah rata-rata per hari' : 'total periode', mkTable([H('HARI', { s: 1 }), H('NILAI', { r: 1 }), H('PORSI', { r: 1 })],
         byDow.map(x => [DAYS[x.d - 1], fmtV(x.v), pct(byDow.reduce((n, y) => n + y.v, 0) ? x.v / byDow.reduce((n, y) => n + y.v, 0) : null, 1)])))));
+    body.append(jamSourceCard(audit, from, to, firstCov, lastCov, rows));
     body.append(card('Jam ramai per toko', 'jam puncak & rata-rata harian dari hari yang sudah tersinkron',
       mkTable([H('TOKO', { s: 1 }), H('JAM PUNCAK'), H('SLOT PUNCAK'), H('TRX / HARI', { r: 1 }), H('NET / HARI', { r: 1 }), H('PORSI 17–22', { r: 1 })], storeRows)));
+  }
+
+  /* V86: asal data Jam Ramai + validasi silang dengan Net Sales harian. */
+  function jamSourceCard(a, from, to, firstCov, lastCov, rows) {
+    const fmt = v => v == null ? '—' : String(v).slice(0, 10).split('-').reverse().join('/');
+    const when = v => { if (!v) return '—'; try { return new Date(v).toLocaleString('id-ID', { timeZone: 'Asia/Makassar', dateStyle: 'medium', timeStyle: 'short' }) + ' WITA'; } catch { return String(v); } };
+    const totalTrx = rows.reduce((n, r) => n + (num(r.trx) || 0), 0);
+    const facts = el('ul', { class: 'v86-facts', style: 'margin:0 0 8px 18px;line-height:1.55' },
+      el('li', {}, el('b', {}, 'Sumber: '), 'transaksi Moka POS (API resmi get_latest_transactions) yang ditarik oleh Sinkron Moka (GitHub Actions) ke tabel moka_hourly — satu baris per toko × tanggal × jam. Bukan input manual dan bukan estimasi.'),
+      el('li', {}, el('b', {}, 'Jam: '), 'jam nota dibuat di kasir, zona WITA (UTC+8). Rata-rata per hari = total ÷ jumlah hari (Senin, Selasa, …) dalam cakupan data.'),
+      el('li', {}, el('b', {}, 'Transaksi: '), 'jumlah nota terbayar. Nota refund tidak dihitung sebagai transaksi; nilai refund mengurangi Net pada jam nota aslinya. Item = jumlah qty barang per nota (paket bundel dihitung per paket).'),
+      el('li', {}, el('b', {}, 'Periode filter: '), fmt(from) + ' s.d. ' + fmt(to) + ' · cakupan data tersinkron ' + fmt(firstCov) + ' s.d. ' + fmt(lastCov) + ' · ' + int(totalTrx) + ' nota dalam heatmap.'),
+      el('li', {}, el('b', {}, 'Sinkron terakhir berhasil: '), a?.last_run ? when(a.last_run.finished_at) + ' · mode ' + String(a.last_run.mode || '').toUpperCase() + (a.last_run.data_until ? ' · data s.d. ' + when(a.last_run.data_until) : '') : (a ? 'belum ada' : 'pasang V86.sql untuk melihat rincian tarikan data')));
+    if (!a) return card('Asal & tarikan data', 'cara angka Jam Ramai dihitung', facts);
+    const days = Number(a.calendar_days) || 0;
+    const list = (a.stores || []).map(r => {
+      const gap = num(r.net) - num(r.daily_net), miss = Math.max(0, days - num(r.cov_days));
+      const ok = Math.abs(gap) <= 1, state = !num(r.cov_days) ? ['Belum disinkron', 'bad'] : !ok ? ['Selisih — sinkron ulang dengan komponen Transaksi', 'bad'] : miss ? ['Cocok · ' + miss + ' hari belum tersinkron', 'neu'] : ['Cocok', 'ok'];
+      return [r.name, int(r.cov_days) + ' / ' + int(days), fmt(r.first_date) + ' – ' + fmt(r.last_date), int(r.trx), compact(r.net), compact(r.daily_net), compact(gap), el('span', { class: 'pill ' + state[1] }, state[0]), when(r.synced_at)];
+    });
+    const good = (a.stores || []).filter(r => Math.abs(num(r.net) - num(r.daily_net)) <= 1 && num(r.cov_days) > 0).length;
+    return card('Asal & tarikan data', good + ' dari ' + (a.stores || []).length + ' toko: Net heatmap sama dengan Net Sales harian (Sales Type) pada tanggal yang sama', facts,
+      mkTable([H('TOKO', { s: 1 }), H('HARI TERSINKRON'), H('RENTANG DATA'), H('NOTA', { r: 1 }), H('NET HEATMAP', { r: 1 }), H('NET SALES HARIAN', { r: 1 }), H('SELISIH', { r: 1 }), H('VALIDASI'), H('DITARIK')], list),
+      el('p', { class: 'sub' }, 'Validasi: Net per jam dijumlah lalu dicocokkan dengan Net Sales harian hasil sinkron yang sama (moka_sales_type_daily), yang sebelumnya sudah dicocokkan dengan Sales Summary Moka. Hari yang belum tersinkron tidak ikut dihitung.'));
   }
 
   /* ======================= PELANGGAN & MEMBER ======================= */

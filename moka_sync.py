@@ -122,7 +122,8 @@ def http(method, url, headers, body=None, timeout=180, retries=5, retry_500=True
                 time.sleep(min(60, 4 * 2 ** attempt))
                 continue
             raise HttpError(e.code, text, where) from None
-        except (urllib.error.URLError, TimeoutError, ConnectionError, httpclient.HTTPException, OSError) as e:
+        except (urllib.error.URLError, TimeoutError, ConnectionError, httpclient.HTTPException, OSError, ValueError) as e:
+            # V86: IncompleteRead/JSON terpotong = respons Moka terputus → coba ulang.
             if attempt < retries - 1:
                 time.sleep(min(60, 4 * 2 ** attempt))
                 continue
@@ -490,6 +491,8 @@ def fetch_store_month(ctx, outlet, sid, period):
         res["captured_until"] = until.isoformat()
         pays = ctx.moka.transactions(oid, since, until) if COMPONENTS & {"sales_type","transactions"} and (net or summ.get("number_of_transactions") or fetch_from != d1) else []
         res["payments"] = len(pays)
+        if "members" in COMPONENTS and pays and fetch_from == d1 and fetch_to == d2:
+            cache_payments(oid, d1, d2, pays)
         agg = aggregate(pays)
         res["agg"] = agg
 
@@ -543,8 +546,68 @@ def classify_lag(res):
                          f"detail {basis:,.0f} (selisih {net - basis:,.0f}); periksa sumber sebelum menyatakan rekonsiliasi selesai"]
 
 
-def process(ctx, outlet, sid, period):
-    t0 = time.time()
+def reconcile_by_day(ctx, res, outlet):
+    """V86: Selisih Sales Summary vs detail yang tersisa setelah ditunggu ulang.
+    1) Summary diambil ulang — sering sudah sesuai (laporan ringkasan Moka terlambat diperbarui).
+    2) Bila belum, dicocokkan PER HARI. Bila semua hari cocok, selisih hanya pada total bulanan Moka.
+    3) Bila selisih ada di tanggal tertentu dan detail transaksi = Item Sales, data disimpan dengan catatan
+       tanggal & nominal (refund/void yang diproses ulang di Moka). Tanggal itu otomatis dicek ulang pada sinkron berikutnya."""
+    try:
+        oid = outlet["id"]
+        d1, d2 = date.fromisoformat(res["start"]), date.fromisoformat(res["end"])
+        f1, f2 = date.fromisoformat(res["fetch_from"]), date.fromisoformat(res.get("fetch_to") or res["end"])
+        detail = res["sales_type_total"] if "sales_type" in COMPONENTS else res.get("item_total")
+        if detail is None:
+            return
+        again = ctx.moka.sales_summary(oid, d1, d2)
+        net2 = signed_money(again.get("net_sales") or 0)
+        if abs(net2 - detail) <= TOLERANCE:
+            res.update(status="OK", errors=[], summary=again)
+            res["notes"] = ["Sales Summary Moka sempat terlambat diperbarui; sesuai setelah dicek ulang."]
+            return
+        if "sales_type" not in COMPONENTS or (f2 - f1).days > 40:
+            return
+        bad, day = [], f1
+        while day <= f2:
+            s = signed_money(ctx.moka.sales_summary(oid, day, day).get("net_sales") or 0)
+            det = sum(v["amount"] for v in (res.get("agg") or {}).get("sales_types", {}).get(day, {}).values())
+            if abs(s - det) > TOLERANCE:
+                bad.append((day, s, det))
+            day += timedelta(days=1)
+        if not bad:
+            res.update(status="OK", errors=[])
+            res["notes"] = [f"Semua hari cocok per tanggal; total Sales Summary bulanan Moka belum konsisten "
+                            f"(selisih {net2 - detail:,.0f}). Data disimpan sesuai ringkasan harian."]
+            return
+        gap = sum(s - d for _, s, d in bad)
+        if abs(gap - (net2 - detail)) <= max(TOLERANCE, 1000):
+            res.update(status="OK", errors=[])
+            res["notes"] = ["Selisih hanya pada " + ", ".join(f"{d:%d/%m} (Summary {s:,.0f} vs transaksi {x:,.0f})" for d, s, x in bad)
+                            + ": refund/void yang diproses ulang di Moka. Detail transaksi = Item Sales, data disimpan; tanggal tsb dicek ulang otomatis."]
+            res["recheck_days"] = [d.isoformat() for d, _, _ in bad]
+            return
+        res["errors"] = [res["errors"][0] + " · tanggal bermasalah: " + ", ".join(f"{d:%d/%m} ({s - x:,.0f})" for d, s, x in bad)]
+    except Exception as e:  # pemeriksaan tambahan tidak boleh menggagalkan toko
+        log(f"Cek per hari {outlet['name']} gagal: {type(e).__name__}: {str(e)[:120]}")
+
+
+TXN_CACHE = os.path.join(os.environ.get("RUNNER_TEMP") or "/tmp", "moka-txn-cache-v86")
+
+
+def cache_payments(oid, d1, d2, pays):
+    """V86: transaksi lengkap satu toko-bulan disimpan sementara di runner agar tahap Member tidak menarik ulang."""
+    try:
+        import gzip
+        os.makedirs(TXN_CACHE, exist_ok=True)
+        path = os.path.join(TXN_CACHE, f"{oid}_{d1.isoformat()}_{d2.isoformat()}.json.gz")
+        with gzip.open(path + ".tmp", "wt", encoding="utf-8") as fh:
+            json.dump(pays, fh, separators=(",", ":"), default=str)
+        os.replace(path + ".tmp", path)
+    except Exception as e:
+        log(f"Cache transaksi Member tidak tersimpan ({type(e).__name__}); Member akan menarik ulang.")
+
+
+def _process_safe(ctx, outlet, sid, period, t0):
     try:
         return _process(ctx, outlet, sid, period, t0)
     except Exception as e:  # satu toko gagal tidak boleh menghentikan toko lain
@@ -552,6 +615,24 @@ def process(ctx, outlet, sid, period):
         return {"outlet": outlet["name"], "outlet_id": outlet["id"], "store_id": sid, "year": y, "month": m,
                 "start": d1.isoformat(), "end": d2.isoformat(), "status": "ERROR",
                 "errors": [f"{type(e).__name__}: {str(e)[:300]}"], "seconds": round(time.time() - t0, 1)}
+
+
+def _transient(res):
+    """Gangguan koneksi/halaman Moka (bukan selisih angka) layak dicoba ulang sekali."""
+    errs = " ".join(res.get("errors") or [])
+    return res.get("status") == "ERROR" and "!=" not in errs and "LIVE berubah" not in errs and "Selisih sumber" not in errs
+
+
+def process(ctx, outlet, sid, period):
+    t0 = time.time()
+    res = _process_safe(ctx, outlet, sid, period, t0)
+    if _transient(res):
+        first = (res.get("errors") or ["?"])[0][:160]
+        log(f"  ↻ {outlet['name']} {period[0]}-{period[1]:02d}: gangguan sementara ({first}); dicoba ulang 30 detik lagi…")
+        time.sleep(30)
+        res = _process_safe(ctx, outlet, sid, period, t0)
+        res.setdefault("notes", []).append("Berhasil setelah dicoba ulang (gangguan koneksi Moka)." if res.get("status") in ("OK", "UNCHANGED") else "Sudah dicoba ulang 1x.")
+    return res
 
 
 def _process(ctx, outlet, sid, period, t0):
@@ -581,6 +662,8 @@ def _process(ctx, outlet, sid, period, t0):
             return closed
     if res["status"] == "ERROR" and res.get("lag"):
         classify_lag(res)
+    if res["status"] == "WARN":
+        reconcile_by_day(ctx, res, outlet)
     res["seconds"] = round(time.time() - t0, 1)
     return res
 
@@ -892,11 +975,15 @@ def main():
     member_result=None;member_error=None
     member_tick = [0.0]
     def member_progress_v62(*args):
-        message = str(args[0]) if len(args)==1 else f'Member: {args[0]}/{args[1]} customer diperiksa; {args[2]} transaksi sumber.'
+        # V86: (pesan) atau (pesan, selesai, total) → progres Member terlihat bergerak di dashboard.
+        message = str(args[0])
         log(message)
-        if time.monotonic()-member_tick[0]>=15:
+        if time.monotonic()-member_tick[0]>=10 or (len(args)==3 and args[1]==0):
             member_tick[0]=time.monotonic()
-            run_update(message=message[:900],progress={"phase":"members","detail":message[:300]})
+            prog={"phase":"members","detail":message[:300]}
+            if len(args)==3 and args[2]:
+                prog.update(done=int(args[1]),total=int(args[2]),outlet=message.split('·')[-1].strip()[:60])
+            run_update(message=message[:900],progress=prog)
 
     if 'members' in COMPONENTS and not PRICE_ONLY:
         try:
@@ -907,8 +994,12 @@ def main():
             else:
                 from moka_member_official_v50 import sync as sync_members  # API resmi Moka
                 log('Member: API resmi Moka (Customer List resmi + transaksi resmi)…')
+            os.environ['MEMBER_TXN_CACHE']=TXN_CACHE
+            kw={} if env("MEMBER_SOURCE", "official").lower() == "legacy" else {
+                'fetch':lambda oid,since,until: moka.transactions(oid,since,until),
+                'summary':lambda oid,d1,d2: moka.sales_summary(oid,d1,d2)}
             member_result=sync_members(db,mapped,stores,aliases,periods,TZ,writing,
-                progress=member_progress_v62)
+                progress=member_progress_v62,**kw)
             log(f"Member API OK: {member_result['customers']} customer; {member_result['receipts']} nota/refund; {member_result['http_requests']} request sumber.")
         except Exception as e:
             member_error=str(e) if type(e).__name__=='MemberSourceError' else 'Pemrosesan Member gagal ('+type(e).__name__+'); periksa SQL V47/V48 dan konfigurasi sumber.'

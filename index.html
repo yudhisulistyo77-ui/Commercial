@@ -1517,7 +1517,7 @@ async function loadAll(){
   try{
     const readWarnings=[];const opt = p=>p.catch(e=>{readWarnings.push(e.message);return [];});       // tabel baru: jangan gagalkan seluruh muat bila belum ada
     let trxSalesError='';
-    const [stores,aliases,dashAll,growth,trxRows,map,unmapped,metrics,entries,pdca,settings,logs,
+    let [stores,aliases,dashAll,growth,trxRows,map,unmapped,metrics,entries,pdca,settings,logs,
            people,brandTargets,chanTargets,mkt,pica,kpiWeekly,trxSales] = await Promise.all([
       DB.sel('stores?select=*&order=sort_order'),
       DB.sel('store_aliases?select=*,stores(name)&order=alias'),
@@ -1553,7 +1553,10 @@ async function loadAll(){
     map.forEach(m=>{ if(m.channel) m.channel=normCh(m.channel); });
     (chanTargets||[]).forEach(t=>{ if(t.channel) t.channel=normCh(t.channel); });
     (mkt||[]).forEach(r=>{ if(r.channel) r.channel=normCh(r.channel); });
-    Object.assign(S,{stores,aliases,dash,dashAll,growth,trx,trxAll,map,unmapped,metrics,entries,pdca,logs,
+    /* V86: toko nonaktif (mis. MAMU TSM — penjualannya sudah tercatat di Toraja) disembunyikan dari seluruh
+       analisa; daftar lengkap tetap ada di S.storesAll untuk halaman Pengaturan (aktifkan kembali). */
+    const storesAll=stores;stores=storesAll.filter(s=>s.is_active!==false);
+    Object.assign(S,{stores,storesAll,aliases,dash,dashAll,growth,trx,trxAll,map,unmapped,metrics,entries,pdca,logs,
       people,brandTargets,chanTargets,mkt,pica,kpiWeekly,trxSales,trxSalesError,readWarnings,ready:true,demo:false});
     S.rollCache.clear();_catListCache=null;
     if(typeof BAZAR!=='undefined')BAZAR.loaded=false;
@@ -5024,8 +5027,8 @@ function comparisonPanel(pf,controls){if(pf){const scope=el('div',{class:'compar
 }
 function h2hData(years,m1,m2,window=null){
  const w=window&&typeof window==='object'?window:{mode:'month',m1,m2,d1:1,d2:31},out={};
- for(const y of years){const map=new Map(),get=id=>{if(!map.has(id))map.set(id,{name:(S.stores.find(s=>s.id===id)||{}).name||String(id),sales:0,kom:0,usr:0,kt:0,ut:0,um:0,tgt:0,tgtDays:0,trx:activeProductBrands().length?null:0,val:activeProductBrands().length?null:0,days:comparisonDays(w,y),targetDays:comparisonTargetDays(w,y)});return map.get(id);};
- S.dashAll.forEach(raw=>{const r=brandSalesRow(raw);if(r.year!==y||!storeOk(r.store_id))return;const f=comparisonFraction(w,y,r.month);const tf=comparisonTargetFraction(w,y,r.month);if(!f&&!tf)return;const o=get(r.store_id),metrics=comparisonSalesMetricsV23(r,w,y,r.month);for(const [key,col] of Object.entries({sales:'total_sales',kom:'sales_komersial',usr:'sales_user',kt:'sales_komersial_tigalapan',ut:'sales_user_tigalapan',um:'sales_user_mamu',tgt:'target_total'})){if(key==='tgt'&&activeProductBrands().length&&r[col]==null){if(tf)o.missingTarget=true;continue;}o[key]+=key==='tgt'?comparisonTargetValue(r[col],w,y,r.month):metrics[key];}});
+ for(const y of years){const map=new Map(),get=id=>{if(!map.has(id))map.set(id,{name:(S.stores.find(s=>s.id===id)||{}).name||String(id),sales:0,kom:0,usr:0,kt:0,ut:0,um:0,tgt:0,tk:0,tu:0,tgtDays:0,trx:activeProductBrands().length?null:0,val:activeProductBrands().length?null:0,days:comparisonDays(w,y),targetDays:comparisonTargetDays(w,y)});return map.get(id);};
+ S.dashAll.forEach(raw=>{const r=brandSalesRow(raw);if(r.year!==y||!storeOk(r.store_id))return;const f=comparisonFraction(w,y,r.month);const tf=comparisonTargetFraction(w,y,r.month);if(!f&&!tf)return;const o=get(r.store_id),metrics=comparisonSalesMetricsV23(r,w,y,r.month);for(const [key,col] of Object.entries({sales:'total_sales',kom:'sales_komersial',usr:'sales_user',kt:'sales_komersial_tigalapan',ut:'sales_user_tigalapan',um:'sales_user_mamu',tgt:'target_total',tk:'target_komersial',tu:'target_user'})){const isT=key==='tgt'||key==='tk'||key==='tu';if(isT&&activeProductBrands().length&&r[col]==null){if(tf&&key==='tgt')o.missingTarget=true;continue;}o[key]+=isT?comparisonTargetValue(r[col],w,y,r.month):metrics[key];}});
  if(!activeProductBrands().length)manualTrxRows().forEach(r=>{if(r.year!==y||!storeOk(r.store_id))return;const f=comparisonFraction(w,y,r.month);if(!f)return;const o=get(r.store_id);o.trx+=comparisonSalesValue(r.jumlah_transaksi,w,y,r.month);o.val+=comparisonSalesValue(r.nilai_transaksi,w,y,r.month);if(r.jumlah_transaksi==null||(r.jumlah_transaksi===0&&r.nilai_transaksi>0))o.missingTrx=true;if(r.nilai_transaksi==null)o.missingTrxSales=true;});map.forEach(o=>{if(o.missingTarget)o.tgt=null;o.tgtDays=o.tgt==null?null:comparisonTargetDays(w,y)>0?o.tgt/comparisonTargetDays(w,y):0;if(o.missingTrx)o.trx=null;if(o.missingTrxSales)o.val=null;});out[y]=map;}
  return out;
 }
@@ -5309,6 +5312,9 @@ function renderH2H(){
         ...footUsr2.map(x=>compact(x)),growthPill(footUsr2[2],footUsr2[1]),gapTxt(footUsr2[2],footUsr2[1]),growthPill(footUsr2[2],footUsr2[0]),gapTxt(footUsr2[2],footUsr2[0])])));
   }
 
+  /* V86: Komersial & User vs target s.d. cut-off + perbandingan vs bulan sebelumnya (sssg-v86.js) */
+  if(globalThis.SSSG86){try{globalThis.SSSG86.append(p,{st,window,D,ids:liveIds,names,G,T});}catch(e){p.append(el('p',{class:'note warn'},'Tabel V86 gagal: '+e.message));}}
+
   /* item sales (dimuat dari database) */
   const host=el('div',{style:'display:flex;flex-direction:column;gap:18px'});
   p.append(host);
@@ -5531,6 +5537,8 @@ function renderProgram(){
       const ser=years.map((y,i)=>({name:String(y),color:cols[i],vals:byYear[y]}));
       host.append(chartCard('Sales program per bulan, tiga tahun',ymLabel(y1,m1,m2)+' · '+ymLabel(y2,m1,m2)+' · '+ymLabel(y3,m1,m2),
         el('div',{},legend(ser),groupedBars(MON3.slice(m1-1,m2),ser,{h:300}))));
+      /* V86: perbandingan dengan bulan sebelumnya */
+      if(globalThis.SSSG86){const momBox=el('div',{});host.append(momBox);globalThis.SSSG86.program(momBox,prog,y3,m1,m2,byYear,tgtOf).catch(e=>momBox.append(el('p',{class:'note warn'},'Perbandingan bulan sebelumnya gagal: '+e.message)));}
 
       /* ---------- Round 20: chart trend Sales vs Target + Achievement (tahun berjalan y3) — SEBELUMNYA
          Program Sales hanya punya chart 3-tahun di atas tanpa target/achievement sama sekali. Memakai
@@ -6389,7 +6397,7 @@ function spvCard(){
   c.append(el('header',{},el('h2',{},'SPV Area & Toko'),el('span',{class:'sub'},'ubah SPV, area dan toko di sini — filter SPV Area di bagian atas langsung mengikuti')));
   const spvs=S.people.filter(q=>q.role==='SPV'&&q.is_active!==false);
   const tb=el('tbody');
-  S.stores.forEach(s=>{
+  (S.storesAll||S.stores).forEach(s=>{
     const sel=el('select',{},el('option',{value:''},'— belum ada —'),spvs.map(q=>el('option',{value:q.name,selected:s.spv===q.name?'':null},q.label)));
     const mg=el('input',{type:'text',value:s.opr_mgr||'',style:'width:150px'}), zn=el('input',{type:'text',value:s.zona||'',style:'width:150px'}),
           al=el('input',{type:'text',value:s.alamat||'',style:'width:260px'});
@@ -7117,7 +7125,7 @@ setInterval(masterRevisionCheck,45000);window.addEventListener('focus',masterRev
 <script src="price-list-ui-v24.js?v=26"></script>
 <script src="member-v27.js?v=34"></script>
 <script src="member-ui-v27.js?v=37"></script>
-<script src="commercial-v28.js?v=84"></script>
+<script src="commercial-v28.js?v=86"></script>
 <script src="member-monthly-v37.js?v=38"></script>
 <script src="auth-v58.js?v=69"></script>
 <script src="commercial-v38.js?v=72"></script>
@@ -7142,9 +7150,12 @@ setInterval(masterRevisionCheck,45000);window.addEventListener('focus',masterRev
 <script src="ui-v62.js?v=73"></script>
 <script src="member-items-v63.js?v=63"></script>
 <script src="sheets-dashboard-v64.js?v=77"></script>
-<script src="stock-v84.js?v=85"></script>
+<script src="stock-v84.js?v=86"></script>
 <script src="brand-detail-v78.js?v=78"></script>
 <script src="traffic-analysis-v64.js?v=65"></script>
 <script src="ui-v66.js?v=66"></script>
+<script src="sssg-v86.js?v=86"></script>
+<script src="visit-plan-v86.js?v=86"></script>
+<script src="visit-v86.js?v=86"></script>
 </body>
 </html>

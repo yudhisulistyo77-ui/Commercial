@@ -21,6 +21,9 @@ const storeName=id=>(S.stores||[]).find(s=>Number(s.id)===Number(id))?.name||('T
 const allowedStores=()=>(S.stores||[]).filter(s=>storeOk(s.id));
 function storesArg(){const s=U.state;return s.stores.length?s.stores.map(Number):null;}
 function download(name,heads,rows){const csv=[heads,...rows].map(r=>r.map(v=>'"'+String(v??'').replace(/^[=+@-]/,"'$&").replace(/"/g,'""')+'"').join(',')).join('\r\n'),url=URL.createObjectURL(new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'})),a=el('a',{href:url,download:name});document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);}
+/* V86: item tanpa SKU di Moka memakai kunci nama/varian yang sama di semua toko (NM:/ID:) — ditampilkan sebagai 'tanpa SKU'. */
+function skuText(k){return /^(NM|ID):/.test(String(k||''))?el('span',{class:'v84-mute',title:'Item ini belum punya SKU di Moka; dicocokkan lintas toko berdasarkan nama item'},'tanpa SKU'):k;}
+function skuCsv(k){return /^(NM|ID):/.test(String(k||''))?'':k;}
 function missing(e){return /commercial_stock_v84|PGRST202|does not exist|Could not find the function/i.test(e?.message||'');}
 function errBox(e){return el('p',{class:'note warn'},missing(e)?'Fungsi Stock V84 belum terpasang. Jalankan STOCK-V84.sql di Supabase SQL Editor.':'Gagal memuat: '+(e?.message||e));}
 function pager(page,total,go){const pages=Math.max(1,Math.ceil(total/PAGE));return el('div',{class:'rowline v84-pager'},el('button',{class:'btn sm',type:'button',disabled:page<=0,onclick:()=>go(page-1)},'‹ Sebelumnya'),el('span',{class:'sub'},'Halaman '+(page+1)+' / '+pages+' · '+int(total)+' baris'),el('button',{class:'btn sm',type:'button',disabled:(page+1)>=pages,onclick:()=>go(page+1)},'Berikutnya ›'));}
@@ -100,7 +103,7 @@ async function detailTab(d,body,epoch){
   const filters=el('div',{class:'v84-filters'},opsField('Status',status),opsField('Kategori',catBox),opsField('Brand',brandBox),opsField('Urutkan',sort),opsField('Cari',q));
   body.append(card('Rincian stok per SKU',(s.stores.length?s.stores.map(storeName).join(', '):'semua toko yang diizinkan')+' · SKU kosong tanpa penjualan 90 hari tidak disimpan',filters,csv,out));
   const args=(offset,limit)=>({p_stores:storesArg(),p_filters:{status:s.status,query:s.query,sort:s.sort,categories:s.categories,brands:s.brands},p_limit:limit,p_offset:offset});
-  const fmt=r=>[r.store_name,r.item_name,r.sku.startsWith('ID:')?'—':r.sku,r.category||'—',r.brand||'—',el('span',{class:STATUS_CLS[r.status]||''},num(r.qty)),num(r.alert),money(r.cogs),money(r.value),num(r.sold14),num(r.prior14),num(r.sold30),num(r.sold90),r.cover==null?'—':num(r.cover),el('span',{class:STATUS_CLS[r.status]||''},STATUS[r.status]||r.status)];
+  const fmt=r=>[r.store_name,r.item_name,skuText(r.sku),r.category||'—',r.brand||'—',el('span',{class:STATUS_CLS[r.status]||''},num(r.qty)),num(r.alert),money(r.cogs),money(r.value),num(r.sold14),num(r.prior14),num(r.sold30),num(r.sold90),r.cover==null?'—':num(r.cover),el('span',{class:STATUS_CLS[r.status]||''},STATUS[r.status]||r.status)];
   const reload=()=>{s.page=0;U.show();};
   status.onchange=()=>{s.status=status.value;reload();};sort.onchange=()=>{s.sort=sort.value;reload();};
   let t;q.oninput=()=>{clearTimeout(t);t=setTimeout(()=>{s.query=q.value.trim();reload();},500);};
@@ -113,7 +116,7 @@ async function detailTab(d,body,epoch){
       el('p',{class:'sub'},int(r.total)+' SKU · '+int(tot.qty)+' pcs · nilai '+String(compact(tot.value||0))+' · terjual 30 hari '+int(tot.sold30)+' · '+Object.entries(STATUS).filter(([k])=>c[k]).map(([k,v])=>v+' '+Number(c[k]).toLocaleString('id-ID')).join(' · ')),
       table([H('TOKO',{s:1}),'ITEM','SKU','KATEGORI','BRAND',H('STOK',{r:1}),H('ALERT',{r:1}),H('HPP',{r:1}),H('NILAI',{r:1}),H('TERJUAL 14H',{r:1}),H('14H SEBELUMNYA',{r:1}),H('TERJUAL 30H',{r:1}),H('TERJUAL 90H',{r:1}),H('CUKUP HARI',{r:1}),'STATUS'],r.rows.map(fmt)),
       pager(s.page,r.total,p=>{s.page=p;U.show();}));
-    csv.onclick=async()=>{csv.disabled=true;try{const all=await masterRpc('commercial_stock_v84_list',args(0,5000));download('stock-sku-'+today()+'.csv',['Toko','Item','SKU','Kategori','Brand','Stok','Alert','HPP','Nilai','Terjual 14h','14h sebelumnya','Terjual 30h','Terjual 90h','Cukup hari','Status'],all.rows.map(x=>[x.store_name,x.item_name,x.sku,x.category,x.brand,x.qty,x.alert,x.cogs,x.value,x.sold14,x.prior14,x.sold30,x.sold90,x.cover,STATUS[x.status]||x.status]));if(all.total>5000)toast('CSV dibatasi 5.000 baris pertama; persempit filter.');}catch(e){toast(e.message);}finally{csv.disabled=false;}};
+    csv.onclick=async()=>{csv.disabled=true;try{const all=await masterRpc('commercial_stock_v84_list',args(0,5000));download('stock-sku-'+today()+'.csv',['Toko','Item','SKU','Kategori','Brand','Stok','Alert','HPP','Nilai','Terjual 14h','14h sebelumnya','Terjual 30h','Terjual 90h','Cukup hari','Status'],all.rows.map(x=>[x.store_name,x.item_name,skuCsv(x.sku),x.category,x.brand,x.qty,x.alert,x.cogs,x.value,x.sold14,x.prior14,x.sold30,x.sold90,x.cover,STATUS[x.status]||x.status]));if(all.total>5000)toast('CSV dibatasi 5.000 baris pertama; persempit filter.');}catch(e){toast(e.message);}finally{csv.disabled=false;}};
   }catch(e){if(epoch===U.epoch)out.replaceChildren(errBox(e));}
 }
 
@@ -132,7 +135,7 @@ function crossTab(d,body){
       const stores=r.stores,dc=new Set((d.dc_ids||[]).map(Number));
       out.replaceChildren(el('p',{class:'sub'},r.items.length+' SKU'+(r.items.length>=60?' (60 pertama — perjelas kata kunci)':'')),
         table([H('ITEM',{s:1}),'SKU',...stores.map(x=>H(x.name+(dc.has(Number(x.store_id))?' · DC':''),{r:1})),H('TOTAL',{r:1})],
-          r.items.map(it=>[it.item_name,it.sku,...stores.map(x=>{const v=it.by_store?.[x.store_id];if(!v)return el('span',{class:'v84-mute'},'0');const qv=N(v.qty)||0;return el('span',{class:qv<=0?'v84-neg':(N(v.alert)>0&&qv<=N(v.alert)?'v84-lo':''),title:'Terjual 30 hari: '+num(v.sold30)},int(qv),N(v.sold30)>0?el('small',{class:'v84-sold'},' ('+num(v.sold30)+')'):null);}),int(it.total)])));
+          r.items.map(it=>[it.item_name,skuText(it.sku),...stores.map(x=>{const v=it.by_store?.[x.store_id];if(!v)return el('span',{class:'v84-mute'},'0');const qv=N(v.qty)||0;return el('span',{class:qv<=0?'v84-neg':(N(v.alert)>0&&qv<=N(v.alert)?'v84-lo':''),title:'Terjual 30 hari: '+num(v.sold30)},int(qv),N(v.sold30)>0?el('small',{class:'v84-sold'},' ('+num(v.sold30)+')'):null);}),int(it.total)])));
     }catch(e){if(my===seq)out.replaceChildren(errBox(e));}
   };
   let t;q.oninput=()=>{clearTimeout(t);t=setTimeout(run,450);};run();
@@ -156,11 +159,11 @@ async function transferTab(d,body,epoch){
     multiSelectDropdown(catBox,r.categories.map(c=>({value:c,label:c})),s.categories,()=>{},{allLabel:'Semua kategori'});
     multiSelectDropdown(brandBox,r.brands.map(c=>({value:c,label:c})),s.brands,()=>{},{allLabel:'Semua brand'});
     multiSelectDropdown(excBox,r.categories.map(c=>({value:c,label:c})),s.tfExclude,()=>{},{allLabel:'Tidak ada'});
-    const fmt=x=>[x.item_name,x.sku,x.from_name+(x.from_dc?' · DC':''),num(x.from_qty),x.to_name,num(x.to_qty),num(x.to_daily),x.to_cover==null?'—':num(x.to_cover),el('b',{},num(x.qty))];
+    const fmt=x=>[x.item_name,skuText(x.sku),x.from_name+(x.from_dc?' · DC':''),num(x.from_qty),x.to_name,num(x.to_qty),num(x.to_daily),x.to_cover==null?'—':num(x.to_cover),el('b',{},num(x.qty))];
     out.replaceChildren(el('div',{class:'grid g4'},tile('Baris usulan',int(r.total),'pasangan SKU pengirim → penerima',null),tile('Total pcs',int(r.units),'jumlah yang diusulkan pindah',null),tile('Penerima belum tercukupi',int(r.short),'stok jaringan tidak cukup',null),tile('Lokasi DC',String((r.dc_ids||[]).length),(r.dc_ids||[]).map(storeName).join(', ')||'tidak ada',null)),
       table([H('ITEM',{s:1}),'SKU','DARI',H('STOK PENGIRIM',{r:1}),'KE',H('STOK PENERIMA',{r:1}),H('JUAL/HARI',{r:1}),H('CUKUP HARI',{r:1}),H('USULAN TF',{r:1})],r.rows.map(fmt)),
       pager(s.tfPage,r.total,p=>{s.tfPage=p;U.show();}));
-    csv.onclick=async()=>{csv.disabled=true;try{const all=await masterRpc('commercial_stock_v84_transfer',args(0,5000));download('usulan-tf-'+today()+'.csv',['Item','SKU','Kategori','Brand','Dari','Stok pengirim','Ke','Stok penerima','Jual/hari penerima','Cukup hari','Usulan TF'],all.rows.map(x=>[x.item_name,x.sku,x.category,x.brand,x.from_name,x.from_qty,x.to_name,x.to_qty,x.to_daily,x.to_cover,x.qty]));}catch(e){toast(e.message);}finally{csv.disabled=false;}};
+    csv.onclick=async()=>{csv.disabled=true;try{const all=await masterRpc('commercial_stock_v84_transfer',args(0,5000));download('usulan-tf-'+today()+'.csv',['Item','SKU','Kategori','Brand','Dari','Stok pengirim','Ke','Stok penerima','Jual/hari penerima','Cukup hari','Usulan TF'],all.rows.map(x=>[x.item_name,skuCsv(x.sku),x.category,x.brand,x.from_name,x.from_qty,x.to_name,x.to_qty,x.to_daily,x.to_cover,x.qty]));}catch(e){toast(e.message);}finally{csv.disabled=false;}};
   }catch(e){if(epoch===U.epoch)out.replaceChildren(errBox(e));}
 }
 

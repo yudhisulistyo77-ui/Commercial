@@ -12,7 +12,7 @@ Hasil ditulis ke fungsi yang sama dengan V47 (commercial_member_replace_v47), pe
 dengan format profil dan nota yang sama persis, sehingga semua tampilan Member tetap dipakai.
 Tidak ada penulisan sebelum seluruh halaman satu cakupan selesai terbaca.
 """
-import json, os, re, time, uuid, urllib.error, urllib.parse, urllib.request
+import http.client, json, os, re, time, uuid, urllib.error, urllib.parse, urllib.request
 from datetime import datetime, timedelta, timezone
 
 from moka_member_v47 import MemberSourceError, norm
@@ -46,7 +46,8 @@ class OfficialMoka:
                 if e.code in (429, 500, 502, 503, 504) and attempt < 5:
                     time.sleep(min(60, 5 * 2 ** attempt)); continue
                 raise RuntimeError(f'API Moka HTTP {e.code} pada {urllib.parse.urlsplit(url).path}') from None
-            except (urllib.error.URLError, TimeoutError, ConnectionError, OSError):
+            except (urllib.error.URLError, TimeoutError, ConnectionError, OSError, http.client.HTTPException, ValueError):
+                # V86: IncompleteRead (respons terputus) / JSON terpotong juga dicoba ulang.
                 if attempt < 5:
                     time.sleep(min(60, 5 * 2 ** attempt)); continue
                 raise RuntimeError('Koneksi ke API Moka gagal berulang') from None
@@ -64,7 +65,7 @@ class OfficialMoka:
                 if c.get('is_deleted') or c.get('id') in (None, 0, '0'):
                     continue
                 out[str(c['id'])] = c
-            if progress and pages % 25 == 0:
+            if progress and (pages <= 2 or pages % 5 == 0):
                 progress(f'Member: Customer List resmi {pages} halaman, {len(out):,} customer.'.replace(',', '.'))
             if d.get('completed') or not rows or not d.get('next_url'):
                 break
@@ -204,10 +205,52 @@ def write_items(db, sid, d1, d2, rows):
                                                        'p_rows': rows[at:at + ITEM_CHUNK], 'p_reset': at == 0})
 
 
-def sync(db, mapped, stores, aliases, periods, tz, writing=True, progress=None, api=None):
+CKPT_KEY = 'member_ckpt_v86'
+
+
+def _load_ckpt(db):
+    if db is None:
+        return {}
+    try:
+        rows = db.sel(f"app_settings?select=value&key=eq.{CKPT_KEY}")
+        return json.loads(rows[0]['value']) if rows and rows[0].get('value') else {}
+    except Exception:
+        return {}
+
+
+def _save_ckpt(db, ckpt):
+    try:
+        db.insert('app_settings', [{'key': CKPT_KEY, 'value': json.dumps(ckpt, separators=(',', ':'))}], 'key')
+    except Exception:
+        pass
+
+
+def _cached_payments(oid, d1, d2):
+    """V86: transaksi yang sudah ditarik tahap Sales pada run yang sama dipakai ulang (tanpa tarik ulang)."""
+    folder = os.environ.get('MEMBER_TXN_CACHE')
+    if not folder:
+        return None
+    path = os.path.join(folder, f'{oid}_{d1.isoformat()}_{d2.isoformat()}.json.gz')
+    if not os.path.exists(path):
+        return None
+    import gzip
+    with gzip.open(path, 'rt', encoding='utf-8') as fh:
+        return json.load(fh)
+
+
+def sync(db, mapped, stores, aliases, periods, tz, writing=True, progress=None, api=None, fetch=None, summary=None):
     def log(m):
         if progress: progress(m)
         else: print(m, flush=True)
+    if progress is None:
+        progress = None
+    else:
+        _p = progress
+        def progress(m, done=None, total=None):
+            try:
+                _p(m, done, total) if done is not None else _p(m)
+            except TypeError:
+                _p(m)
     api = api or OfficialMoka(os.environ.get('MOKA_ACCESS_TOKEN'))
     log('Member V50: membaca Customer List resmi Moka (±175 halaman, ±10 menit)…')
     try:
@@ -228,13 +271,40 @@ def sync(db, mapped, stores, aliases, periods, tz, writing=True, progress=None, 
             log(f'Member V51: profil Customer List belum tersimpan (jalankan MEMBER-SSSG-V51.sql): {str(getattr(e, "body", "") or e)[:160]}')
     now = datetime.now(tz)
     total_rows, total_profiles, done, failures, skipped, item_warn = 0, set(), 0, [], 0, []
-    for _, _, d1, d2 in periods:
+    force = os.environ.get('FORCE_REFRESH', '0').lower() in ('1', 'true', 'yes')
+    ckpt = _load_ckpt(db) if writing else {}
+    scopes = [(d1, d2, outlet, sid) for _, _, d1, d2 in periods for outlet, sid in mapped]
+    reused, unchanged = 0, 0
+    retry, work = [], [(i, sc, False) for i, sc in enumerate(scopes, 1)]
+    while work or retry:
+      if not work:
+        log(f'Member V86: mengulang {len(retry)} cakupan yang terganggu dalam 30 detik…')
+        time.sleep(30)
+        work, retry = retry, []
+      n, (d1, d2, outlet, sid), second = work.pop(0)
+      if True:
         since = datetime(d1.year, d1.month, d1.day, tzinfo=tz)
         until = min(datetime(d2.year, d2.month, d2.day, tzinfo=tz) + timedelta(days=1) - timedelta(seconds=1), now)
-        for outlet, sid in mapped:
+        if True:
             label = f"{outlet['name']} {d1:%Y-%m}"
+            ck = f"{int(sid)}:{d1.isoformat()}:{d2.isoformat()}"
+            if progress:
+                progress(f'Member: cakupan {n}/{len(scopes)} · {label}', n - 1, len(scopes))
             try:
-                pays = api.transactions(outlet['id'], since, until)
+                # V86: bulan tutup (>7 hari lalu) yang ringkasan Moka-nya sama dengan sinkron Member terakhir dilewati.
+                sig = None
+                if summary and not force and d2 < (now.date() - timedelta(days=7)):
+                    sm = summary(outlet['id'], d1, d2) or {}
+                    sig = f"{float(sm.get('net_sales') or 0):.2f}|{int(sm.get('number_of_transactions') or 0)}"
+                    if ckpt.get(ck) == sig:
+                        unchanged += 1
+                        log(f'Member V86: {label} — tidak berubah sejak sinkron Member terakhir, dilewati.')
+                        continue
+                pays = _cached_payments(outlet['id'], d1, d2)
+                if pays is not None:
+                    reused += 1
+                else:
+                    pays = fetch(outlet['id'], since, until) if fetch else api.transactions(outlet['id'], since, until)
                 rows, extra = rows_for_scope(pays, int(sid), custs, tz)
                 keys = {r['customer_key'] for r in rows}
                 # Customer yang sudah tercatat pada cakupan ini ikut dikirim, supaya nota yang
@@ -251,6 +321,8 @@ def sync(db, mapped, stores, aliases, periods, tz, writing=True, progress=None, 
                 profs = [profile(custs[k[5:]]) if k[5:] in custs else extra[k] for k in send]
                 if not profs:
                     skipped += 1
+                    if writing and sig is not None:
+                        ckpt[ck] = sig; _save_ckpt(db, ckpt)
                     log(f'Member V50: {label} — tidak ada nota bercustomer, dilewati.')
                     continue
                 scope = [{'store_id': int(sid), 'date_from': d1.isoformat(), 'date_to': d2.isoformat()}]
@@ -263,19 +335,27 @@ def sync(db, mapped, stores, aliases, periods, tz, writing=True, progress=None, 
                     except Exception as e:  # SQL item V51 belum dipasang: nota tetap tersimpan
                         item_warn.append(f'{label}: {str(getattr(e, "body", "") or e)[:160]}')
                 total_rows += len(rows); total_profiles |= keys; done += 1
+                if writing and sig is not None:
+                    ckpt[ck] = sig
+                    _save_ckpt(db, ckpt)
                 log(f'Member V50: {label} — {len(rows)} transaksi sumber → {len(summaries)} ringkasan customer/toko/hari, {len(keys)} customer, {len(items)} ringkasan item'
                     + ('' if writing else ' (uji coba, tidak ditulis)'))
             except MemberSourceError:
                 raise
             except Exception as e:  # satu cakupan gagal tidak menghentikan cakupan lain
                 msg = str(getattr(e, 'body', '') or e)[:220]
-                failures.append(f'{label}: {msg}')
-                log(f'Member V50: {label} — GAGAL: {msg}')
+                if not second:  # V86: gangguan koneksi (mis. IncompleteRead) → diulang sekali di akhir
+                    retry.append((n, (d1, d2, outlet, sid), True))
+                    log(f'Member V86: {label} — gangguan ({msg[:120]}); diulang setelah cakupan lain selesai.')
+                else:
+                    failures.append(f'{label}: {msg}')
+                    log(f'Member V50: {label} — GAGAL setelah diulang: {msg}')
     if item_warn:
         log(f'Member V51: item per member belum tersimpan untuk {len(item_warn)} cakupan '
             f'(jalankan MEMBER-SSSG-V51.sql): {item_warn[0]}')
     if failures:
         raise MemberSourceError(f'{len(failures)} cakupan Member gagal ({"; ".join(failures[:3])}). '
                                 f'{done} cakupan lain tersimpan.')
+    log(f'Member V86: {done} cakupan disimpan, {unchanged} tidak berubah, {reused} memakai transaksi tahap Sales (tanpa tarik ulang).')
     return {'status': 'OK', 'customers': len(total_profiles), 'receipts': total_rows,
             'unmapped_payments': 0, 'http_requests': api.requests}
