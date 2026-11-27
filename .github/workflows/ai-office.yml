@@ -1,0 +1,51 @@
+name: Kantor Virtual
+
+# Karyawan AI terjadwal (gratis). Membaca Supabase, menyimpan laporan & usulan ke tabel commercial_office_*_v96,
+# lalu mengirim ringkasan ke Telegram bila secret TELEGRAM_BOT_TOKEN dan TELEGRAM_CHAT_ID sudah diisi.
+# Tidak ada token di repo: semua kunci dibaca dari GitHub Secrets.
+
+on:
+  schedule:
+    - cron: "21 23 * * *"   # 07:21 WITA — Admin Sinkron, Analis Sales, Admin Stok
+    - cron: "7 9 * * *"     # 17:07 WITA — Sekretaris Visit
+  workflow_dispatch:
+    inputs:
+      desks:
+        description: "Meja yang dijalankan"
+        type: choice
+        options: [auto, semua, sales, stock, visit, sync, telegram_setup, telegram_test]
+        default: semua
+      dry_run:
+        description: "Uji coba saja (tidak menulis ke database / Telegram)"
+        type: boolean
+        default: false
+
+concurrency:
+  group: ai-office
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  work:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Karyawan AI bekerja
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          OFFICE_DESKS: ${{ inputs.desks || 'auto' }}
+          OFFICE_DRY: ${{ inputs.dry_run && '1' || '0' }}
+          DASHBOARD_URL: https://yudhisulistyo77-ui.github.io/commercial/
+        run: python3 ai_office.py
