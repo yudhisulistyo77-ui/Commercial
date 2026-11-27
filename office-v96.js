@@ -275,21 +275,43 @@ function officeScene(D){
 function storeScene(D){
  const rows=(D.desks||[]).filter(r=>String(r.desk).startsWith('store-')).sort((a,b)=>String(a.body?.store||'').localeCompare(String(b.body?.store||''),'id'));
  if(!rows.length)return '';
- const K=isoKit(30),{P,box,plant,walker,route,room,label,poly}=K,cols=4;
- /* kelompokkan per SPV area: meja SPV lebih dulu, lalu admin toko di areanya; tiap area mulai baris baru */
- const groups=[];for(const k of Object.keys(TEAM.spv)){const list=rows.filter(r=>spvOfStore(r.body?.store_id,r.body?.store)===k);if(list.length)groups.push({k,list});}
- const rest=rows.filter(r=>!spvOfStore(r.body?.store_id,r.body?.store));if(rest.length)groups.push({k:'',list:rest});
- const items=[];let rowNo=0;for(const gr of groups){const seq=gr.k?[{spv:gr.k,list:gr.list},...gr.list.map(r=>({r,area:gr.k}))]:gr.list.map(r=>({r,area:''}));seq.forEach((it,i)=>items.push({...it,c:i%cols,rr:rowNo+Math.floor(i/cols)}));rowNo+=Math.ceil(seq.length/cols);}
- const dS=6.9,sS=8.4,raw0=items.map(it=>{const d=-dS*(cols-1)/2+dS*it.c,sm=sS*it.rr;return {...it,x:(sm+d)/2,y:(sm-d)/2};});
- const mx=Math.min(...raw0.map(o=>o.x)),my=Math.min(...raw0.map(o=>o.y)),raw=raw0.map(o=>({...o,x:o.x-mx+2.8,y:o.y-my+1.1}));
- const W=Math.max(...raw.map(o=>o.x))+2.6,H=Math.max(...raw.map(o=>o.y))+4.0;
- let g=room(W,H,[W*0.35,W*0.62],[H*0.3,H*0.58])+wallClock(K,W*0.2,1.95)+plant(0.2,0.2)+plant(W-0.6,0.2)+plant(0.2,H-0.6)+plant(W-0.6,H-0.6);
- /* pojok minum & camilan */
+ const K=isoKit(30),{P,box,plant,walker,route,room,label,poly,pts,wallX}=K;
+ /* V102: tiap SPV punya zona sendiri (kiri = Area 1, kanan = Area 2). Meja SPV di depan zona menghadap timnya,
+    admin toko 2 kolom di belakangnya. Ada lorong di tengah; sudut ruangan dipakai untuk meja rapat, lemari arsip,
+    printer & pojok istirahat. */
+ const zones=[];for(const k of Object.keys(TEAM.spv)){const list=rows.filter(r=>spvOfStore(r.body?.store_id,r.body?.store)===k);if(list.length)zones.push({k,list});}
+ const rest=rows.filter(r=>!spvOfStore(r.body?.store_id,r.body?.store));
+ if(rest.length){if(zones.length)zones.sort((a,b)=>a.list.length-b.list.length)[0].list.push(...rest);else zones.push({k:'',list:rest});zones.sort((a,b)=>Object.keys(TEAM.spv).indexOf(a.k)-Object.keys(TEAM.spv).indexOf(b.k));}
+ const dS=7.6,aisle=3.2,sS=9.6,items=[];
+ zones.forEach((z,zi)=>{const side=zones.length===1?0:(zi===0?-1:1),c0=side===0?-dS/2:side<0?-(aisle/2+dS*1.5):(aisle/2+dS*0.5),mid=c0+dS/2;
+  if(z.k)items.push({spv:z.k,list:z.list,d:mid,s:0});
+  z.list.forEach((r,i)=>items.push({r,area:z.k,d:c0+dS*(i%2),s:sS*(1+Math.floor(i/2))}));
+  z.mid=mid;});
+ const raw0=items.map(it=>({...it,x:(it.s+it.d)/2,y:(it.s-it.d)/2}));
+ const mx=Math.min(...raw0.map(o=>o.x)),my=Math.min(...raw0.map(o=>o.y)),ox=-mx+3.6,oy=-my+2.0,raw=raw0.map(o=>({...o,x:o.x+ox,y:o.y+oy}));
+ const W=Math.max(...raw.map(o=>o.x))+3.0,H=Math.max(...raw.map(o=>o.y))+4.4;
+ const sd=(s_,d_)=>[(s_+d_)/2+ox,(s_-d_)/2+oy];
+ let g=room(W,H,[W*0.3,W*0.55],[H*0.32,H*0.57])+wallClock(K,W*0.78,1.95);
+ const sMax=Math.max(...items.map(i=>i.s))+4.5;
+ /* label zona di lantai */
+ for(const z of zones){const t=TEAM.spv[z.k];if(!t)continue;const [lx,ly]=sd(sMax-0.6,z.mid);g+=label(lx,ly,0.05,'Area '+t.role.replace(/\D+/g,'')+' · '+t.name);}
+ /* papan ranking MTD di dinding kiri */
+ {const rk=[...rows].filter(r=>r.body?.ach_mtd!=null).sort((a,b)=>b.body.ach_mtd-a.body.ach_mtd),top=rk.slice(0,3),bot=rk.slice(-2).reverse();
+  const line=(r,i,y,c)=>`<text x="6" y="${y}" class="of3-ait">${i}. ${esc(shortStore(r.body.store))}</text><text x="94" y="${y}" text-anchor="end" class="of3-ait" fill="${c}">${esc(pc(r.body.ach_mtd))}</text>`;
+  g+=`<g class="of3-aiboard" data-rank="1" role="button" tabindex="0" aria-label="Papan ranking MTD toko">`+wallX(3.0,0.75,4.4,1.7,`<rect width="100" height="60" rx="3" fill="#ffffff" stroke="#94a3b8" stroke-width="1.5"/><rect width="100" height="11" rx="3" fill="#0f766e"/><text x="5" y="8" class="of3-aih">Ranking MTD vs target</text>`+top.map((r,i)=>line(r,i+1,20+i*8,'#15803d')).join('')+`<line x1="5" y1="${20+top.length*8-3}" x2="95" y2="${20+top.length*8-3}" stroke="#e2e8f0"/>`+bot.map((r,i)=>line(r,rk.length-i,24+top.length*8+i*8,'#b91c1c')).join(''))+`</g>`;}
+ /* sudut belakang: lemari arsip + papan target */
+ g+=box(0.25,0.9,0,0.6,1.7,1.7,'#9aa3b2','#7d8696','#6f7888')+box(0.9,0.25,0,1.7,0.6,1.7,'#9aa3b2','#7d8696','#6f7888')+plant(0.2,0.2);
+ /* sudut kiri: meja rapat area */
+ {const mx_=1.8,my_=H-4.2,[cx,cy]=P(mx_+0.9,my_+0.9,0.72);g+=box(mx_+0.8,my_+0.8,0,0.2,0.2,0.7,'#9ca3af','#6b7280','#4b5563')+`<ellipse cx="${cx}" cy="${cy}" rx="${1.05*K.S0}" ry="${0.6*K.S0}" fill="#e9dcc5" stroke="#b9a888" stroke-width="1.5"/>`;
+  for(const [dx,dy] of [[-0.1,0.6],[1.5,0.4],[0.6,-0.3],[0.7,1.7]])g+=box(mx_+dx,my_+dy,0,0.45,0.45,0.42,'#475569','#334155','#3b4757');
+  g+=label(mx_+0.9,my_+0.9,1.5,'Meja rapat area','👥')+plant(0.2,H-0.6);}
+ /* sudut kanan: printer & ATK */
+ g+=box(W-1.25,0.3,0,0.85,0.75,0.85,'#e5e7eb','#cbd5e1','#94a3b8')+box(W-1.15,0.38,0.85,0.65,0.55,0.12,'#334155','#1e293b','#0f172a')+box(W-1.2,1.4,0,0.75,1.4,1.1,'#c8a27a','#a9845d','#987550')+label(W-0.85,1.4,1.75,'Printer & ATK','🖨')+plant(W-0.6,H*0.45);
+ /* sudut depan: pojok istirahat */
  g+=box(W-2.8,H-1.0,0,1.8,0.6,0.9,'#f1ece3','#ddd5c8','#cfc6b7')+box(W-2.6,H-0.9,0.9,0.3,0.3,0.55,'#e5e7eb','#d1d5db','#c3c7ce')+box(W-2.55,H-0.85,1.45,0.2,0.2,0.3,'#93c5fd','#60a5fa','#3b82f6')+box(W-1.9,H-0.9,0.9,0.6,0.35,0.3,'#f59e0b','#d97706','#b45309');
- g+=box(W-5.6,H-1.3,0,2.2,0.8,0.4,'#7fae8a','#5f8f6a','#6e9f79')+box(W-5.6,H-0.55,0.4,2.2,0.22,0.4,'#7fae8a','#5f8f6a','#6e9f79')+label(W-3.4,H-1.2,1.9,'Pojok istirahat','☕');
- g+=box(0.25,1.2,0,0.6,1.6,1.6,'#9aa3b2','#7d8696','#6f7888')+box(1.2,0.25,0,1.4,0.6,1.6,'#9aa3b2','#7d8696','#6f7888')+box(W-1.2,0.3,0,0.8,0.7,0.85,'#e5e7eb','#cbd5e1','#94a3b8')+box(W-1.1,0.35,0.85,0.6,0.55,0.12,'#334155','#1e293b','#0f172a');
- /* karpet area di bawah meja (warna per SPV) */
- for(const it of raw){const t=TEAM.spv[it.spv||it.area];if(t)g+=poly([[it.x-1.5,it.y-0.3,0.005],[it.x+1.7,it.y-0.3,0.005],[it.x+1.7,it.y+2.9,0.005],[it.x-1.5,it.y+2.9,0.005]],t.mat,'rx="6"');}
+ g+=box(W-5.8,H-1.3,0,2.2,0.8,0.4,'#7fae8a','#5f8f6a','#6e9f79')+box(W-5.8,H-0.55,0.4,2.2,0.22,0.4,'#7fae8a','#5f8f6a','#6e9f79')+label(W-3.6,H-1.1,1.9,'Pojok istirahat','☕')+plant(W-0.6,H-0.6);
+ /* karpet meja (warna per SPV) */
+ for(const it of raw){const t=TEAM.spv[it.spv||it.area];if(t)g+=poly([[it.x-1.5,it.y-0.3,0.005],[it.x+1.7,it.y-0.3,0.005],[it.x+1.7,it.y+2.9,0.005],[it.x-1.5,it.y+2.9,0.005]],t.mat);}
  const seats=raw.sort((a,b)=>(a.x+a.y)-(b.x+b.y));
  for(const it of seats){const {x,y}=it;
   if(it.spv){const t=TEAM.spv[it.spv],warn=it.list.filter(r=>r.status==='warn'||r.status==='error').length,ai=it.list.filter(r=>r.body?.ai).length,n=it.list.length;
@@ -297,7 +319,7 @@ function storeScene(D){
    w+=personCallout(K,x+0.4,y+1.2,2.35,t.name,t.role,t.color,warn?'#d98b00':'#2f9e44',n+' toko · '+warn+' perhatian'+(ai?' · '+ai+' saran AI':''),198);
    g+=`<g class="of3-st" data-spv="${it.spv}" tabindex="0" role="button" aria-label="${esc(t.role+' '+t.name)}">${w}</g>`;continue;}
   const r=it.r,name=r.body?.store||r.title,d={id:r.desk,name:'Admin '+shortStore(name)},[sh,ha]=STORE_LOOK(name);g+=deskStation(K,d,x,y,r,sh,ha,SKIN[(name.length)%SKIN.length],{w:178});}
- g+=`<g class="of3-ob" aria-hidden="true">${route([[W-3.4,H-2.2],[W*0.5,H-2.2],[W*0.5,H*0.55]],26,0.1,0)}${walker('#7a8899','#2b2622','',SKIN[2])}</g>`;
+ {const p1=sd(sMax-1,0),p2=sd(1,0);g+=`<g class="of3-ob" aria-hidden="true">${route([[W-3.6,H-2.0],p1,p2],28,0.1,0)}${walker('#7a8899','#2b2622','',SKIN[2])}</g>`;}
  const [x0]=P(0,H,0),[x1]=P(W,0,0),[,yTop]=P(0,0,2.6),[,yBot]=P(W,H,0);
  return `<svg viewBox="${(x0-14).toFixed(0)} ${(yTop-64).toFixed(0)} ${(x1-x0+28).toFixed(0)} ${(yBot-yTop+76).toFixed(0)}" class="of3-svg" role="img" aria-label="Ruang Admin Toko: meja admin per toko dan statusnya">${g}</svg>`;
 }
@@ -305,6 +327,8 @@ function openSpv(k,D){const t=TEAM.spv[k];if(!t)return;const rows=(D.desks||[]).
  const {box}=opsModal(t.role+' · '+t.name);box.classList.add('of-modal');
  box.append(el('p',{class:'sub'},rows.length+' toko di area ini · '+rows.filter(r=>r.status==='warn'||r.status==='error').length+' perlu perhatian. Klik Laporan untuk rincian tiap toko.'));
  box.append(tableBox([H('TOKO',{s:1}),H('MTD',{r:1}),H('PERLU PERHATIAN'),H('SARAN AI'),H('')],rows.map(r=>[r.body?.store||r.title,pc(r.body?.ach_mtd),(r.body?.issues||[]).join('; ')||'Aman',r.body?.ai?((r.body.ai.tindakan||[]).join('; ')||r.body.ai.analisa||'—'):'—',el('button',{class:'btn sm',onclick:()=>openReport(r.id,r)},'Laporan')]),'area-'+k.toLowerCase()+'.csv'));}
+function openRank(D){const rows=(D.desks||[]).filter(r=>String(r.desk).startsWith('store-')).sort((a,b)=>(b.body?.ach_mtd??-1)-(a.body?.ach_mtd??-1));const {box}=opsModal('Ranking MTD vs target');box.classList.add('of-modal');
+ box.append(tableBox([H('#',{r:1}),H('TOKO',{s:1}),H('SPV'),H('MTD',{r:1}),H('PERLU PERHATIAN')],rows.map((r,i)=>[String(i+1),r.body?.store||r.title,(TEAM.spv[spvOfStore(r.body?.store_id,r.body?.store)]||{}).name||'—',pc(r.body?.ach_mtd),(r.body?.issues||[]).join('; ')||'Aman']),'ranking-mtd.csv'));}
 function sceneEl(D){
  const storeN=(D.desks||[]).filter(r=>String(r.desk).startsWith('store-')).length;
  if(!O.room||(O.room==='stores'&&!storeN))O.room='main';
@@ -315,10 +339,10 @@ function sceneEl(D){
  const draw=()=>{tabs.replaceChildren(tab('main','Ruang Analis','8 analis · Manager · Musholla · Istirahat'),...(storeN?[tab('stores','Ruang Admin Toko',Object.values(TEAM.spv).map(t=>t.name).join(' & ')+' · '+storeN+' admin toko')]:[]),zb);inner.innerHTML=O.room==='stores'?storeScene(D):officeScene(D);};
  draw();
  const latest=Object.fromEntries((D.desks||[]).map(r=>[r.desk,r]));
- inner.addEventListener('click',e=>{const sp=e.target.closest('[data-spv]');if(sp){openSpv(sp.dataset.spv,D);return;}const st=e.target.closest('[data-desk]');if(!st)return;const id=st.dataset.desk;
+ inner.addEventListener('click',e=>{if(e.target.closest('[data-rank]')){openRank(D);return;}const sp=e.target.closest('[data-spv]');if(sp){openSpv(sp.dataset.spv,D);return;}const st=e.target.closest('[data-desk]');if(!st)return;const id=st.dataset.desk;
   if(id==='mgr'){document.querySelector('.of-queue')?.scrollIntoView({behavior:'smooth',block:'start'});return;}
   const r=latest[id];if(r)openReport(r.id,r);else if(id==='ai')toast('Analisa AI muncul setelah secret GEMINI_API_KEY diisi dan workflow berjalan.');else if(!DESKS.find(d=>d.id===id)?.soon)toast('Meja ini belum pernah bekerja. Jalankan workflow Kantor Virtual.');});
- inner.addEventListener('keydown',e=>{const t=e.target.closest('[data-desk],[data-spv]');if((e.key==='Enter'||e.key===' ')&&t){e.preventDefault();t.dispatchEvent(new MouseEvent('click',{bubbles:true}));}});
+ inner.addEventListener('keydown',e=>{const t=e.target.closest('[data-desk],[data-spv],[data-rank]');if((e.key==='Enter'||e.key===' ')&&t){e.preventDefault();t.dispatchEvent(new MouseEvent('click',{bubbles:true}));}});
  wrap.append(tabs,inner,el('p',{class:'of3-legend'},el('span',{},el('i',{style:'background:#4f46e5'}),'Ada saran AI (Gemini)'),el('span',{},el('i',{style:'background:#2f9e44'}),'Selesai hari ini'),el('span',{},el('i',{style:'background:#d98b00'}),'Perlu perhatian'),el('span',{},el('i',{style:'background:#e5484d'}),'Gagal'),el('span',{},el('i',{style:'background:#8b8d98'}),'Belum bekerja'),el('span',{class:'of3-hint'},'Klik meja atau papan AI untuk membuka laporan')));
  return wrap;
 }
@@ -374,8 +398,8 @@ const css=`.of-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax
 .of-tt{display:flex;flex-direction:column;min-width:0}.of-tt b{font-size:13px}.of-tt span{font-size:12px;color:var(--ink-2)}.of-done{opacity:.8}.of-h3{margin:14px 0 0;font-size:13px}
 .of-act{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.of-note{flex:1 1 200px;min-width:0}
 .of-modal{max-width:min(1000px,96vw)}
-.of3-wrap{background:var(--surface);border:1px solid var(--ring);border-radius:16px;padding:8px 8px 10px;margin:0 0 14px;--of3-base:#d9d2c4;--of3-pantry:#efe4d2;--of3-mgrfloor:#e8e4f3;--of3-floor:#f4efe6;--of3-wall1:#ebe7f6;--of3-wall2:#e2ddf1;--of3-win:#cfe6f7;--of3-glass:rgba(150,200,235,.28)}
-[data-theme="dark"] .of3-wrap{--of3-floor:#2a2c33;--of3-wall1:#30323b;--of3-wall2:#2b2d35;--of3-win:#3b5568;--of3-glass:rgba(120,170,210,.18);--of3-base:#24262c;--of3-pantry:#33302b;--of3-mgrfloor:#2f3139}
+.of3-wrap{background:var(--surface);border:1px solid var(--ring);border-radius:16px;padding:8px 8px 10px;margin:0 0 14px;--of3-base:#d9d2c4;--of3-aisle:rgba(120,120,135,.10);--of3-pantry:#efe4d2;--of3-mgrfloor:#e8e4f3;--of3-floor:#f4efe6;--of3-wall1:#ebe7f6;--of3-wall2:#e2ddf1;--of3-win:#cfe6f7;--of3-glass:rgba(150,200,235,.28)}
+[data-theme="dark"] .of3-wrap{--of3-floor:#2a2c33;--of3-wall1:#30323b;--of3-wall2:#2b2d35;--of3-win:#3b5568;--of3-glass:rgba(120,170,210,.18);--of3-base:#24262c;--of3-aisle:rgba(255,255,255,.05);--of3-pantry:#33302b;--of3-mgrfloor:#2f3139}
 .of3-inner{display:flex;justify-content:center}.of3-svg{display:block;width:100%;height:auto;max-height:min(calc(100vh - 210px),820px)}
 .of3-tabs{display:flex;gap:8px;margin:2px 4px 6px;flex-wrap:wrap;align-items:stretch}.of3-tab{flex:0 1 auto}.of3-zoom{display:none;margin-left:auto;align-self:center}@media(max-width:760px){.of3-tab{flex:1 1 0;min-width:0}.of3-tab span{display:none}.of3-zoom{display:inline-flex}.of3-wrap.zoom .of3-inner{overflow-x:auto;justify-content:flex-start}.of3-wrap.zoom .of3-svg{min-width:880px;max-height:none}}.of3-tab{display:flex;flex-direction:column;align-items:flex-start;gap:1px;padding:7px 12px;border-radius:10px;border:1px solid var(--ring);background:transparent;color:var(--ink);cursor:pointer;font:inherit;text-align:left}.of3-tab b{font-size:13px}.of3-tab span{font-size:11px;color:var(--ink-2)}.of3-tab.on{border-color:var(--accent,#5b5bd6);background:var(--accent-soft,rgba(91,91,214,.10))}
 .of3-scrbig{font:700 22px var(--font,system-ui)}.of3-scrt{font:600 6px var(--font,system-ui);fill:#94a3b8}.of3-role{font:600 9px var(--font,system-ui);fill:#fff}.of3-aibt{font:700 8.5px var(--font,system-ui);fill:#fff}.of3-aih{font:700 7.5px var(--font,system-ui);fill:#fff}.of3-ait{font:500 6.6px var(--font,system-ui);fill:#1e293b}
