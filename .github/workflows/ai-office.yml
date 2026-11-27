@@ -2,18 +2,19 @@ name: Kantor Virtual
 
 # Karyawan AI terjadwal (gratis). Membaca Supabase, menyimpan laporan & usulan ke tabel commercial_office_*_v96,
 # lalu mengirim ringkasan ke Telegram bila secret TELEGRAM_BOT_TOKEN dan TELEGRAM_CHAT_ID sudah diisi.
+# Analisa AI memakai Gemini gratis bila secret GEMINI_API_KEY diisi (dibuat di aistudio.google.com).
 # Tidak ada token di repo: semua kunci dibaca dari GitHub Secrets.
 
 on:
   schedule:
-    - cron: "21 23 * * *"   # 07:21 WITA — Admin Sinkron, Analis Sales, Admin Stok
+    - cron: "21 23 * * *"   # 07:21 WITA — semua analis & admin toko (+ analisa Gemini)
     - cron: "7 9 * * *"     # 17:07 WITA — Sekretaris Visit
   workflow_dispatch:
     inputs:
       desks:
         description: "Meja yang dijalankan"
         type: choice
-        options: [auto, semua, sales, stock, visit, sync, telegram_setup, telegram_test]
+        options: [auto, semua, sales, stock, loss, complain, csl, review, stores, visit, sync, telegram_setup, telegram_test, gemini_test]
         default: semua
       dry_run:
         description: "Uji coba saja (tidak menulis ke database / Telegram)"
@@ -45,6 +46,7 @@ jobs:
           SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           OFFICE_DESKS: ${{ inputs.desks || 'auto' }}
           OFFICE_DRY: ${{ inputs.dry_run && '1' || '0' }}
           DASHBOARD_URL: https://yudhisulistyo77-ui.github.io/commercial/
