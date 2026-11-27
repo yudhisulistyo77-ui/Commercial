@@ -558,6 +558,11 @@ tr.segsub td{font-size:11px}
 .pagefilters .fld:has(#f-year){flex-basis:96px}
 .pagefilters .fld:has(#f-clear){flex-basis:auto}
 .pagefilters #f-custom-wrap{max-width:none;flex-basis:auto}
+.pagefilters>.fld.gab-v95{flex:0 1 330px!important;max-width:330px!important;min-width:0}
+.gab-v95 .gab-row{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr) 84px;gap:6px;align-items:center}
+.gab-v95 .gab-row select{width:100%!important;min-width:0!important}
+.gab-v95 .gab-sd{font-size:11px;color:var(--ink-2)}
+@media(max-width:760px){.pagefilters>.fld.gab-v95{flex:1 1 100%!important;max-width:100%!important;grid-column:1/-1}.gab-v95 .gab-row{grid-template-columns:minmax(0,1fr) auto minmax(0,1fr) 78px}.pagefilters:has(.gab-v95)>.fld:has(#f-range){grid-column:1/-1}}
 .pagefilters #f-brand,.pagefilters #f-spv,.pagefilters #f-store{min-width:0;width:100%}
 .pagefilters .msd,.product-filter-grid .msd,.comparison-grid .msd{width:100%;min-width:0}
 .pagefilters select,.pagefilters input:not([type=checkbox]):not([type=radio]),.pagefilters .msd-btn{min-width:0;min-height:34px;padding:6px 9px;font-size:12px}
@@ -820,6 +825,7 @@ html[data-number-mode="full"] .member-ranking-v29 table{min-width:1560px!importa
           <option value="q4">Kuartal 4 (Okt–Des)</option>
           <option value="ytd">YTD (Jan–bulan ini)</option>
           <option value="custom">Custom…</option>
+          <option value="gab">Gabungan bulan</option>
         </select></div>
       <div class="fld" id="f-custom-wrap" style="display:none">
         <label>Dari–Sampai</label>
@@ -1317,7 +1323,7 @@ const FILTER_VISIBILITY={stock:[],masterinput:[], review:['brand','spv','store']
   item:['year','month','store'],
   kpi:['year','month'],
   kpi_spv:['year'],
-  top:['year','month','spv','store'],
+  top:['year','spv','store'],  // V94: bulan / gabungan bulan diatur di kepala halaman Top Product
   h2h:['brand','spv','store'],  // 'year' dihapus round 7 item 1/5: tahun H2H kini tetap/terkunci (h2hCurrentYear), bukan dari filter Tahun
   /* round 9 item 6 (diperbarui round 10 item 5): tahun SSSG tetap mengikuti tanggal cut-off (S.sssg.cutoffTo,
      bisa diatur user di kartu filter halaman itu sendiri), jadi 'year'/'month'/'range' global tetap
@@ -1356,6 +1362,7 @@ function pageFilterBar(id){
   if(vis.includes('month')) wrap.append($('#f-month').closest('.fld'));
   if(vis.includes('range')){ wrap.append(rangeSel.closest('.fld')); wrap.append(customWrap);
     customWrap.hidden=rangeVal!=='custom';customWrap.style.display = rangeVal==='custom' ? 'flex' : 'none'; }
+  if(vis.includes('range')||id==='item') wrap.append(gabunganFieldV95());
   if(vis.includes('brand')) wrap.append($('#f-brand').closest('.fld'));
   if(vis.includes('spv')) wrap.append($('#f-spv').closest('.fld'));
   if(vis.includes('store')) wrap.append($('#f-store').closest('.fld'));
@@ -2186,6 +2193,7 @@ function renderMappingNotice(){document.querySelectorAll('.sales-mapping-notice'
 function render(){
   activeMultiSelect?.close();
   parkFilters();renderConsistencyNoticeV23();
+  queueMicrotask(gabSyncV95);
   if(['loss','complaints','csl'].includes(S.page)){SHEETS64.show(S.page);return;}
   if(S.page==='pricelist'){renderPriceListV24();return;}
   if(S.page==='members'){renderMembersV27();return;}
@@ -4933,31 +4941,54 @@ async function topBlock(host,o={}){
 }
 
 /* ---------- Top Product (menu) ---------- */
+/* V94: Top & Low Product per bulan, atau gabungan beberapa bulan (Dari bulan – Sampai bulan) pada tahun terpilih. */
+function topMonthsV94(){
+  const y=Number(S.year),last=lastMonthWithData(y)||new Date().getMonth()+1;
+  if(!S.topPeriod)S.topPeriod='month';
+  if(!S.topM1)S.topM1=S.month||last;
+  if(!S.topM2)S.topM2=S.month||last;
+  if(S.topM1>S.topM2)[S.topM1,S.topM2]=[S.topM2,S.topM1];
+  return S.topPeriod==='month'?[S.topM1,S.topM1]:[S.topM1,S.topM2];
+}
+function topPeriodLabelV94(){const [a,b]=topMonthsV94(),yr=' '+S.year;return (a===b?MONTHS[a-1]:a===1&&b===12?'Jan–Des':MONTHS[a-1].slice(0,3)+'–'+MONTHS[b-1].slice(0,3))+yr+(a!==b?' ('+(b-a+1)+' bulan digabung)':'')+' · '+scopeLabel();}
 function renderTop(){
   parkFilters();
   const p=$('#p-top'); p.innerHTML='';
   if(!S.topN) S.topN=20;
+  const [m1,m2]=topMonthsV94(),isRange=S.topPeriod==='range';
   const bsel=multiFilterV76(['TIGALAPAN','MAMU','MYNO','DEFECT'],S.topBrand,values=>{S.topBrand=values;renderTop();},'Semua brand produk');
   const nsel=el('select',{id:'top-n'},[10,20,50,100].map(n=>el('option',{value:String(n),selected:S.topN===n?'':null},'Top '+n)));
   const catSel=categoryPicker('top-cat',S.topCat,arr=>{S.topCat=arr;run();});
+  const monthSel=(id,val)=>el('select',{id},MONTHS.map((m,i)=>el('option',{value:String(i+1),selected:val===i+1?'':null},m)));
+  const modeSel=el('select',{id:'top-period'},[['month','Per bulan'],['range','Gabungan bulan']].map(([v,l])=>el('option',{value:v,selected:S.topPeriod===v?'':null},l)));
+  const s1=monthSel('top-m1',m1),s2=monthSel('top-m2',m2);
+  modeSel.onchange=()=>{S.topPeriod=modeSel.value;if(S.topPeriod==='range'&&S.topM2<S.topM1)S.topM2=S.topM1;renderTop();};
+  s1.onchange=()=>{S.topM1=Number(s1.value);if(!isRange||S.topM2<S.topM1)S.topM2=S.topM1;renderTop();};
+  s2.onchange=()=>{S.topM2=Number(s2.value);if(S.topM2<S.topM1)S.topM1=S.topM2;renderTop();};
+  const lastM=lastMonthWithData(Number(S.year))||12;
+  const quick=el('select',{id:'top-quick','aria-label':'Pilihan cepat'},el('option',{value:''},'Cepat…'),...[['1-3','Q1'],['4-6','Q2'],['7-9','Q3'],['10-12','Q4'],['1-6','Semester 1'],['7-12','Semester 2'],['1-'+lastM,'YTD'],['1-12','Setahun']].map(([v,l])=>el('option',{value:v},l)));
+  quick.onchange=()=>{if(!quick.value)return;const [a,b]=quick.value.split('-').map(Number);S.topPeriod='range';S.topM1=a;S.topM2=b;renderTop();};
   const clearBtn=el('button',{class:'btn sm',title:'Reset filter halaman ini'},'Clear');
-  clearBtn.onclick=()=>{ S.topBrand=''; S.topN=20; S.topCat=''; renderTop(); };
+  clearBtn.onclick=()=>{ S.topBrand=''; S.topN=20; S.topCat=''; S.topPeriod='month'; S.topM1=S.topM2=0; renderTop(); };
   p.append(el('div',{class:'phead'},el('div',{},el('h1',{},'Top & Low Product'),
-    el('p',{},'Produk, warna, ukuran dan kategori terbaik berdasarkan nilai net sales (Rp). '+periodLabel())),
+    el('p',{},'Produk, warna, ukuran dan kategori terbaik berdasarkan nilai net sales (Rp). '+topPeriodLabelV94())),
     el('span',{class:'spacer'}),
     el('div',{class:'fld'},el('label',{for:'top-n'},'Tampilkan'),nsel),
     el('div',{class:'fld'},el('label',{for:'top-brand'},'Brand produk'),bsel),
     el('div',{class:'fld'},el('label',{for:'top-cat'},'Kategori'),catSel),
     clearBtn));
-  const pf_top=pageFilterBar('top'); if(pf_top) p.append(pf_top);
+  const bar=el('div',{class:'pagefilters top-period-v94'},
+    el('div',{class:'fld'},el('label',{for:'top-period'},'Periode'),modeSel),
+    el('div',{class:'fld'},el('label',{for:'top-m1'},isRange?'Dari bulan':'Bulan'),s1));
+  if(isRange)bar.append(el('div',{class:'fld'},el('label',{for:'top-m2'},'Sampai bulan'),s2),
+    el('div',{class:'fld'},el('label',{for:'top-quick'},'Cepat'),quick));
+  const pf_top=pageFilterBar('top'); if(pf_top){const kids=[...pf_top.childNodes];bar.prepend(...kids.filter(n=>n.querySelector?.('#f-year')));bar.append(...kids.filter(n=>!n.querySelector?.('#f-year')));}
+  p.append(bar);
   if(S.demo) p.append(demoBanner());
   const host=el('div',{style:'display:flex;flex-direction:column;gap:18px'});
   p.append(host);
-  const run=()=>topBlock(host,{brand:S.topBrand||null,category:S.topCat||null,limit:S.topN,full:true});
-
+  const run=()=>topBlock(host,{brand:S.topBrand||null,category:S.topCat||null,limit:S.topN,full:true,m1,m2});
   nsel.onchange=()=>{ S.topN=Number(nsel.value)||20; run(); };
-
-
   run();
 }
 
@@ -6605,6 +6636,21 @@ $('#railtog').onclick=()=>$('#rail').classList.toggle('open');
 /* #f-year, #f-brand, #f-spv, #f-store kini dropdown multi-select (multiSelectDropdown) — listenernya
    dipasang sekali per build di dalam fillFilters()/syncStoreOptions(), bukan di sini. */
 $('#f-month').onchange=e=>{ S.month=Number(e.target.value); S.itemScope=''; S.monthRange=null; S.rangeTag=''; $('#f-range').value=''; $('#f-custom-wrap').style.display='none'; render(); };
+/* V95: filter tambahan "Gabungan bulan" (Dari bulan – Sampai bulan + tombol cepat) di semua halaman
+   yang memakai filter bulan. Filter Bulan & Rentang lama tetap ada dan tetap bekerja seperti biasa. */
+function gabunganFieldV95(){
+  const on=S.rangeTag==='Gabungan bulan'&&S.monthRange,[a,b]=on?S.monthRange:[0,0];
+  const mk=(cls,val,first)=>el('select',{class:cls,'aria-label':first},el('option',{value:'0'},first),...MONTHS.map((m,i)=>el('option',{value:String(i+1),selected:val===i+1?'':null},m)));
+  const s1=mk('gab-m1',a,'Dari bulan'),s2=mk('gab-m2',b,'Sampai bulan');
+  const apply=(m1,m2)=>{if(!m1&&!m2){if(on){S.monthRange=null;S.rangeTag='';$('#f-range').value='';}render();return;}m1=m1||m2;m2=m2||m1;S.monthRange=[Math.min(m1,m2),Math.max(m1,m2)];S.rangeTag='Gabungan bulan';S.itemScope='';$('#f-range').value='gab';$('#f-custom-wrap').style.display='none';render();};
+  s1.onchange=s2.onchange=()=>apply(Number(s1.value),Number(s2.value));
+  const last=lastMonthWithData(S.year)||12;
+  const quick=el('select',{'aria-label':'Pilihan cepat gabungan bulan',title:'Pilihan cepat'},el('option',{value:''},'Cepat…'),
+    ...[['1-3','Q1'],['4-6','Q2'],['7-9','Q3'],['10-12','Q4'],['1-6','Semester 1'],['7-12','Semester 2'],['1-'+last,'YTD'],['1-12','Setahun']].map(([v,l])=>el('option',{value:v},l)),el('option',{value:'0-0'},'Hapus'));
+  quick.onchange=()=>{if(!quick.value)return;const [x,y]=quick.value.split('-').map(Number);apply(x,y);};
+  return el('div',{class:'fld gab-v95'},el('label',{},'Gabungan bulan'),el('div',{class:'gab-row'},s1,el('span',{class:'gab-sd'},'s.d.'),s2,quick));
+}
+function gabSyncV95(){const on=S.rangeTag==='Gabungan bulan'&&S.monthRange,[a,b]=on?S.monthRange:[0,0];document.querySelectorAll('.gab-v95').forEach(f=>{const x=f.querySelector('.gab-m1'),y=f.querySelector('.gab-m2'),q=f.querySelector('select[aria-label^=Pilihan]');if(x)x.value=String(a);if(y)y.value=String(b);if(q)q.value='';});}
 function fillCustomMonthSelects(){
   ['#f-custom-m1','#f-custom-m2'].forEach(sel=>{
     const s=$(sel); if(s.options.length) return;
@@ -6622,6 +6668,7 @@ $('#f-range').onchange=e=>{
   else if(v==='ytd'){ S.monthRange=[1,(S.month||lastMonthWithData(S.year))]; S.rangeTag='YTD'; }
   else if(v==='mom'){ const cm=S.month||lastMonthWithData(S.year); S.monthRange=[Math.max(1,cm-1),cm]; S.rangeTag='MoM'; }
   else if(v==='yoy'){ const cm=S.month||lastMonthWithData(S.year); S.monthRange=[cm,cm]; S.rangeTag='YoY (lihat H2H untuk banding tahun)'; }
+  else if(v==='gab'){ const cm=S.month||lastMonthWithData(S.year)||1; S.monthRange=S.monthRange||[cm,cm]; S.rangeTag='Gabungan bulan'; }
   else if(v==='custom'){ fillCustomMonthSelects(); const m1=Number($('#f-custom-m1').value)||1, m2=Number($('#f-custom-m2').value)||12; S.monthRange=[Math.min(m1,m2),Math.max(m1,m2)]; S.rangeTag='Custom'; }
   render();
 };
