@@ -765,7 +765,7 @@ def gemini_json(prompt, schema_hint):
     key = gemini_key()
     model = gemini_model(key)
     body = {"contents": [{"role": "user", "parts": [{"text": prompt}]}],
-            "generationConfig": {"temperature": 0.3, "responseMimeType": "application/json", "maxOutputTokens": 4096}}
+            "generationConfig": {"temperature": 0.3, "responseMimeType": "application/json", "maxOutputTokens": 8192}}
     for attempt in range(3):
         try:
             out = http("POST", f"{GEMINI_BASE}/{model}:generateContent", {"x-goog-api-key": key, "Content-Type": "application/json"}, body, timeout=120, tries=2)
@@ -780,27 +780,55 @@ def gemini_json(prompt, schema_hint):
 
 
 def gemini_brief(results):
-    """Kirim HANYA ringkasan angka agregat (tanpa nama/nomor pelanggan) ke Gemini, minta analisa & tindakan."""
+    """Kirim HANYA ringkasan angka agregat (tanpa nama/nomor pelanggan) ke Gemini, minta analisa & tindakan.
+    Dua permintaan terpisah (meja analis, lalu admin toko) agar jawaban untuk 12 toko tidak terpotong."""
     core, stores = {}, []
     for key, res in results.items():
         if key == "stores":
             for m in res.get("multi") or []:
                 stores.append({"desk": m["desk"], "toko": m["body"].get("store"), "isu": m["body"].get("issues", []),
-                               "ringkas": _re.sub(r"\s+", " ", m.get("summary", ""))[:400]})
+                               "ringkas": _re.sub(r"\s+", " ", m.get("summary", ""))[:450]})
         elif res.get("summary"):
             core[key] = {"meja": DESK_NAMES.get(key, key), "status": res.get("status"), "ringkas": res["summary"][:700]}
     if not core and not stores:
         return None
-    payload = json.dumps({"tanggal": str(TODAY), "meja": core, "toko": stores}, ensure_ascii=False)
-    prompt = ("Kamu adalah asisten analis Commercial untuk jaringan toko fashion MAMU & TIGALAPANKAOS di Sulawesi dan Kalimantan. "
-              "Berikut ringkasan kerja hari ini dari karyawan AI berbasis aturan (angka sudah dihitung, jangan mengubah atau mengarang angka). "
-              "Tulis dalam Bahasa Indonesia yang singkat, sopan, dan bisa langsung dikerjakan tim toko. "
-              "Kembalikan JSON persis dengan bentuk: "
-              '{"briefing": ["3-5 poin terpenting hari ini, sebut toko & angka"], '
-              '"meja": {"<kode meja>": {"analisa": "1-2 kalimat", "tindakan": ["1-3 tindakan konkret"]}}, '
-              '"toko": {"<desk toko, mis. store-12>": {"analisa": "1 kalimat", "tindakan": ["1-2 tindakan konkret untuk admin/SPV toko"]}}}. '
-              "Hanya pakai kode meja dan desk toko yang ada di data. Jangan memberi saran yang butuh data yang tidak ada.\n\nDATA:\n" + payload)
-    return gemini_json(prompt, None)
+    intro = ("Kamu adalah asisten analis Commercial untuk jaringan toko fashion MAMU & TIGALAPANKAOS di Sulawesi dan Kalimantan. "
+             "Data berikut adalah hasil hitungan karyawan AI berbasis aturan; jangan mengubah atau mengarang angka. "
+             "Tulis dalam Bahasa Indonesia yang singkat, sopan, dan bisa langsung dikerjakan tim toko. "
+             "Jangan memberi saran yang butuh data yang tidak ada. ")
+    out, model = {"briefing": [], "meja": {}, "toko": {}}, None
+    if core:
+        model, a = gemini_json(intro + 'Kembalikan JSON: {"briefing": ["3-5 poin terpenting hari ini, sebut toko & angka"], '
+                               '"meja": {"<kode meja dari data>": {"analisa": "1-2 kalimat", "tindakan": ["1-3 tindakan konkret"]}}}.\n\nDATA:\n'
+                               + json.dumps({"tanggal": str(TODAY), "meja": core}, ensure_ascii=False), None)
+        out["briefing"] = a.get("briefing") or []
+        out["meja"] = {k: v for k, v in (a.get("meja") or {}).items() if k in core and isinstance(v, dict)}
+    if stores:
+        by_name = {nkey(s["toko"]): s["desk"] for s in stores}
+        for i in range(0, len(stores), 6):  # 6 toko per permintaan
+            part = stores[i:i + 6]
+            try:
+                model, b = gemini_json(intro + "Untuk SETIAP toko di data (wajib semua, jangan ada yang terlewat), beri analisa singkat dan tindakan untuk admin/SPV toko. "
+                                       'Kembalikan JSON: {"toko": [{"desk": "<desk persis dari data, mis. store-12>", "analisa": "1-2 kalimat", '
+                                       '"tindakan": ["2-3 tindakan konkret"]}]}.\n\nDATA:\n'
+                                       + json.dumps({"tanggal": str(TODAY), "toko": part}, ensure_ascii=False), None)
+            except Exception as e:
+                log(f"  ! Gemini toko {i + 1}-{i + len(part)} dilewati: {str(e)[:200]}")
+                continue
+            items = b.get("toko") or []
+            if isinstance(items, dict):
+                items = [{"desk": k, **v} for k, v in items.items() if isinstance(v, dict)]
+            for it in items:
+                if not isinstance(it, dict):
+                    continue
+                desk = it.get("desk") if str(it.get("desk", "")).startswith("store-") else by_name.get(nkey(it.get("desk") or it.get("toko")))
+                if desk:
+                    out["toko"][desk] = {"analisa": it.get("analisa", ""), "tindakan": [str(t) for t in (it.get("tindakan") or [])][:3]}
+            if i + 6 < len(stores):
+                time.sleep(4)  # jaga batas permintaan per menit paket gratis
+    if not model:
+        return None
+    return model, out
 
 
 def main():

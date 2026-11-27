@@ -195,6 +195,7 @@ function deskStation(K,d,x,y,r,shirt,hair,skin,o={}){
  let g=workstation(K,{x,y,state,shirt,hair,skin,info,accent:shirt,seatAnim:o.seatAnim});
  const [pc_,pt]=pillOf(state,r),line=shortLine(d,r);
  g+=K.callout(x+0.4,y+1.2,2.35,d.name,pc_,pt,line,state==='work',o.w||196);
+ if(r?.body?.ai){const [lx,ly]=K.P(x+0.4,y+1.2,2.35),w=o.w||196;g+=`<g class="of3-aib" transform="translate(${(lx+w/2-30).toFixed(1)} ${(ly-56).toFixed(1)})"><rect width="26" height="14" rx="7" fill="#4f46e5"/><text x="13" y="10.3" text-anchor="middle" class="of3-aibt">AI</text></g>`;}
  return `<g class="of3-st${d.soon?' soon':''}" data-desk="${d.id}" tabindex="${d.soon?-1:0}" role="button" aria-label="${esc(d.name+': '+line)}">${g}</g>`;}
 /* waktu WITA untuk suasana: shalat & istirahat */
 function witaNow(){const p=new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Makassar',hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date()).split(':').map(Number);return p[0]*60+p[1];}
@@ -296,7 +297,7 @@ function sceneEl(D){
   if(id==='mgr'){document.querySelector('.of-queue')?.scrollIntoView({behavior:'smooth',block:'start'});return;}
   const r=latest[id];if(r)openReport(r.id,r);else if(id==='ai')toast('Analisa AI muncul setelah secret GEMINI_API_KEY diisi dan workflow berjalan.');else if(!DESKS.find(d=>d.id===id)?.soon)toast('Meja ini belum pernah bekerja. Jalankan workflow Kantor Virtual.');});
  inner.addEventListener('keydown',e=>{if((e.key==='Enter'||e.key===' ')&&e.target.closest('[data-desk]')){e.preventDefault();e.target.closest('[data-desk]').dispatchEvent(new MouseEvent('click',{bubbles:true}));}});
- wrap.append(tabs,inner,el('p',{class:'of3-legend'},el('span',{},el('i',{style:'background:#2f9e44'}),'Selesai hari ini'),el('span',{},el('i',{style:'background:#d98b00'}),'Perlu perhatian'),el('span',{},el('i',{style:'background:#e5484d'}),'Gagal'),el('span',{},el('i',{style:'background:#8b8d98'}),'Belum bekerja'),el('span',{class:'of3-hint'},'Klik meja atau papan AI untuk membuka laporan')));
+ wrap.append(tabs,inner,el('p',{class:'of3-legend'},el('span',{},el('i',{style:'background:#4f46e5'}),'Ada saran AI (Gemini)'),el('span',{},el('i',{style:'background:#2f9e44'}),'Selesai hari ini'),el('span',{},el('i',{style:'background:#d98b00'}),'Perlu perhatian'),el('span',{},el('i',{style:'background:#e5484d'}),'Gagal'),el('span',{},el('i',{style:'background:#8b8d98'}),'Belum bekerja'),el('span',{class:'of3-hint'},'Klik meja atau papan AI untuk membuka laporan')));
  return wrap;
 }
 
@@ -319,7 +320,7 @@ function paint(p){
  }
  p.append(grid);
  if(storeRows.length){const sr=[...storeRows].sort((a,b)=>(b.body?.issues||[]).length-(a.body?.issues||[]).length||String(a.body?.store).localeCompare(String(b.body?.store),'id'));
-  p.append(card('Admin Toko',storeRows.filter(r=>r.status==='warn').length+' dari '+storeRows.length+' toko perlu perhatian · diperbarui '+wita(sr[0].run_at),mkTable([H('TOKO',{s:1}),H('MTD',{r:1}),H('PERLU PERHATIAN'),H('')],sr.map(r=>[r.body?.store||r.title,pc(r.body?.ach_mtd),(r.body?.issues||[]).join('; ')||'Aman',el('button',{class:'btn sm',onclick:()=>openReport(r.id)},'Laporan')]))));}
+  p.append(card('Admin Toko',storeRows.filter(r=>r.status==='warn').length+' dari '+storeRows.length+' toko perlu perhatian · diperbarui '+wita(sr[0].run_at),mkTable([H('TOKO',{s:1}),H('MTD',{r:1}),H('PERLU PERHATIAN'),H('SARAN AI'),H('')],sr.map(r=>[r.body?.store||r.title,pc(r.body?.ach_mtd),(r.body?.issues||[]).join('; ')||'Aman',r.body?.ai?((r.body.ai.tindakan||[]).join('; ')||r.body.ai.analisa||'—'):'—',el('button',{class:'btn sm',onclick:()=>openReport(r.id)},'Laporan')]))));}
  const tasks=D.tasks||[],pending=tasks.filter(t=>t.status==='pending'),done=tasks.filter(t=>t.status!=='pending').slice(0,10);
  const q=card('Antrean persetujuan',pending.length?pending.length+' menunggu · hanya Manager yang dapat menyetujui':'Tidak ada yang menunggu');
  if(!pending.length)q.append(el('p',{class:'sub'},'Usulan dari karyawan AI (mis. TF stok dari DC) akan muncul di sini.'));
@@ -355,7 +356,7 @@ const css=`.of-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax
 [data-theme="dark"] .of3-wrap{--of3-floor:#2a2c33;--of3-wall1:#30323b;--of3-wall2:#2b2d35;--of3-win:#3b5568;--of3-glass:rgba(120,170,210,.18);--of3-base:#24262c;--of3-pantry:#33302b;--of3-mgrfloor:#2f3139}
 .of3-inner{display:flex;justify-content:center}.of3-svg{display:block;width:100%;height:auto;max-height:min(calc(100vh - 210px),820px)}
 .of3-tabs{display:flex;gap:8px;margin:2px 4px 6px;flex-wrap:wrap;align-items:stretch}.of3-tab{flex:0 1 auto}.of3-zoom{display:none;margin-left:auto;align-self:center}@media(max-width:760px){.of3-tab{flex:1 1 0;min-width:0}.of3-tab span{display:none}.of3-zoom{display:inline-flex}.of3-wrap.zoom .of3-inner{overflow-x:auto;justify-content:flex-start}.of3-wrap.zoom .of3-svg{min-width:880px;max-height:none}}.of3-tab{display:flex;flex-direction:column;align-items:flex-start;gap:1px;padding:7px 12px;border-radius:10px;border:1px solid var(--ring);background:transparent;color:var(--ink);cursor:pointer;font:inherit;text-align:left}.of3-tab b{font-size:13px}.of3-tab span{font-size:11px;color:var(--ink-2)}.of3-tab.on{border-color:var(--accent,#5b5bd6);background:var(--accent-soft,rgba(91,91,214,.10))}
-.of3-scrbig{font:700 22px var(--font,system-ui)}.of3-scrt{font:600 6px var(--font,system-ui);fill:#94a3b8}.of3-aih{font:700 7.5px var(--font,system-ui);fill:#fff}.of3-ait{font:500 6.6px var(--font,system-ui);fill:#1e293b}
+.of3-scrbig{font:700 22px var(--font,system-ui)}.of3-scrt{font:600 6px var(--font,system-ui);fill:#94a3b8}.of3-aibt{font:700 8.5px var(--font,system-ui);fill:#fff}.of3-aih{font:700 7.5px var(--font,system-ui);fill:#fff}.of3-ait{font:500 6.6px var(--font,system-ui);fill:#1e293b}
 .of3-tag{pointer-events:none}.of3-tagbg{fill:var(--surface);stroke:var(--ring);filter:drop-shadow(0 2px 4px rgba(20,20,40,.10))}.of3-tagt{font:600 11px var(--font,system-ui);fill:var(--ink)}.of3-tagi{font:11px system-ui}
 .of3-aiboard{cursor:pointer;outline:none}.of3-aiboard:hover rect:first-child,.of3-aiboard:focus-visible rect:first-child{stroke:var(--accent,#5b5bd6);stroke-width:3}
 .of3-winf{stroke:rgba(255,255,255,.6);stroke-width:1}.of3-mull{stroke:rgba(255,255,255,.7);stroke-width:1.2;fill:none}
