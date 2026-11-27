@@ -228,6 +228,14 @@ function pantry(K,x0,y0,w,h,mo){const {box,poly,P,label}=K;let g='';
 function wallClock(K,x0,z0){const {P}=K,[cx,cy]=P(x0,0,z0),r=0.32*K.S0,m=witaNow(),ha=((m/60)%12)*30,ma=(m%60)*6;
  return `<g class="of3-clock"><ellipse cx="${cx}" cy="${cy}" rx="${r*0.866}" ry="${r}" fill="#fff" stroke="#334155" stroke-width="2"/><line x1="${cx}" y1="${cy}" x2="${cx+Math.sin(ha*Math.PI/180)*r*0.45}" y2="${cy-Math.cos(ha*Math.PI/180)*r*0.5}" stroke="#111" stroke-width="2"/><line x1="${cx}" y1="${cy}" x2="${cx+Math.sin(ma*Math.PI/180)*r*0.7}" y2="${cy-Math.cos(ma*Math.PI/180)*r*0.75}" stroke="#334155" stroke-width="1.4"/></g>`;}
 const CD=20;
+/* V101: tim Commercial yang tampil di kantor (ubah di sini bila ada pergantian) */
+const TEAM={manager:{name:'Yudhi Sulistyo',role:'Manager Commercial'},
+ spv:{ILHAM:{name:'Ilham',role:'SPV Area 1',color:'#7c3aed',mat:'rgba(124,58,237,.10)'},ZULTAN:{name:'Zultan',role:'SPV Area 2',color:'#0d9488',mat:'rgba(13,148,136,.11)'}}};
+const SPV_CITY={ILHAM:/SAMARINDA|POLMAN|PALU|MANADO/,ZULTAN:/KENDARI|PALOPO|TORAJA|BONE/};
+function spvOfStore(id,name){const st=(globalThis.S?.stores||S?.stores||[]).find(x=>Number(x.id)===Number(id));const v=String(st?.spv||'').toUpperCase();
+ for(const k of Object.keys(TEAM.spv))if(v.includes(k))return k;const n=String(name||'').toUpperCase();for(const [k,re] of Object.entries(SPV_CITY))if(re.test(n))return k;return '';}
+function personCallout(K,x,y,z,name,role,roleC,dotC,line,w){const [lx,ly]=K.P(x,y,z),rw=Math.round(role.length*5.9+14),nx=23+Math.round(name.length*7.4)+8;w=Math.max(w,nx+rw+10);const room=Math.max(8,Math.floor(w/6.2));
+ return `<g class="of3-call of3-person" transform="translate(${(lx-w/2).toFixed(1)} ${(ly-50).toFixed(1)})"><line x1="${w/2}" y1="42" x2="${w/2}" y2="52" class="of3-stem"/><rect width="${w}" height="42" rx="10" class="of3-card"/><circle cx="13" cy="14" r="4.5" fill="${dotC}"/><text x="23" y="18" class="of3-t">${esc(name)}</text><rect x="${nx}" y="6.5" width="${rw}" height="15" rx="7.5" fill="${roleC}"/><text x="${nx+rw/2}" y="17.3" text-anchor="middle" class="of3-role">${esc(role)}</text><text x="10" y="33" class="of3-l">${esc(line.length>room?line.slice(0,room-1)+'…':line)}</text></g>`;}
 /* ===== Ruang Analis ===== */
 const MAIN_SEATS={sales:[5.6,3.9],stock:[9.6,0.2],sync:[13.6,-3.5],visit:[17.6,-7.2],loss:[9.4,8.1],complain:[13.4,4.4],csl:[17.4,0.7],review:[21.4,-3.0]};
 function officeScene(D){
@@ -247,7 +255,7 @@ function officeScene(D){
  g+=workstation(K,{x:1.7,y:0.4,state:pend?'work':'idle',shirt:'#2d3a5a',hair:'#1f1a17',skin:SKIN[1],info:{big:pend?String(pend):'0',kind:'acc',sub:'ACC'},accent:'#f59e0b'});
  g+=plant(0.2,3.6);
  g+=poly([[4.2,0,0],[4.2,4.2,0],[4.2,4.2,2.3],[4.2,0,2.3]],'var(--of3-glass)','class="of3-glassw"')+poly([[0,4.2,0],[2.4,4.2,0],[2.4,4.2,2.3],[0,4.2,2.3]],'var(--of3-glass)','class="of3-glassw"');
- g+=`<g class="of3-mgr" data-desk="mgr" role="button" tabindex="0" aria-label="Ruang Manager: ${pend} menunggu persetujuan">${callout(2.1,1.6,2.45,'Ruang Manager',pend?'#d98b00':'#2f9e44',pend?pend+' usulan':'Kosong',pend?'menunggu ACC':'tidak ada antrean',!!pend,196)}</g>`;
+ g+=`<g class="of3-mgr" data-desk="mgr" role="button" tabindex="0" aria-label="${esc(TEAM.manager.name+' · '+TEAM.manager.role)}: ${pend} menunggu persetujuan">${personCallout(K,2.1,1.6,2.45,TEAM.manager.name,TEAM.manager.role,'#1e3a8a',pend?'#d98b00':'#2f9e44',pend?pend+' usulan menunggu ACC Bapak':'Tidak ada antrean ACC',236)}</g>`;
  /* Musholla (kiri depan) & Ruang Istirahat (kanan depan) */
  g+=musholla(K,0.35,14.2,4.6,4.4,mo);
  g+=pantry(K,18.2,9.6,4.5,4.6,mo);
@@ -267,9 +275,12 @@ function officeScene(D){
 function storeScene(D){
  const rows=(D.desks||[]).filter(r=>String(r.desk).startsWith('store-')).sort((a,b)=>String(a.body?.store||'').localeCompare(String(b.body?.store||''),'id'));
  if(!rows.length)return '';
- const K=isoKit(30),{P,box,plant,walker,route,room,label}=K,cols=rows.length>9?4:3,nr=Math.ceil(rows.length/cols);
- /* grid sejajar layar (label tidak menutupi meja lain); ruangan dibuat sekecil mungkin yang masih memuat semua meja */
- const dS=6.7,sS=8.4,raw0=rows.map((r,i)=>{const d=-dS*(cols-1)/2+dS*(i%cols),sm=sS*Math.floor(i/cols);return {r,x:(sm+d)/2,y:(sm-d)/2};});
+ const K=isoKit(30),{P,box,plant,walker,route,room,label,poly}=K,cols=4;
+ /* kelompokkan per SPV area: meja SPV lebih dulu, lalu admin toko di areanya; tiap area mulai baris baru */
+ const groups=[];for(const k of Object.keys(TEAM.spv)){const list=rows.filter(r=>spvOfStore(r.body?.store_id,r.body?.store)===k);if(list.length)groups.push({k,list});}
+ const rest=rows.filter(r=>!spvOfStore(r.body?.store_id,r.body?.store));if(rest.length)groups.push({k:'',list:rest});
+ const items=[];let rowNo=0;for(const gr of groups){const seq=gr.k?[{spv:gr.k,list:gr.list},...gr.list.map(r=>({r,area:gr.k}))]:gr.list.map(r=>({r,area:''}));seq.forEach((it,i)=>items.push({...it,c:i%cols,rr:rowNo+Math.floor(i/cols)}));rowNo+=Math.ceil(seq.length/cols);}
+ const dS=6.9,sS=8.4,raw0=items.map(it=>{const d=-dS*(cols-1)/2+dS*it.c,sm=sS*it.rr;return {...it,x:(sm+d)/2,y:(sm-d)/2};});
  const mx=Math.min(...raw0.map(o=>o.x)),my=Math.min(...raw0.map(o=>o.y)),raw=raw0.map(o=>({...o,x:o.x-mx+2.8,y:o.y-my+1.1}));
  const W=Math.max(...raw.map(o=>o.x))+2.6,H=Math.max(...raw.map(o=>o.y))+4.0;
  let g=room(W,H,[W*0.35,W*0.62],[H*0.3,H*0.58])+wallClock(K,W*0.2,1.95)+plant(0.2,0.2)+plant(W-0.6,0.2)+plant(0.2,H-0.6)+plant(W-0.6,H-0.6);
@@ -277,12 +288,23 @@ function storeScene(D){
  g+=box(W-2.8,H-1.0,0,1.8,0.6,0.9,'#f1ece3','#ddd5c8','#cfc6b7')+box(W-2.6,H-0.9,0.9,0.3,0.3,0.55,'#e5e7eb','#d1d5db','#c3c7ce')+box(W-2.55,H-0.85,1.45,0.2,0.2,0.3,'#93c5fd','#60a5fa','#3b82f6')+box(W-1.9,H-0.9,0.9,0.6,0.35,0.3,'#f59e0b','#d97706','#b45309');
  g+=box(W-5.6,H-1.3,0,2.2,0.8,0.4,'#7fae8a','#5f8f6a','#6e9f79')+box(W-5.6,H-0.55,0.4,2.2,0.22,0.4,'#7fae8a','#5f8f6a','#6e9f79')+label(W-3.4,H-1.2,1.9,'Pojok istirahat','☕');
  g+=box(0.25,1.2,0,0.6,1.6,1.6,'#9aa3b2','#7d8696','#6f7888')+box(1.2,0.25,0,1.4,0.6,1.6,'#9aa3b2','#7d8696','#6f7888')+box(W-1.2,0.3,0,0.8,0.7,0.85,'#e5e7eb','#cbd5e1','#94a3b8')+box(W-1.1,0.35,0.85,0.6,0.55,0.12,'#334155','#1e293b','#0f172a');
+ /* karpet area di bawah meja (warna per SPV) */
+ for(const it of raw){const t=TEAM.spv[it.spv||it.area];if(t)g+=poly([[it.x-1.5,it.y-0.3,0.005],[it.x+1.7,it.y-0.3,0.005],[it.x+1.7,it.y+2.9,0.005],[it.x-1.5,it.y+2.9,0.005]],t.mat,'rx="6"');}
  const seats=raw.sort((a,b)=>(a.x+a.y)-(b.x+b.y));
- for(const {r,x,y} of seats){const name=r.body?.store||r.title,d={id:r.desk,name:'Admin '+shortStore(name)},[sh,ha]=STORE_LOOK(name);g+=deskStation(K,d,x,y,r,sh,ha,SKIN[(name.length)%SKIN.length],{w:178});}
+ for(const it of seats){const {x,y}=it;
+  if(it.spv){const t=TEAM.spv[it.spv],warn=it.list.filter(r=>r.status==='warn'||r.status==='error').length,ai=it.list.filter(r=>r.body?.ai).length,n=it.list.length;
+   let w=workstation(K,{x,y,state:warn?'warn':'work',shirt:t.color,hair:'#1f1a17',skin:SKIN[it.spv.length%SKIN.length],info:{big:warn+'/'+n,kind:'rows',sub:'TOKO'},accent:t.color});
+   w+=personCallout(K,x+0.4,y+1.2,2.35,t.name,t.role,t.color,warn?'#d98b00':'#2f9e44',n+' toko · '+warn+' perhatian'+(ai?' · '+ai+' saran AI':''),198);
+   g+=`<g class="of3-st" data-spv="${it.spv}" tabindex="0" role="button" aria-label="${esc(t.role+' '+t.name)}">${w}</g>`;continue;}
+  const r=it.r,name=r.body?.store||r.title,d={id:r.desk,name:'Admin '+shortStore(name)},[sh,ha]=STORE_LOOK(name);g+=deskStation(K,d,x,y,r,sh,ha,SKIN[(name.length)%SKIN.length],{w:178});}
  g+=`<g class="of3-ob" aria-hidden="true">${route([[W-3.4,H-2.2],[W*0.5,H-2.2],[W*0.5,H*0.55]],26,0.1,0)}${walker('#7a8899','#2b2622','',SKIN[2])}</g>`;
  const [x0]=P(0,H,0),[x1]=P(W,0,0),[,yTop]=P(0,0,2.6),[,yBot]=P(W,H,0);
  return `<svg viewBox="${(x0-14).toFixed(0)} ${(yTop-64).toFixed(0)} ${(x1-x0+28).toFixed(0)} ${(yBot-yTop+76).toFixed(0)}" class="of3-svg" role="img" aria-label="Ruang Admin Toko: meja admin per toko dan statusnya">${g}</svg>`;
 }
+function openSpv(k,D){const t=TEAM.spv[k];if(!t)return;const rows=(D.desks||[]).filter(r=>String(r.desk).startsWith('store-')&&spvOfStore(r.body?.store_id,r.body?.store)===k).sort((a,b)=>(b.body?.issues||[]).length-(a.body?.issues||[]).length);
+ const {box}=opsModal(t.role+' · '+t.name);box.classList.add('of-modal');
+ box.append(el('p',{class:'sub'},rows.length+' toko di area ini · '+rows.filter(r=>r.status==='warn'||r.status==='error').length+' perlu perhatian. Klik Laporan untuk rincian tiap toko.'));
+ box.append(tableBox([H('TOKO',{s:1}),H('MTD',{r:1}),H('PERLU PERHATIAN'),H('SARAN AI'),H('')],rows.map(r=>[r.body?.store||r.title,pc(r.body?.ach_mtd),(r.body?.issues||[]).join('; ')||'Aman',r.body?.ai?((r.body.ai.tindakan||[]).join('; ')||r.body.ai.analisa||'—'):'—',el('button',{class:'btn sm',onclick:()=>openReport(r.id,r)},'Laporan')]),'area-'+k.toLowerCase()+'.csv'));}
 function sceneEl(D){
  const storeN=(D.desks||[]).filter(r=>String(r.desk).startsWith('store-')).length;
  if(!O.room||(O.room==='stores'&&!storeN))O.room='main';
@@ -290,13 +312,13 @@ function sceneEl(D){
  const tab=(id,t,sub)=>el('button',{type:'button',role:'tab','aria-selected':O.room===id?'true':'false',class:'of3-tab'+(O.room===id?' on':''),onclick:()=>{O.room=id;draw();}},el('b',{},t),el('span',{},sub));
  const tabs=el('div',{class:'of3-tabs',role:'tablist','aria-label':'Pilih ruangan'});
  const zb=el('button',{type:'button',class:'btn sm of3-zoom',onclick:()=>{wrap.classList.toggle('zoom');zb.textContent=wrap.classList.contains('zoom')?'Perkecil':'Perbesar';if(wrap.classList.contains('zoom'))requestAnimationFrame(()=>{inner.scrollLeft=(inner.scrollWidth-inner.clientWidth)*0.4;});}},'Perbesar');
- const draw=()=>{tabs.replaceChildren(tab('main','Ruang Analis','8 analis · Manager · Musholla · Istirahat'),...(storeN?[tab('stores','Ruang Admin Toko',storeN+' admin toko')]:[]),zb);inner.innerHTML=O.room==='stores'?storeScene(D):officeScene(D);};
+ const draw=()=>{tabs.replaceChildren(tab('main','Ruang Analis','8 analis · Manager · Musholla · Istirahat'),...(storeN?[tab('stores','Ruang Admin Toko',Object.values(TEAM.spv).map(t=>t.name).join(' & ')+' · '+storeN+' admin toko')]:[]),zb);inner.innerHTML=O.room==='stores'?storeScene(D):officeScene(D);};
  draw();
  const latest=Object.fromEntries((D.desks||[]).map(r=>[r.desk,r]));
- inner.addEventListener('click',e=>{const st=e.target.closest('[data-desk]');if(!st)return;const id=st.dataset.desk;
+ inner.addEventListener('click',e=>{const sp=e.target.closest('[data-spv]');if(sp){openSpv(sp.dataset.spv,D);return;}const st=e.target.closest('[data-desk]');if(!st)return;const id=st.dataset.desk;
   if(id==='mgr'){document.querySelector('.of-queue')?.scrollIntoView({behavior:'smooth',block:'start'});return;}
   const r=latest[id];if(r)openReport(r.id,r);else if(id==='ai')toast('Analisa AI muncul setelah secret GEMINI_API_KEY diisi dan workflow berjalan.');else if(!DESKS.find(d=>d.id===id)?.soon)toast('Meja ini belum pernah bekerja. Jalankan workflow Kantor Virtual.');});
- inner.addEventListener('keydown',e=>{if((e.key==='Enter'||e.key===' ')&&e.target.closest('[data-desk]')){e.preventDefault();e.target.closest('[data-desk]').dispatchEvent(new MouseEvent('click',{bubbles:true}));}});
+ inner.addEventListener('keydown',e=>{const t=e.target.closest('[data-desk],[data-spv]');if((e.key==='Enter'||e.key===' ')&&t){e.preventDefault();t.dispatchEvent(new MouseEvent('click',{bubbles:true}));}});
  wrap.append(tabs,inner,el('p',{class:'of3-legend'},el('span',{},el('i',{style:'background:#4f46e5'}),'Ada saran AI (Gemini)'),el('span',{},el('i',{style:'background:#2f9e44'}),'Selesai hari ini'),el('span',{},el('i',{style:'background:#d98b00'}),'Perlu perhatian'),el('span',{},el('i',{style:'background:#e5484d'}),'Gagal'),el('span',{},el('i',{style:'background:#8b8d98'}),'Belum bekerja'),el('span',{class:'of3-hint'},'Klik meja atau papan AI untuk membuka laporan')));
  return wrap;
 }
@@ -356,7 +378,7 @@ const css=`.of-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax
 [data-theme="dark"] .of3-wrap{--of3-floor:#2a2c33;--of3-wall1:#30323b;--of3-wall2:#2b2d35;--of3-win:#3b5568;--of3-glass:rgba(120,170,210,.18);--of3-base:#24262c;--of3-pantry:#33302b;--of3-mgrfloor:#2f3139}
 .of3-inner{display:flex;justify-content:center}.of3-svg{display:block;width:100%;height:auto;max-height:min(calc(100vh - 210px),820px)}
 .of3-tabs{display:flex;gap:8px;margin:2px 4px 6px;flex-wrap:wrap;align-items:stretch}.of3-tab{flex:0 1 auto}.of3-zoom{display:none;margin-left:auto;align-self:center}@media(max-width:760px){.of3-tab{flex:1 1 0;min-width:0}.of3-tab span{display:none}.of3-zoom{display:inline-flex}.of3-wrap.zoom .of3-inner{overflow-x:auto;justify-content:flex-start}.of3-wrap.zoom .of3-svg{min-width:880px;max-height:none}}.of3-tab{display:flex;flex-direction:column;align-items:flex-start;gap:1px;padding:7px 12px;border-radius:10px;border:1px solid var(--ring);background:transparent;color:var(--ink);cursor:pointer;font:inherit;text-align:left}.of3-tab b{font-size:13px}.of3-tab span{font-size:11px;color:var(--ink-2)}.of3-tab.on{border-color:var(--accent,#5b5bd6);background:var(--accent-soft,rgba(91,91,214,.10))}
-.of3-scrbig{font:700 22px var(--font,system-ui)}.of3-scrt{font:600 6px var(--font,system-ui);fill:#94a3b8}.of3-aibt{font:700 8.5px var(--font,system-ui);fill:#fff}.of3-aih{font:700 7.5px var(--font,system-ui);fill:#fff}.of3-ait{font:500 6.6px var(--font,system-ui);fill:#1e293b}
+.of3-scrbig{font:700 22px var(--font,system-ui)}.of3-scrt{font:600 6px var(--font,system-ui);fill:#94a3b8}.of3-role{font:600 9px var(--font,system-ui);fill:#fff}.of3-aibt{font:700 8.5px var(--font,system-ui);fill:#fff}.of3-aih{font:700 7.5px var(--font,system-ui);fill:#fff}.of3-ait{font:500 6.6px var(--font,system-ui);fill:#1e293b}
 .of3-tag{pointer-events:none}.of3-tagbg{fill:var(--surface);stroke:var(--ring);filter:drop-shadow(0 2px 4px rgba(20,20,40,.10))}.of3-tagt{font:600 11px var(--font,system-ui);fill:var(--ink)}.of3-tagi{font:11px system-ui}
 .of3-aiboard{cursor:pointer;outline:none}.of3-aiboard:hover rect:first-child,.of3-aiboard:focus-visible rect:first-child{stroke:var(--accent,#5b5bd6);stroke-width:3}
 .of3-winf{stroke:rgba(255,255,255,.6);stroke-width:1}.of3-mull{stroke:rgba(255,255,255,.7);stroke-width:1.2;fill:none}
