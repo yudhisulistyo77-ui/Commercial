@@ -57,6 +57,8 @@ function data(){
   return cache;
 }
 
+U.data=()=>{cache=null;return data();};  // V96: dipakai juga oleh Kantor Virtual (Sekretaris Visit)
+
 /* ---------- form edit umum ---------- */
 function editForm(title,fields,values,{onSave,onDelete,onReset}={}){
   const {box,modal}=opsModal(title),inputs={};
